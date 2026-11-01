@@ -24,6 +24,7 @@ pub mod history;
 pub mod image_test;
 pub mod import;
 pub mod inspection;
+pub mod jobs;
 pub mod layers;
 pub mod machines;
 pub mod material_test;

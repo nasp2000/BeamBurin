@@ -19,6 +19,7 @@ pub struct McpServer {
     path: Option<PathBuf>,
     clipboard: Vec<Object>,
     checkpoints: crate::checkpoints::Checkpoints,
+    jobs: crate::jobs::Jobs,
     policy: crate::policy::Policy,
 }
 
@@ -56,6 +57,7 @@ impl McpServer {
             path: None,
             clipboard: Vec::new(),
             checkpoints: crate::checkpoints::Checkpoints::new(),
+            jobs: crate::jobs::Jobs::new(),
             policy: crate::policy::Policy::unrestricted(),
         }
     }
@@ -232,6 +234,7 @@ impl McpServer {
                     | "export_svg"
                     | "export_dxf"
                     | "export_gcode"
+                    | "start_job"
             ) {
                 return Err(BeamError::InvalidInput(format!(
                     "'{tool}' cannot run inside a batch"
@@ -1206,6 +1209,34 @@ impl McpServer {
                     .ok_or_else(|| missing("steps"))?;
                 self.apply_batch(steps)
             }
+            "start_job" => {
+                let tool = string(arguments, "tool").ok_or_else(|| missing("tool"))?;
+                let job_arguments = arguments
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                let path = self.required_path(&job_arguments, "path")?;
+                let id = self
+                    .jobs
+                    .start_export(&tool, &self.editor.document, &path)?;
+                Ok(json!({
+                    "job_id": id,
+                    "tool": tool,
+                    "path": path.display().to_string(),
+                }))
+            }
+            "job_status" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                self.jobs
+                    .status(&id)
+                    .ok_or_else(|| BeamError::InvalidInput(format!("unknown job: {id}")))
+            }
+            "cancel_job" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                self.jobs
+                    .cancel(&id)
+                    .ok_or_else(|| BeamError::InvalidInput(format!("unknown job: {id}")))
+            }
             "list_commands" => {
                 let query = string(arguments, "query")
                     .unwrap_or_default()
@@ -1827,6 +1858,24 @@ fn tool_definitions() -> Vec<Value> {
             json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
         ),
         tool_with(
+            "start_job",
+            "Render an export in the background and return a job id; poll it with job_status.",
+            json!({"type": "object", "properties": {
+                "tool": {"type": "string", "enum": ["export_gcode", "export_svg", "export_dxf"]},
+                "arguments": {"type": "object"}
+            }, "required": ["tool", "arguments"]}),
+        ),
+        tool_with(
+            "job_status",
+            "State, result or error of a background job.",
+            json!({"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}),
+        ),
+        tool_with(
+            "cancel_job",
+            "Ask a running background job to stop; a finished job is left alone.",
+            json!({"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}),
+        ),
+        tool_with(
             "list_commands",
             "List application commands and MCP tools with stable keys, categories and shortcuts.",
             json!({"type": "object", "properties": {
@@ -2315,6 +2364,70 @@ mod tests {
             json!({"operation": id, "expressions": {"speed": "missing + 1"}}),
         );
         assert!(bad_expression.get("error").is_some());
+    }
+
+    fn wait_for_job(server: &mut McpServer, id: &str) -> serde_json::Value {
+        for _ in 0..400 {
+            let status = call(server, "job_status", json!({"id": id}));
+            let state = status["result"]["state"].as_str().unwrap_or("running");
+            if state != "running" {
+                return status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("job {id} never finished");
+    }
+
+    #[test]
+    fn a_background_export_reports_its_result() {
+        let path =
+            std::env::temp_dir().join(format!("beamwright_mcp_job_{}.nc", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut server = McpServer::new();
+        call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let started = call(
+            &mut server,
+            "start_job",
+            json!({
+                "tool": "export_gcode",
+                "arguments": {"path": path.to_string_lossy()}
+            }),
+        );
+        assert!(started.get("error").is_none(), "{started}");
+        let id = started["result"]["job_id"].as_str().unwrap().to_string();
+        let status = wait_for_job(&mut server, &id);
+        assert_eq!(status["result"]["state"], "done");
+        assert!(status["result"]["result"]["lines"].as_u64().unwrap() > 0);
+        assert!(path.is_file());
+        // The document was not touched by the export.
+        assert_eq!(server.editor.document.objects.len(), 1);
+        assert_eq!(status["result"]["changed_ids"].as_array().unwrap().len(), 0);
+        let missing = call(&mut server, "job_status", json!({"id": "job-999"}));
+        assert!(missing.get("error").is_some());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn unsupported_or_unknown_jobs_are_refused() {
+        let mut server = McpServer::new();
+        let refused = call(
+            &mut server,
+            "start_job",
+            json!({"tool": "export_pdf", "arguments": {"path": "/tmp/x.pdf"}}),
+        );
+        assert!(refused.get("error").is_some());
+        let missing = call(&mut server, "cancel_job", json!({"id": "job-1"}));
+        assert!(missing.get("error").is_some());
+        let no_path = call(
+            &mut server,
+            "start_job",
+            json!({"tool": "export_svg", "arguments": {}}),
+        );
+        assert!(no_path.get("error").is_some());
     }
 
     #[test]
