@@ -60,6 +60,60 @@ impl McpServer {
         }
     }
 
+    /// Add the structured result envelope every tool shares.
+    ///
+    /// `ok` and `disabled_reason` describe the call, `changed_ids` names the
+    /// objects that were added, removed or edited and `undo_label` says what the
+    /// new undo step will restore.
+    fn describe_change(&self, value: Value, before: &Document) -> Value {
+        let after = &self.editor.document;
+        let mut changed: Vec<String> = Vec::new();
+        for object in &after.objects {
+            match before
+                .objects
+                .iter()
+                .find(|candidate| candidate.id == object.id)
+            {
+                Some(previous) if previous == object => {}
+                _ => changed.push(object.id.clone()),
+            }
+        }
+        for object in &before.objects {
+            if after
+                .objects
+                .iter()
+                .all(|candidate| candidate.id != object.id)
+            {
+                changed.push(object.id.clone());
+            }
+        }
+        let document_changed = before != after;
+        let undo_label = if document_changed {
+            self.editor.history.undo_label().map(str::to_string)
+        } else {
+            None
+        };
+        match value {
+            Value::Object(mut map) => {
+                // `check_job` already uses `ok` for the preflight verdict; keep it.
+                map.entry("ok").or_insert_with(|| json!(true));
+                map.insert("undo_label".to_string(), json!(undo_label));
+                map.insert("changed_ids".to_string(), json!(changed));
+                map.insert("disabled_reason".to_string(), Value::Null);
+                map.entry("warnings").or_insert_with(|| json!([]));
+                Value::Object(map)
+            }
+            other => json!({
+                "ok": true,
+                "result": other,
+                "undo_label": undo_label,
+                "changed_ids": changed,
+                "disabled_reason": null,
+                "warnings": [],
+            }),
+        }
+    }
+
     /// Apply the session restrictions (workspace, read-only).
     pub fn set_policy(&mut self, policy: crate::policy::Policy) {
         self.policy = policy;
@@ -116,20 +170,35 @@ impl McpServer {
             "prompts/get" => Self::read_prompt(&params),
             "tools/list" => Ok(json!({"tools": tool_definitions()})),
             "tools/call" => {
-                let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+                let name = params
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
                 let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
-                self.call_tool(name, &arguments)
+                let before = self.editor.document.clone();
+                match self.call_tool(&name, &arguments) {
+                    Ok(value) => Ok(self.describe_change(value, &before)),
+                    Err(error) => Err(error),
+                }
             }
             "ping" => Ok(json!({})),
             other => Err(BeamError::InvalidInput(format!("unknown method: {other}"))),
         };
         match result {
             Ok(value) => json!({"jsonrpc": "2.0", "id": id, "result": value}),
-            Err(error) => json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {"code": -32000, "message": error.to_string()}
-            }),
+            Err(error) => {
+                let message = error.to_string();
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": message,
+                        "data": {"ok": false, "disabled_reason": message}
+                    }
+                })
+            }
         }
     }
 
@@ -2246,6 +2315,72 @@ mod tests {
             json!({"operation": id, "expressions": {"speed": "missing + 1"}}),
         );
         assert!(bad_expression.get("error").is_some());
+    }
+
+    #[test]
+    fn every_result_carries_the_shared_envelope() {
+        let mut server = McpServer::new();
+        let added = call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let result = &added["result"];
+        assert_eq!(result["ok"], true);
+        assert!(result["disabled_reason"].is_null());
+        let changed = result["changed_ids"].as_array().unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(
+            changed[0].as_str().unwrap(),
+            server.editor.document.objects[0].id
+        );
+        assert_eq!(result["undo_label"], "Draw Rectangle");
+        assert!(result["warnings"].is_array());
+
+        let status = call(&mut server, "get_status", json!({}));
+        assert_eq!(status["result"]["changed_ids"].as_array().unwrap().len(), 0);
+        assert!(status["result"]["undo_label"].is_null());
+
+        let failed = call(&mut server, "add_circle", json!({"radius": -1.0}));
+        assert_eq!(failed["error"]["data"]["ok"], false);
+        assert!(
+            failed["error"]["data"]["disabled_reason"]
+                .as_str()
+                .unwrap()
+                .contains("must be positive")
+        );
+
+        // A preflight verdict keeps its own `ok`, even though the call worked.
+        let report = call(&mut server, "check_job", json!({}));
+        assert_eq!(report["result"]["ok"], true);
+        assert!(report["result"]["warnings"].is_array());
+    }
+
+    #[test]
+    fn a_failed_preflight_keeps_the_verdict_and_the_envelope() {
+        let mut server = McpServer::new();
+        call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        server
+            .editor
+            .document
+            .operations
+            .push(crate::operations::Operation {
+                id: "gone".to_string(),
+                name: "Gone".to_string(),
+                op_type: crate::operations::OperationType::OutlineCutting,
+                params: crate::operations::OperationParams::default(),
+                enabled: true,
+                depends_on: Vec::new(),
+            });
+        server.editor.document.objects[0].operation_id = Some("gone".to_string());
+        server.editor.document.operations.clear();
+        let report = call(&mut server, "check_job", json!({}));
+        assert_eq!(report["result"]["ok"], false);
+        assert_eq!(report["result"]["changed_ids"].as_array().unwrap().len(), 0);
     }
 
     #[test]
