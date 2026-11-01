@@ -7,6 +7,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod app;
+pub mod assistant;
 pub mod bridge;
 pub mod centerline;
 pub mod checkpoints;

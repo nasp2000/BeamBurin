@@ -58,6 +58,7 @@ pub enum CommandId {
     MachineProfiles,
     Materials,
     KeyboardShortcuts,
+    Assistant,
 }
 
 /// Grouping shown before the label in the palette.
@@ -562,6 +563,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Show and remap the keyboard shortcuts."
+    ),
+    command!(
+        Assistant,
+        "help.assistant",
+        "Assistant for agents...",
+        Help,
+        None,
+        false,
+        "Bridge status, token, launch lines and a prompt with the document state."
     ),
 ];
 
