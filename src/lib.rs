@@ -12,6 +12,7 @@ pub mod centerline;
 pub mod checkpoints;
 pub mod cli;
 pub mod color;
+pub mod commands;
 pub mod config;
 pub mod document;
 pub mod editor;

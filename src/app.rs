@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use egui::{Color32, Key, Modifiers, Pos2, Rect, Sense, Ui};
 
 use crate::color::{normalize_hex_color, parse_hex_color, to_hex};
+use crate::commands::{CommandId as PaletteAction, PaletteCommand};
 use crate::config::shortcuts::{Command, parse_chord};
 use crate::document::{Document, Shape, Unit};
 use crate::editor::renderer::{PreviewShape, Theme, format_mm, paint_canvas};
@@ -39,119 +40,19 @@ enum PendingAction {
     Quit,
 }
 
-/// A command offered by the Ctrl+K palette.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaletteAction {
-    New,
-    Open,
-    Save,
-    SaveAs,
-    SaveArchive,
-    Undo,
-    Redo,
-    Cut,
-    Copy,
-    Paste,
-    Duplicate,
-    Delete,
-    SelectAll,
-    ZoomIn,
-    ZoomOut,
-    FitPage,
-    ToggleGrid,
-    ToggleSnap,
-    ToggleToolpaths,
-    ToolSelect,
-    ToolLine,
-    ToolRectangle,
-    ToolEllipse,
-    ToolStar,
-    ToolText,
-    ToolPolygon,
-    ToolPencil,
-    Import,
-    ExportSvg,
-    ExportDxf,
-    ExportEps,
-    ExportPdf,
-    ExportImage,
-    ExportGcode,
-    Cuts,
-    Parameters,
-    Preview,
-    MaterialTest,
-    RegistrationMarks,
-    DocumentProperties,
-    Preferences,
-    Workspaces,
-    InterfacePresets,
-    History,
-    MachineProfiles,
-    Materials,
-    KeyboardShortcuts,
-}
-
-/// Every palette entry, in the order shown before a search.
-fn palette_entries() -> &'static [(PaletteAction, &'static str)] {
-    use PaletteAction as Action;
-    &[
-        (Action::New, "New project"),
-        (Action::Open, "Open project..."),
-        (Action::Save, "Save"),
-        (Action::SaveAs, "Save as..."),
-        (Action::SaveArchive, "Save project with images..."),
-        (Action::Undo, "Undo"),
-        (Action::Redo, "Redo"),
-        (Action::Cut, "Cut"),
-        (Action::Copy, "Copy"),
-        (Action::Paste, "Paste"),
-        (Action::Duplicate, "Duplicate"),
-        (Action::Delete, "Delete selection"),
-        (Action::SelectAll, "Select all"),
-        (Action::ZoomIn, "Zoom in"),
-        (Action::ZoomOut, "Zoom out"),
-        (Action::FitPage, "Fit page"),
-        (Action::ToggleGrid, "Toggle grid"),
-        (Action::ToggleSnap, "Toggle snapping"),
-        (Action::ToggleToolpaths, "Toggle toolpaths"),
-        (Action::ToolSelect, "Tool: Select"),
-        (Action::ToolLine, "Tool: Line"),
-        (Action::ToolRectangle, "Tool: Rectangle"),
-        (Action::ToolEllipse, "Tool: Ellipse"),
-        (Action::ToolStar, "Tool: Star"),
-        (Action::ToolText, "Tool: Text"),
-        (Action::ToolPolygon, "Tool: Polygon"),
-        (Action::ToolPencil, "Tool: Freehand"),
-        (Action::Import, "Import SVG, DXF or image..."),
-        (Action::ExportSvg, "Export SVG..."),
-        (Action::ExportDxf, "Export DXF..."),
-        (Action::ExportEps, "Export EPS..."),
-        (Action::ExportPdf, "Export PDF..."),
-        (Action::ExportImage, "Export image..."),
-        (Action::ExportGcode, "Export G-code..."),
-        (Action::Cuts, "Cuts and layers..."),
-        (Action::Parameters, "Parameters..."),
-        (Action::Preview, "Preview and G-code..."),
-        (Action::MaterialTest, "Material test..."),
-        (Action::RegistrationMarks, "Registration marks..."),
-        (Action::DocumentProperties, "Document properties..."),
-        (Action::Preferences, "Preferences..."),
-        (Action::Workspaces, "Workspaces..."),
-        (Action::InterfacePresets, "Interface presets..."),
-        (Action::History, "History..."),
-        (Action::MachineProfiles, "Machine profiles..."),
-        (Action::Materials, "Materials and operations..."),
-        (Action::KeyboardShortcuts, "Keyboard shortcuts"),
-    ]
-}
-
-/// Indices of the entries whose label contains `query`, ignoring case.
-fn filter_palette(entries: &[(PaletteAction, &'static str)], query: &str) -> Vec<usize> {
+/// Indices of the catalog entries that match `query`, ignoring case.
+fn filter_palette(entries: &[PaletteCommand], query: &str) -> Vec<usize> {
     let query = query.trim().to_lowercase();
     entries
         .iter()
         .enumerate()
-        .filter(|(_, (_, label))| query.is_empty() || label.to_lowercase().contains(&query))
+        .filter(|(_, command)| {
+            query.is_empty()
+                || command.label.to_lowercase().contains(&query)
+                || command.key.to_lowercase().contains(&query)
+                || command.category.label().to_lowercase().contains(&query)
+                || command.summary.to_lowercase().contains(&query)
+        })
         .map(|(index, _)| index)
         .collect()
 }
@@ -9065,7 +8966,7 @@ impl BeamWrightApp {
     }
 
     fn run_palette_action(&mut self, action: PaletteAction) {
-        use PaletteAction as Action;
+        use crate::commands::CommandId as Action;
         self.palette_query.clear();
         match action {
             Action::New => self.request(PendingAction::New),
@@ -9273,11 +9174,11 @@ impl BeamWrightApp {
                     response.request_focus();
                     self.palette_focus = false;
                 }
-                let entries = palette_entries();
+                let entries = crate::commands::ALL;
                 let matches = filter_palette(entries, &self.palette_query);
                 if ui.input(|input| input.key_pressed(Key::Enter)) {
                     if let Some(index) = matches.first() {
-                        chosen = Some(entries[*index].0);
+                        chosen = Some(entries[*index].id);
                     }
                 }
                 if ui.input(|input| input.key_pressed(Key::Escape))
@@ -9294,16 +9195,19 @@ impl BeamWrightApp {
                             ui.weak("No command matches.");
                         }
                         for index in &matches {
-                            let (action, label) = entries[*index];
+                            let command = &entries[*index];
+                            let text =
+                                format!("{}  ·  {}", command.category.label(), command.label);
                             if ui
                                 .add(
-                                    egui::Button::new(label)
+                                    egui::Button::new(text)
                                         .frame(false)
                                         .min_size(egui::vec2(ui.available_width(), 0.0)),
                                 )
+                                .on_hover_text(command.summary)
                                 .clicked()
                             {
-                                chosen = Some(action);
+                                chosen = Some(command.id);
                             }
                         }
                     });
@@ -11507,13 +11411,13 @@ mod tests {
 
     #[test]
     fn the_palette_filters_entries_case_insensitively() {
-        let entries = palette_entries();
+        let entries = crate::commands::ALL;
         assert_eq!(filter_palette(entries, "").len(), entries.len());
         assert_eq!(filter_palette(entries, "   ").len(), entries.len());
         let labels = |query: &str| -> Vec<&'static str> {
             filter_palette(entries, query)
                 .into_iter()
-                .map(|index| entries[index].1)
+                .map(|index| entries[index].label)
                 .collect()
         };
         assert!(labels("undo").contains(&"Undo"));
@@ -11521,10 +11425,17 @@ mod tests {
         assert!(labels("g-code").contains(&"Export G-code..."));
         assert!(labels("preferences").contains(&"Preferences..."));
         assert_eq!(labels("zzzzzz").len(), 0);
+        // The key and the category are searchable too, not just the label.
+        assert!(labels("file.save").contains(&"Save"));
+        assert!(labels("help").contains(&"Keyboard shortcuts"));
         let mut seen = std::collections::HashSet::new();
-        for (_, label) in entries {
-            assert_ne!(*label, "");
-            assert!(seen.insert(*label), "duplicate palette label {label}");
+        for command in entries {
+            assert_ne!(command.label, "");
+            assert!(
+                seen.insert(command.label),
+                "duplicate palette label {}",
+                command.label
+            );
         }
     }
 

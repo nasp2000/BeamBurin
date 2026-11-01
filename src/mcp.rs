@@ -1137,6 +1137,56 @@ impl McpServer {
                     .ok_or_else(|| missing("steps"))?;
                 self.apply_batch(steps)
             }
+            "list_commands" => {
+                let query = string(arguments, "query")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_lowercase();
+                let matches = |text: &str| query.is_empty() || text.to_lowercase().contains(&query);
+                let mut commands: Vec<Value> = crate::commands::ALL
+                    .iter()
+                    .filter(|command| {
+                        matches(command.label)
+                            || matches(command.key)
+                            || matches(command.category.label())
+                            || matches(command.summary)
+                    })
+                    .map(crate::commands::PaletteCommand::to_json)
+                    .collect();
+                let tools: Vec<Value> = tool_definitions()
+                    .into_iter()
+                    .filter_map(|tool| {
+                        let name = tool["name"].as_str()?.to_string();
+                        let summary = tool["description"].as_str().unwrap_or_default().to_string();
+                        (matches(&name) || matches(&summary))
+                            .then(|| json!({"kind": "tool", "name": name, "summary": summary}))
+                    })
+                    .collect();
+                commands.extend(tools);
+                Ok(json!({"count": commands.len(), "commands": commands}))
+            }
+            "describe_command" => {
+                let key = string(arguments, "id")
+                    .or_else(|| string(arguments, "name"))
+                    .ok_or_else(|| missing("id"))?;
+                if let Some(command) = crate::commands::find(&key) {
+                    return Ok(command.to_json());
+                }
+                let tool = tool_definitions()
+                    .into_iter()
+                    .find(|tool| tool["name"].as_str() == Some(key.as_str()));
+                match tool {
+                    Some(tool) => Ok(json!({
+                        "kind": "tool",
+                        "name": tool["name"],
+                        "summary": tool["description"],
+                        "input_schema": tool["inputSchema"],
+                    })),
+                    None => Err(BeamError::InvalidInput(format!(
+                        "unknown command or tool: {key}"
+                    ))),
+                }
+            }
             "inspect" => {
                 let ids = ids(arguments);
                 let mut report = crate::inspection::inspect(&self.editor.document, ids.as_deref());
@@ -1708,6 +1758,20 @@ fn tool_definitions() -> Vec<Value> {
             json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
         ),
         tool_with(
+            "list_commands",
+            "List application commands and MCP tools with stable keys, categories and shortcuts.",
+            json!({"type": "object", "properties": {
+                "query": {"type": "string"}
+            }}),
+        ),
+        tool_with(
+            "describe_command",
+            "Describe one application command or MCP tool by key or name.",
+            json!({"type": "object", "properties": {
+                "id": {"type": "string"}
+            }, "required": ["id"]}),
+        ),
+        tool_with(
             "inspect",
             "Describe the project: layers, objects, operations, parameters, stock and selection. Read-only.",
             json!({"type": "object", "properties": {
@@ -2182,6 +2246,36 @@ mod tests {
             json!({"operation": id, "expressions": {"speed": "missing + 1"}}),
         );
         assert!(bad_expression.get("error").is_some());
+    }
+
+    #[test]
+    fn the_command_catalog_is_searchable() {
+        let mut server = McpServer::new();
+        let all = call(&mut server, "list_commands", json!({}));
+        let entries = all["result"]["commands"].as_array().unwrap();
+        assert!(entries.iter().any(|entry| entry["id"] == "file.save"));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry["kind"] == "tool" && entry["name"] == "add_rectangle")
+        );
+        let filtered = call(&mut server, "list_commands", json!({"query": "save"}));
+        let filtered = filtered["result"]["commands"].as_array().unwrap();
+        assert!(filtered.iter().any(|entry| entry["id"] == "file.save-as"));
+        assert!(!filtered.iter().any(|entry| entry["id"] == "view.zoom-in"));
+
+        let described = call(&mut server, "describe_command", json!({"id": "edit.undo"}));
+        assert_eq!(described["result"]["kind"], "command");
+        assert_eq!(described["result"]["shortcut"], "Ctrl+Z");
+        let described = call(
+            &mut server,
+            "describe_command",
+            json!({"id": "add_rectangle"}),
+        );
+        assert_eq!(described["result"]["kind"], "tool");
+        assert!(described["result"]["input_schema"].is_object());
+        let missing = call(&mut server, "describe_command", json!({"id": "nope"}));
+        assert!(missing.get("error").is_some());
     }
 
     #[test]

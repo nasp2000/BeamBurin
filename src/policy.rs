@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 /// Tools that only read the document and are allowed in read-only mode.
-pub const READ_ONLY_TOOLS: [&str; 12] = [
+pub const READ_ONLY_TOOLS: [&str; 14] = [
     "get_status",
+    "list_commands",
+    "describe_command",
     "list_objects",
     "list_layers",
     "list_parameters",
