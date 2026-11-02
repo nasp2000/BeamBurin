@@ -11,11 +11,21 @@
 //! and never writes, sends or runs anything. Nothing here talks to a machine.
 
 use std::collections::HashSet;
+use std::f64::consts::{PI, TAU};
 
 use crate::geometry::Point2;
 
 /// Largest file accepted by [`parse_file`], in bytes.
 pub const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Largest angle between two samples of a previewed arc, in radians.
+const ARC_STEP_RAD: f64 = 0.05;
+
+/// Upper bound on the samples generated for one arc.
+const MAX_ARC_SAMPLES: usize = 2048;
+
+/// Largest mismatch, in millimetres, between the two ends of an arc's radius.
+const ARC_RADIUS_TOLERANCE_MM: f64 = 0.05;
 
 /// What the file contains, in millimetres.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -168,18 +178,15 @@ impl Parser {
         let mut target = self.position;
         let mut has_axis = false;
         let mut motion: Option<u32> = None;
+        let mut arc_i: Option<f64> = None;
+        let mut arc_j: Option<f64> = None;
+        let mut arc_r: Option<f64> = None;
         for (letter, value) in &words {
             match letter {
                 'G' => {
                     let code = *value as u32;
                     match code {
-                        0 | 1 => motion = Some(code),
-                        2 | 3 => {
-                            motion = Some(u32::MAX);
-                            self.warn(
-                                "arc moves (G2/G3) are not drawn; the head is moved to the end point with the laser off",
-                            );
-                        }
+                        0..=3 => motion = Some(code),
                         4 | 17 | 40 | 49 => {}
                         20 => self.scale = 25.4,
                         21 => self.scale = 1.0,
@@ -217,23 +224,104 @@ impl Parser {
                     target.y = self.axis(*value, self.position.y);
                     has_axis = true;
                 }
-                'Z' | 'I' | 'J' | 'K' | 'P' | 'Q' | 'R' | 'N' | 'O' => {}
+                'I' => arc_i = Some(*value * self.scale),
+                'J' => arc_j = Some(*value * self.scale),
+                'R' => arc_r = Some(*value * self.scale),
+                'Z' | 'K' | 'P' | 'Q' | 'N' | 'O' => {}
                 other => self.warn(format!("parameter {other} is ignored")),
             }
         }
         let Some(code) = motion else {
             return;
         };
+        if code == 2 || code == 3 {
+            self.arc(code == 2, target, arc_i, arc_j, arc_r);
+            return;
+        }
         if !has_axis {
             return;
         }
         let cutting = code == 1 && self.laser_on;
         let mode = if cutting { Mode::Cut } else { Mode::Travel };
-        if code == u32::MAX && self.laser_on {
-            self.flush();
-            self.laser_on = false;
-        }
         self.add_move(target, mode);
+    }
+
+    /// Draw a `G2`/`G3` arc as a polyline.
+    ///
+    /// `I`/`J` are centre offsets from the start, which is the common output;
+    /// a signed `R` is accepted too. A malformed arc is reported and drawn as
+    /// a straight move instead of being dropped, so the preview never hides
+    /// geometry that the file asked for.
+    fn arc(
+        &mut self,
+        clockwise: bool,
+        target: Point2,
+        i: Option<f64>,
+        j: Option<f64>,
+        r: Option<f64>,
+    ) {
+        let start = self.position;
+        let mode = if self.laser_on {
+            Mode::Cut
+        } else {
+            Mode::Travel
+        };
+        let (center, radius) = if i.is_some() || j.is_some() {
+            let center = Point2::new(start.x + i.unwrap_or(0.0), start.y + j.unwrap_or(0.0));
+            let radius = start.distance(center);
+            (center, radius)
+        } else if let Some(radius) = r {
+            let Some(center) = center_from_radius(start, target, radius, clockwise) else {
+                self.warn(
+                    "an arc radius cannot reach its end point; it is drawn as a straight move",
+                );
+                self.add_move(target, mode);
+                return;
+            };
+            (center, radius.abs())
+        } else {
+            self.warn("an arc without I, J or R is drawn as a straight move");
+            self.add_move(target, mode);
+            return;
+        };
+        if radius <= 1e-9 {
+            self.warn("an arc with a zero radius is drawn as a straight move");
+            self.add_move(target, mode);
+            return;
+        }
+        if (target.distance(center) - radius).abs() > ARC_RADIUS_TOLERANCE_MM {
+            self.warn("an arc end point is not on its circle; it is drawn as a straight move");
+            self.add_move(target, mode);
+            return;
+        }
+        let start_angle = (start.y - center.y).atan2(start.x - center.x);
+        let mut sweep = sweep_between(start, target, center, clockwise);
+        if start.distance(target) <= 1e-9 {
+            // A full circle: start and end are the same point.
+            sweep = TAU;
+        }
+        if !sweep.is_finite() || sweep <= 0.0 {
+            self.warn("an arc has no usable sweep; it is drawn as a straight move");
+            self.add_move(target, mode);
+            return;
+        }
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let steps = ((sweep / ARC_STEP_RAD).ceil() as usize).clamp(1, MAX_ARC_SAMPLES);
+        let direction = if clockwise { -1.0 } else { 1.0 };
+        for step in 1..=steps {
+            if step == steps {
+                self.add_move(target, mode);
+            } else {
+                #[allow(clippy::cast_precision_loss)]
+                let fraction = step as f64 / steps as f64;
+                let angle = start_angle + direction * sweep * fraction;
+                let point = Point2::new(
+                    center.x + radius * angle.cos(),
+                    center.y + radius * angle.sin(),
+                );
+                self.add_move(point, mode);
+            }
+        }
     }
 
     fn axis(&self, value: f64, current: f64) -> f64 {
@@ -315,6 +403,49 @@ impl Parser {
         }
         self.program
     }
+}
+
+/// Angle travelled from `start` to `end` around `center`, in `(0, 2π]`.
+fn sweep_between(start: Point2, end: Point2, center: Point2, clockwise: bool) -> f64 {
+    let start_angle = (start.y - center.y).atan2(start.x - center.x);
+    let end_angle = (end.y - center.y).atan2(end.x - center.x);
+    let mut sweep = if clockwise {
+        start_angle - end_angle
+    } else {
+        end_angle - start_angle
+    };
+    while sweep <= 0.0 {
+        sweep += TAU;
+    }
+    sweep
+}
+
+/// Centre of a radius-format arc, choosing the minor arc for a positive `R`
+/// and the major arc for a negative one.
+fn center_from_radius(start: Point2, end: Point2, radius: f64, clockwise: bool) -> Option<Point2> {
+    let r = radius.abs();
+    let chord = start.distance(end);
+    if chord <= 1e-9 || chord > 2.0 * r + 1e-9 {
+        return None;
+    }
+    let middle = Point2::new(f64::midpoint(start.x, end.x), f64::midpoint(start.y, end.y));
+    let height = (r * r - (chord * 0.5).powi(2)).max(0.0).sqrt();
+    let dx = (end.x - start.x) / chord;
+    let dy = (end.y - start.y) / chord;
+    let candidates = [
+        Point2::new(middle.x - dy * height, middle.y + dx * height),
+        Point2::new(middle.x + dy * height, middle.y - dx * height),
+    ];
+    let wanted_minor = radius > 0.0;
+    let mut fallback = None;
+    for center in candidates {
+        let sweep = sweep_between(start, end, center, clockwise);
+        if (sweep <= PI + 1e-9) == wanted_minor {
+            return Some(center);
+        }
+        fallback = Some(center);
+    }
+    fallback
 }
 
 /// Split a line into letter/number words, tolerating missing spaces.
@@ -414,14 +545,84 @@ mod tests {
     }
 
     #[test]
-    fn arcs_and_unknown_commands_are_reported() {
-        let program = parse("G21\nG2 X10 Y0 I5 J0\nG28\nM5\n");
+    fn a_clockwise_arc_is_drawn() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG2 X10 Y0 I5 J0\nM5\n");
+        assert_eq!(program.cuts.len(), 1);
+        assert!((program.cut_length_mm - std::f64::consts::PI * 5.0).abs() < 0.05);
+        let (min, max) = program.bounds().unwrap();
+        assert!(min.x.abs() < 1e-9 && min.y.abs() < 1e-9);
+        assert!((max.x - 10.0).abs() < 1e-9);
+        assert!((max.y - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_radius_arc_is_drawn() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG3 X10 Y0 R5\nM5\n");
+        assert_eq!(program.cuts.len(), 1);
+        assert!((program.cut_length_mm - std::f64::consts::PI * 5.0).abs() < 0.05);
+        let (min, _) = program.bounds().unwrap();
+        // The counter-clockwise minor arc dips below the chord.
+        assert!((min.y + 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_full_circle_is_drawn() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG2 I5 J0\nM5\n");
+        assert_eq!(program.cuts.len(), 1);
+        assert!((program.cut_length_mm - std::f64::consts::TAU * 5.0).abs() < 0.05);
+        let (min, max) = program.bounds().unwrap();
+        assert!((max.x - 10.0).abs() < 0.01);
+        assert!((max.y - 5.0).abs() < 0.01);
+        assert!((min.y + 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn an_arc_with_the_laser_off_is_a_travel() {
+        let program = parse("G21\nG0 X0 Y0\nG2 X10 Y0 I5 J0\nM5\n");
+        assert_eq!(program.cuts.len(), 0);
+        assert_eq!(program.travels.len(), 1);
+        assert!((program.travel_length_mm - std::f64::consts::PI * 5.0).abs() < 0.05);
+    }
+
+    #[test]
+    fn an_arc_without_offsets_is_a_straight_move() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG2 X10 Y0\nM5\n");
+        assert!(close(program.cut_length_mm, 10.0));
         assert!(
             program
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("G2/G3"))
+                .any(|warning| warning.contains("without I, J or R"))
         );
+    }
+
+    #[test]
+    fn an_arc_with_an_impossible_radius_falls_back_to_a_line() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG3 X10 Y0 R1\nM5\n");
+        assert!(close(program.cut_length_mm, 10.0));
+        assert!(
+            program
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("cannot reach"))
+        );
+    }
+
+    #[test]
+    fn an_arc_end_point_off_the_circle_falls_back_to_a_line() {
+        let program = parse("G21\nG0 X0 Y0\nM3\nG2 X10 Y0 I1 J0\nM5\n");
+        assert!(close(program.cut_length_mm, 10.0));
+        assert!(
+            program
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("not on its circle"))
+        );
+    }
+
+    #[test]
+    fn unknown_commands_are_reported() {
+        let program = parse("G21\nG1 X1 Y1\nG28\nM5\n");
         assert!(
             program
                 .warnings

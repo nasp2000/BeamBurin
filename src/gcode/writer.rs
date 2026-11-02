@@ -390,6 +390,30 @@ mod tests {
     }
 
     #[test]
+    fn the_external_viewer_reads_the_arc_output() {
+        let options = GCodeOptions {
+            arcs: true,
+            ..GCodeOptions::default()
+        };
+        let text = GCodeWriter::new(options).render(&[circle_toolpath()]);
+        let program = crate::gcode::external::parse(&text);
+        // A radius of 10 mm gives a circumference of about 62.8 mm.
+        assert!(
+            (program.cut_length_mm - 62.8).abs() < 0.5,
+            "{}",
+            program.cut_length_mm
+        );
+        assert!(
+            !program
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("arc")),
+            "{:?}",
+            program.warnings
+        );
+    }
+
+    #[test]
     fn a_power_change_breaks_the_arc() {
         let mut toolpath = Toolpath::new("Raster", 1000.0, 500.0, 1);
         toolpath.push(MoveKind::Travel, 10.0, 0.0);
