@@ -656,13 +656,24 @@ impl McpServer {
                     .get("ids")
                     .and_then(Value::as_array)
                     .ok_or_else(|| missing("ids"))?;
-                let mut removed = 0;
-                for id in ids.iter().filter_map(Value::as_str) {
-                    if self.editor.document.remove_object(id).is_some() {
-                        removed += 1;
-                    }
+                // Only record a history step when there is something to remove,
+                // so an unknown id does not leave an empty undo entry.
+                let existing: Vec<String> = ids
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|id| self.editor.document.object(id).is_some())
+                    .map(str::to_string)
+                    .collect();
+                if !existing.is_empty() {
+                    self.editor.record_action("Delete objects");
                 }
-                Ok(json!({"removed": removed, "objects": self.editor.document.objects.len()}))
+                for id in &existing {
+                    self.editor.document.remove_object(id);
+                    self.editor.selection.remove(id);
+                }
+                Ok(
+                    json!({"removed": existing.len(), "objects": self.editor.document.objects.len()}),
+                )
             }
             "create_operation" => {
                 let name = string(arguments, "name").unwrap_or_else(|| "Operation".to_string());
@@ -3024,6 +3035,10 @@ mod tests {
         assert_eq!(list["result"]["objects"][0]["type"], "Rectangle");
         let deleted = call(&mut server, "delete_objects", json!({"ids": [id]}));
         assert_eq!(deleted["result"]["removed"], 1);
+        assert_eq!(deleted["result"]["undo_label"], "Delete objects");
+        assert_eq!(server.editor.history.undo_label(), Some("Delete objects"));
+        server.editor.undo();
+        assert_eq!(server.editor.document.objects.len(), 1);
     }
 
     #[test]
