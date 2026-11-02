@@ -3677,36 +3677,37 @@ impl BeamWrightApp {
                     .id_salt("layers_table_scroll")
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
                             ui.horizontal(|ui| {
-                                ui.add_sized([26.0, 18.0], egui::Label::new("#"));
-                                ui.add_sized([22.0, 18.0], egui::Label::new(""));
+                                ui.add_sized([20.0, 18.0], egui::Label::new("#"));
+                                ui.add_sized([18.0, 18.0], egui::Label::new(""));
                                 ui.add_sized(
-                                    [104.0, 18.0],
+                                    [82.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Layer").strong()),
                                 );
                                 ui.add_sized(
-                                    [104.0, 18.0],
+                                    [82.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Mode").strong()),
                                 );
                                 ui.add_sized(
-                                    [66.0, 18.0],
+                                    [52.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Spd/Pwr").strong()),
                                 );
                                 ui.add_sized(
-                                    [30.0, 18.0],
+                                    [26.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Out").strong()),
                                 );
                                 ui.add_sized(
-                                    [30.0, 18.0],
+                                    [26.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Show").strong()),
                                 );
                                 ui.add_sized(
-                                    [30.0, 18.0],
+                                    [26.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Air").strong()),
                                 );
                             });
                             for (index, row) in rows.iter().enumerate() {
-                                let (id, name, color, visible, locked, mode, mixed, count) = row;
+                                let (id, name, color, visible, _locked, mode, mixed, count) = row;
                                 let selected = self.editor.active_layer_id == *id;
                                 let operation = mode.as_deref().and_then(|mode| {
                                     operations.iter().find(|entry| entry.0 == mode)
@@ -3714,7 +3715,7 @@ impl BeamWrightApp {
                                 let response = ui
                                     .horizontal(|ui| {
                                         ui.add_sized(
-                                            [26.0, 18.0],
+                                            [20.0, 18.0],
                                             egui::Label::new(format!("L{:02}", index + 1)),
                                         );
                                         let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
@@ -3727,7 +3728,7 @@ impl BeamWrightApp {
                                         }
                                         if ui
                                             .add_sized(
-                                                [104.0, 18.0],
+                                                [82.0, 18.0],
                                                 egui::Button::selectable(selected, name.as_str())
                                                     .frame(false),
                                             )
@@ -3779,10 +3780,10 @@ impl BeamWrightApp {
                                             || "—".to_string(),
                                             |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                         );
-                                        ui.add_sized([66.0, 18.0], egui::Label::new(speeds));
+                                        ui.add_sized([52.0, 18.0], egui::Label::new(speeds));
                                         let mut output = operation.is_some_and(|entry| entry.4);
                                         let output_response = ui.add_sized(
-                                            [30.0, 18.0],
+                                            [26.0, 18.0],
                                             egui::Checkbox::without_text(&mut output),
                                         );
                                         if output_response.changed() {
@@ -3796,7 +3797,7 @@ impl BeamWrightApp {
                                         let mut shown = *visible;
                                         if ui
                                             .add_sized(
-                                                [30.0, 18.0],
+                                                [26.0, 18.0],
                                                 egui::Checkbox::without_text(&mut shown),
                                             )
                                             .on_hover_text("Show this layer on the canvas")
@@ -3809,7 +3810,7 @@ impl BeamWrightApp {
                                         }
                                         let mut air = operation.is_some_and(|entry| entry.5);
                                         let air_response = ui.add_sized(
-                                            [30.0, 18.0],
+                                            [26.0, 18.0],
                                             egui::Checkbox::without_text(&mut air),
                                         );
                                         if air_response.changed() {
@@ -3819,9 +3820,6 @@ impl BeamWrightApp {
                                             }
                                         }
                                         air_response.on_hover_text("Air assist (M8/M9)");
-                                        if *locked {
-                                            ui.add(icons::image_at(ui.ctx(), Icon::Lock, 14.0));
-                                        }
                                     })
                                     .response;
                                 response.context_menu(|ui| {
