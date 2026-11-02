@@ -25,7 +25,7 @@ fn dark() -> Visuals {
     visuals.hyperlink_color = ACCENT;
     visuals.selection = egui::style::Selection {
         bg_fill: ACCENT,
-        stroke: Stroke::new(1.0, Color32::from_rgb(15, 22, 32)),
+        stroke: Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
     };
     visuals.warn_fg_color = Color32::from_rgb(236, 170, 70);
     visuals.error_fg_color = Color32::from_rgb(240, 100, 96);
@@ -46,7 +46,7 @@ fn dark() -> Visuals {
     visuals.widgets.active.bg_fill = ACCENT;
     visuals.widgets.active.weak_bg_fill = ACCENT;
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::from_rgb(15, 22, 32));
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::from_rgb(245, 247, 250));
     visuals.widgets.open.bg_fill = Color32::from_rgb(47, 52, 62);
     visuals.widgets.open.bg_stroke = Stroke::new(1.0, Color32::from_rgb(74, 82, 98));
     for widget in [
