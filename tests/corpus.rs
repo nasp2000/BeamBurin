@@ -57,19 +57,21 @@ fn is_uuid(candidate: &str) -> bool {
 }
 
 fn check(name: &str, actual: &str) {
-    let actual = normalize(actual);
+    let actual = normalize(actual).replace("\r\n", "\n");
     let path = expected(name);
     if std::env::var_os("CORPUS_UPDATE").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &actual).unwrap();
         return;
     }
-    let golden = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "missing golden {} ({error}); run CORPUS_UPDATE=1 cargo test --test corpus",
-            path.display()
-        )
-    });
+    let golden = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "missing golden {} ({error}); run CORPUS_UPDATE=1 cargo test --test corpus",
+                path.display()
+            )
+        })
+        .replace("\r\n", "\n");
     assert_eq!(actual, golden, "corpus output changed for {name}");
 }
 
