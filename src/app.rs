@@ -13543,7 +13543,9 @@ mod tests {
             .expect("the save dialog did not open");
         assert_eq!(dialog.mode, FileMode::SaveProject);
         assert!(
-            dialog.file_name.ends_with(".bwp"),
+            std::path::Path::new(&dialog.file_name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("bwp")),
             "the suggested name is not a project: {}",
             dialog.file_name
         );
