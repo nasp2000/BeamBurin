@@ -2934,47 +2934,7 @@ impl BeamWrightApp {
                         ui.close();
                     }
                 });
-                ui.menu_button(icons::menu_label(ui, Icon::Align, "Align"), |ui| {
-                    use crate::editor::alignment::AlignMode;
-                    let enabled = !self.editor.selection.is_empty();
-                    for (mode, icon, label) in [
-                        (AlignMode::Left, Icon::AlignLeft, "Align left"),
-                        (AlignMode::CenterH, Icon::AlignCenterH, "Align centre horizontally"),
-                        (AlignMode::Right, Icon::AlignRight, "Align right"),
-                        (AlignMode::Top, Icon::AlignTop, "Align top"),
-                        (AlignMode::CenterV, Icon::AlignCenterV, "Align centre vertically"),
-                        (AlignMode::Bottom, Icon::AlignBottom, "Align bottom"),
-                    ] {
-                        if ui
-                            .add_enabled(enabled, icons::widget(ui, icon, label))
-                            .clicked()
-                        {
-                            self.editor.align_selection(mode);
-                            ui.close();
-                        }
-                    }
-                    ui.separator();
-                    if ui
-                        .add_enabled(
-                            self.editor.selection.len() >= 3,
-                            icons::widget(ui, Icon::DistributeH, "Distribute horizontally"),
-                        )
-                        .clicked()
-                    {
-                        self.editor.distribute_selection(true);
-                        ui.close();
-                    }
-                    if ui
-                        .add_enabled(
-                            self.editor.selection.len() >= 3,
-                            icons::widget(ui, Icon::DistributeV, "Distribute vertically"),
-                        )
-                        .clicked()
-                    {
-                        self.editor.distribute_selection(false);
-                        ui.close();
-                    }
-                });
+                ui.menu_button(icons::menu_label(ui, Icon::Align, "Align"), |ui| self.align_menu(ui));
                 ui.menu_button(icons::menu_label(ui, Icon::View, "View"), |ui| {
                     if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {
                         self.editor.zoom_in();
@@ -3092,6 +3052,9 @@ impl BeamWrightApp {
             .resizable(false)
             .exact_size(56.0)
             .show(ui, |ui| {
+                // A tighter vertical rhythm keeps every tool, boolean and mode
+                // visible at 1280x800 without a scrollbar.
+                ui.spacing_mut().item_spacing.y = 2.0;
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         for tool in [
@@ -3111,7 +3074,7 @@ impl BeamWrightApp {
                                 ui,
                                 self.editor.tool == tool,
                                 tool_icon(tool),
-                                26.0,
+                                22.0,
                                 tool.label(),
                             )
                             .on_hover_text(tool_help(tool))
@@ -3126,7 +3089,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::Duplicate,
-                            22.0,
+                            18.0,
                             "Duplicate",
                         )
                         .on_hover_text("Duplicate the selection")
@@ -3138,7 +3101,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::Delete,
-                            22.0,
+                            18.0,
                             "Delete",
                         )
                         .on_hover_text("Delete the selection")
@@ -3153,7 +3116,7 @@ impl BeamWrightApp {
                                 ui,
                                 two_selected,
                                 boolean_icon(op),
-                                22.0,
+                                18.0,
                                 op.label(),
                             )
                             .on_hover_text(format!("{} the two selected objects", op.label()))
@@ -3167,7 +3130,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::Nodes,
-                            22.0,
+                            18.0,
                             "Edit nodes",
                         )
                         .on_hover_text("Edit the nodes of one path")
@@ -3190,7 +3153,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::GridArray,
-                            22.0,
+                            18.0,
                             "Grid array",
                         )
                         .on_hover_text("Copy the selection in a grid")
@@ -3202,7 +3165,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::Repeat,
-                            22.0,
+                            18.0,
                             "Circular array",
                         )
                         .on_hover_text("Copy the selection around a circle")
@@ -3214,7 +3177,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::Offset,
-                            22.0,
+                            18.0,
                             "Offset",
                         )
                         .on_hover_text("Offset the selection by the radius")
@@ -3226,7 +3189,7 @@ impl BeamWrightApp {
                             ui,
                             has_selection,
                             Icon::OutlineStroke,
-                            22.0,
+                            18.0,
                             "Outline stroke",
                         )
                         .on_hover_text("Convert the stroke into an outline")
@@ -3317,6 +3280,57 @@ impl BeamWrightApp {
         }
     }
 
+    /// Alignment and distribution entries, shared by the Align menu and the toolbar.
+    fn align_menu(&mut self, ui: &mut Ui) {
+        use crate::editor::alignment::AlignMode;
+        let enabled = !self.editor.selection.is_empty();
+        for (mode, icon, label) in [
+            (AlignMode::Left, Icon::AlignLeft, "Align left"),
+            (
+                AlignMode::CenterH,
+                Icon::AlignCenterH,
+                "Align centre horizontally",
+            ),
+            (AlignMode::Right, Icon::AlignRight, "Align right"),
+            (AlignMode::Top, Icon::AlignTop, "Align top"),
+            (
+                AlignMode::CenterV,
+                Icon::AlignCenterV,
+                "Align centre vertically",
+            ),
+            (AlignMode::Bottom, Icon::AlignBottom, "Align bottom"),
+        ] {
+            if ui
+                .add_enabled(enabled, icons::widget(ui, icon, label))
+                .clicked()
+            {
+                self.editor.align_selection(mode);
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui
+            .add_enabled(
+                self.editor.selection.len() >= 3,
+                icons::widget(ui, Icon::DistributeH, "Distribute horizontally"),
+            )
+            .clicked()
+        {
+            self.editor.distribute_selection(true);
+            ui.close();
+        }
+        if ui
+            .add_enabled(
+                self.editor.selection.len() >= 3,
+                icons::widget(ui, Icon::DistributeV, "Distribute vertically"),
+            )
+            .clicked()
+        {
+            self.editor.distribute_selection(false);
+            ui.close();
+        }
+    }
+
     fn toolbar(&mut self, ui: &mut Ui) {
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -3362,6 +3376,10 @@ impl BeamWrightApp {
                 if icons::button(ui, Icon::Save, "Save").clicked() {
                     self.save();
                 }
+                ui.separator();
+                ui.menu_button(icons::menu_label(ui, Icon::Align, "Align"), |ui| {
+                    self.align_menu(ui);
+                });
             });
         });
     }
@@ -4133,58 +4151,162 @@ impl BeamWrightApp {
         ui.separator();
 
         if let Some((min, max)) = object.bounds() {
+            let link_proportions = self.link_proportions;
             ui.label("Position (mm)");
             egui::Grid::new("object_position")
                 .num_columns(2)
                 .spacing([8.0, 6.0])
                 .show(ui, |ui| {
+                    let step = |ui: &egui::Ui| {
+                        if ui.input(|input| input.modifiers.shift) {
+                            0.1
+                        } else {
+                            1.0
+                        }
+                    };
                     ui.label("X");
-                    let mut x = min.x;
-                    if ui.add(egui::DragValue::new(&mut x).speed(0.1)).changed() {
-                        object.translate(x - min.x, 0.0);
-                    }
+                    ui.horizontal(|ui| {
+                        let step = step(ui);
+                        if ui
+                            .small_button("\u{2190}")
+                            .on_hover_text("Move left 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            object.translate(-step, 0.0);
+                        }
+                        let mut x = min.x;
+                        if ui.add(egui::DragValue::new(&mut x).speed(0.1)).changed() {
+                            object.translate(x - min.x, 0.0);
+                        }
+                        if ui
+                            .small_button("\u{2192}")
+                            .on_hover_text("Move right 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            object.translate(step, 0.0);
+                        }
+                    });
                     ui.end_row();
                     ui.label("Y");
-                    let mut y = min.y;
-                    if ui.add(egui::DragValue::new(&mut y).speed(0.1)).changed() {
-                        object.translate(0.0, y - min.y);
-                    }
+                    ui.horizontal(|ui| {
+                        let step = step(ui);
+                        if ui
+                            .small_button("\u{2193}")
+                            .on_hover_text("Move down 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            object.translate(0.0, -step);
+                        }
+                        let mut y = min.y;
+                        if ui.add(egui::DragValue::new(&mut y).speed(0.1)).changed() {
+                            object.translate(0.0, y - min.y);
+                        }
+                        if ui
+                            .small_button("\u{2191}")
+                            .on_hover_text("Move up 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            object.translate(0.0, step);
+                        }
+                    });
                     ui.end_row();
                     ui.label("Width");
-                    let mut width = max.x - min.x;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut width)
-                                .speed(0.1)
-                                .range(0.01..=100_000.0),
-                        )
-                        .changed()
-                    {
-                        let factor = width / (max.x - min.x).max(1e-9);
-                        let vertical = if self.link_proportions { factor } else { 1.0 };
-                        let center =
-                            Point2::new(f64::midpoint(min.x, max.x), f64::midpoint(min.y, max.y));
-                        object.transform = egui_transform_scale(factor, vertical, center)
-                            .compose(&object.transform);
-                    }
+                    ui.horizontal(|ui| {
+                        let step = step(ui);
+                        let resize = |object: &mut crate::document::Object, delta: f64| {
+                            let old = (max.x - min.x).max(1e-9);
+                            let width = (old + delta).max(0.01);
+                            let factor = width / old;
+                            let vertical = if link_proportions { factor } else { 1.0 };
+                            let center = Point2::new(
+                                f64::midpoint(min.x, max.x),
+                                f64::midpoint(min.y, max.y),
+                            );
+                            object.transform = egui_transform_scale(factor, vertical, center)
+                                .compose(&object.transform);
+                        };
+                        if ui
+                            .small_button("\u{2190}")
+                            .on_hover_text("Narrower 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            resize(object, -step);
+                        }
+                        let mut width = max.x - min.x;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut width)
+                                    .speed(0.1)
+                                    .range(0.01..=100_000.0),
+                            )
+                            .changed()
+                        {
+                            let factor = width / (max.x - min.x).max(1e-9);
+                            let vertical = if link_proportions { factor } else { 1.0 };
+                            let center = Point2::new(
+                                f64::midpoint(min.x, max.x),
+                                f64::midpoint(min.y, max.y),
+                            );
+                            object.transform = egui_transform_scale(factor, vertical, center)
+                                .compose(&object.transform);
+                        }
+                        if ui
+                            .small_button("\u{2192}")
+                            .on_hover_text("Wider 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            resize(object, step);
+                        }
+                    });
                     ui.end_row();
                     ui.label("Height");
-                    let mut height = max.y - min.y;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut height)
-                                .speed(0.1)
-                                .range(0.01..=100_000.0),
-                        )
-                        .changed()
-                    {
-                        let factor = height / (max.y - min.y).max(1e-9);
-                        let horizontal = if self.link_proportions { factor } else { 1.0 };
-                        let center =
-                            Point2::new(f64::midpoint(min.x, max.x), f64::midpoint(min.y, max.y));
-                        object.transform = egui_transform_scale(horizontal, factor, center)
-                            .compose(&object.transform);
-                    }
+                    ui.horizontal(|ui| {
+                        let step = step(ui);
+                        let resize = |object: &mut crate::document::Object, delta: f64| {
+                            let old = (max.y - min.y).max(1e-9);
+                            let height = (old + delta).max(0.01);
+                            let factor = height / old;
+                            let horizontal = if link_proportions { factor } else { 1.0 };
+                            let center = Point2::new(
+                                f64::midpoint(min.x, max.x),
+                                f64::midpoint(min.y, max.y),
+                            );
+                            object.transform = egui_transform_scale(horizontal, factor, center)
+                                .compose(&object.transform);
+                        };
+                        if ui
+                            .small_button("\u{2193}")
+                            .on_hover_text("Shorter 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            resize(object, -step);
+                        }
+                        let mut height = max.y - min.y;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut height)
+                                    .speed(0.1)
+                                    .range(0.01..=100_000.0),
+                            )
+                            .changed()
+                        {
+                            let factor = height / (max.y - min.y).max(1e-9);
+                            let horizontal = if link_proportions { factor } else { 1.0 };
+                            let center = Point2::new(
+                                f64::midpoint(min.x, max.x),
+                                f64::midpoint(min.y, max.y),
+                            );
+                            object.transform = egui_transform_scale(horizontal, factor, center)
+                                .compose(&object.transform);
+                        }
+                        if ui
+                            .small_button("\u{2191}")
+                            .on_hover_text("Taller 1 mm (Shift: 0.1 mm)")
+                            .clicked()
+                        {
+                            resize(object, step);
+                        }
+                    });
                     ui.end_row();
                     ui.label("Proportions");
                     ui.checkbox(&mut self.link_proportions, "Link width and height");
@@ -5226,6 +5348,15 @@ impl BeamWrightApp {
             ContextAction::DocumentProperties => self.open_document_properties(),
             ContextAction::Preview => self.open_preview(),
             ContextAction::Preferences => self.preferences_open = true,
+        }
+    }
+
+    /// Keep the saved theme in step with the Dark mode toggle and presets.
+    fn persist_theme(&mut self) {
+        let theme = if self.dark_mode { "dark" } else { "light" };
+        if self.preferences.general.theme != theme {
+            self.preferences.general.theme = theme.to_string();
+            let _ = self.preferences.save(&self.preferences_path);
         }
     }
 
@@ -8869,7 +9000,7 @@ impl BeamWrightApp {
             .show(ctx, |ui| {
                 for toast in &self.toasts {
                     let color = match toast.kind {
-                        ToastKind::Info => egui::Color32::from_rgb(47, 182, 166),
+                        ToastKind::Info => crate::theme::ACCENT,
                         ToastKind::Error => egui::Color32::from_rgb(210, 80, 70),
                     };
                     egui::Frame::new()
@@ -10932,7 +11063,7 @@ impl BeamWrightApp {
                 ui.add_space(4.0);
                 if let Some(command) = self.shortcut_capture {
                     ui.colored_label(
-                        egui::Color32::from_rgb(47, 182, 166),
+                        crate::theme::ACCENT,
                         format!("Press a key for \"{}\" (Escape cancels)", command.label()),
                     );
                 }
@@ -12044,7 +12175,7 @@ impl eframe::App for BeamWrightApp {
             })
             .collect();
         crate::textfont::ensure_loaded(&ctx, &document_fonts);
-        ui.ctx().set_visuals(crate::theme::visuals(self.dark_mode));
+        crate::theme::apply(ui.ctx(), self.dark_mode);
         ui.style_mut().spacing.item_spacing = egui::vec2(8.0, 6.0);
         ui.style_mut().spacing.button_padding = egui::vec2(8.0, 5.0);
         self.shortcuts(ui);
@@ -12071,6 +12202,7 @@ impl eframe::App for BeamWrightApp {
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.persist_theme();
         let requests = self
             .bridge
             .as_ref()

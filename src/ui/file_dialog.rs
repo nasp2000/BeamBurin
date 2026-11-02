@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::ui::icons::{self, Icon};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileMode {
     OpenProject,
@@ -235,29 +237,27 @@ impl FileDialog {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_width(560.0)
-            .max_width(680.0)
+            .default_width(620.0)
+            .max_width(760.0)
             .open(&mut open)
             .show(ctx, |ui| {
+                // A standard address bar: Up, Home, the current folder and Go.
                 ui.horizontal(|ui| {
-                    if ui.button("Up").clicked() {
+                    if ui.button("Up").on_hover_text("Parent folder").clicked() {
                         if let Some(parent) = self.directory.parent() {
                             self.directory = parent.to_path_buf();
                             self.path_text = self.directory.display().to_string();
                         }
                     }
-                    if ui.button("Home").clicked() {
+                    if ui.button("Home").on_hover_text("Home folder").clicked() {
                         if let Some(home) = home_directory() {
                             self.directory = home;
                             self.path_text = self.directory.display().to_string();
                         }
                     }
-                    ui.label(self.directory.display().to_string());
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Folder");
+                    let width = (ui.available_width() - 52.0).max(120.0);
                     let response = ui
-                        .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(400.0));
+                        .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(width));
                     let go = ui.button("Go").clicked()
                         || (response.lost_focus()
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
@@ -274,8 +274,8 @@ impl FileDialog {
                 });
                 ui.separator();
                 egui::ScrollArea::vertical()
-                    .max_height(260.0)
-                    .max_width(520.0)
+                    .max_height(300.0)
+                    .max_width(600.0)
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         self.listing(ui);
@@ -283,23 +283,34 @@ impl FileDialog {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("File name:");
-                    ui.add(egui::TextEdit::singleline(&mut self.file_name).desired_width(420.0));
+                    ui.add(egui::TextEdit::singleline(&mut self.file_name).desired_width(460.0));
                 });
                 if let Some(error) = &self.error {
                     ui.colored_label(egui::Color32::from_rgb(200, 60, 60), error);
                 }
+                let mut accept = false;
+                let mut cancel = false;
                 ui.horizontal(|ui| {
-                    if ui.button(self.mode.action_label()).clicked() {
-                        match self.resolve() {
-                            Ok(path) => result = DialogResult::Accepted(path),
-                            Err(error) => self.error = Some(error),
+                    ui.checkbox(&mut self.show_all_files, "Show all files");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(self.mode.action_label()).clicked() {
+                            accept = true;
                         }
-                    }
-                    if ui.button("Cancel").clicked() {
-                        result = DialogResult::Cancelled;
-                    }
-                    ui.label(self.mode.filter_hint());
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                        ui.label(self.mode.filter_hint());
+                    });
                 });
+                if accept {
+                    match self.resolve() {
+                        Ok(path) => result = DialogResult::Accepted(path),
+                        Err(error) => self.error = Some(error),
+                    }
+                }
+                if cancel {
+                    result = DialogResult::Cancelled;
+                }
             });
         if !open && matches!(result, DialogResult::Pending) {
             result = DialogResult::Cancelled;
@@ -308,7 +319,6 @@ impl FileDialog {
     }
 
     fn listing(&mut self, ui: &mut egui::Ui) {
-        ui.checkbox(&mut self.show_all_files, "Show all files");
         let entries = match std::fs::read_dir(&self.directory) {
             Ok(entries) => entries,
             Err(error) => {
@@ -338,25 +348,38 @@ impl FileDialog {
             let name = directory
                 .file_name()
                 .and_then(|value| value.to_str())
-                .unwrap_or("?");
-            if ui
-                .selectable_label(false, format!("[dir] {name}"))
-                .clicked()
-            {
-                self.path_text = directory.display().to_string();
-                self.directory = directory;
-                self.error = None;
-            }
+                .unwrap_or("?")
+                .to_string();
+            let target = directory.clone();
+            ui.horizontal(|ui| {
+                let icon =
+                    icons::image_at(ui.ctx(), Icon::File, 14.0).tint(ui.visuals().text_color());
+                ui.add(icon);
+                if ui
+                    .selectable_label(false, name.as_str())
+                    .on_hover_text("Open this folder")
+                    .clicked()
+                {
+                    self.path_text = target.display().to_string();
+                    self.directory = target;
+                    self.error = None;
+                }
+            });
         }
         for file in files {
             let name = file
                 .file_name()
                 .and_then(|value| value.to_str())
                 .unwrap_or("?");
-            if ui.selectable_label(false, name).clicked() {
-                self.file_name = name.to_string();
-                self.error = None;
-            }
+            ui.horizontal(|ui| {
+                let icon =
+                    icons::image_at(ui.ctx(), Icon::Page, 14.0).tint(ui.visuals().text_color());
+                ui.add(icon);
+                if ui.selectable_label(false, name).clicked() {
+                    self.file_name = name.to_string();
+                    self.error = None;
+                }
+            });
         }
     }
 

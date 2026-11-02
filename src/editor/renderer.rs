@@ -24,15 +24,15 @@ pub struct Theme {
 impl Theme {
     pub fn canvas_background(self) -> Color32 {
         if self.dark {
-            Color32::from_gray(28)
+            Color32::from_rgb(35, 40, 49)
         } else {
-            Color32::from_gray(210)
+            Color32::from_rgb(233, 237, 242)
         }
     }
 
     pub fn page_background(self) -> Color32 {
         if self.dark {
-            Color32::from_gray(45)
+            Color32::from_rgb(46, 52, 64)
         } else {
             Color32::WHITE
         }
@@ -40,39 +40,39 @@ impl Theme {
 
     pub fn page_border(self) -> Color32 {
         if self.dark {
-            Color32::from_gray(90)
+            Color32::from_rgb(73, 83, 102)
         } else {
-            Color32::from_gray(140)
+            Color32::from_rgb(195, 203, 214)
         }
     }
 
     pub fn grid(self) -> Color32 {
         if self.dark {
-            Color32::from_gray(58)
+            Color32::from_rgb(59, 65, 76)
         } else {
-            Color32::from_gray(228)
+            Color32::from_rgb(215, 220, 227)
         }
     }
 
     pub fn ruler(self) -> Color32 {
         if self.dark {
-            Color32::from_gray(110)
+            Color32::from_rgb(148, 155, 168)
         } else {
-            Color32::from_gray(130)
+            Color32::from_rgb(110, 116, 128)
         }
     }
 
     pub fn selection(self) -> Color32 {
-        Color32::from_rgb(0, 140, 255)
+        Color32::from_rgb(78, 161, 220)
     }
 
     pub fn preview(self) -> Color32 {
-        Color32::from_rgb(0, 170, 90)
+        Color32::from_rgb(92, 150, 255)
     }
 
     /// Outline of the material area the job is clipped to.
     pub fn material(self) -> Color32 {
-        Color32::from_rgb(47, 182, 166)
+        Color32::from_rgb(58, 136, 238)
     }
 
     pub fn object_color(self, color: Option<&str>, fallback: Color32) -> Color32 {
@@ -182,14 +182,14 @@ fn paint_rulers(painter: &Painter, rect: Rect, editor: &EditorState, theme: Them
     }
     let band = 18.0;
     let background = if theme.dark {
-        Color32::from_gray(34)
+        Color32::from_rgb(39, 43, 52)
     } else {
-        Color32::from_gray(238)
+        Color32::from_rgb(246, 247, 249)
     };
     let color = if theme.dark {
-        Color32::from_gray(185)
+        Color32::from_rgb(148, 155, 168)
     } else {
-        Color32::from_gray(70)
+        Color32::from_rgb(110, 116, 128)
     };
     let top = Rect::from_min_size(rect.min, Vec2::new(rect.width(), band));
     let left = Rect::from_min_size(rect.min, Vec2::new(band, rect.height()));
@@ -298,7 +298,7 @@ fn paint_nodes(painter: &Painter, rect: Rect, editor: &EditorState) {
     if !editor.is_editing_nodes() {
         return;
     }
-    let accent = Color32::from_rgb(0, 140, 255);
+    let accent = Color32::from_rgb(78, 161, 220);
     let handle_color = Color32::from_rgb(120, 170, 220);
     let points = editor.node_points();
     let handles = editor.node_handles();
