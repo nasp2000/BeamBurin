@@ -13169,7 +13169,7 @@ mod tests {
             );
         }
         assert!(
-            harness.query_by_label("Align").is_none(),
+            harness.query_all_by_label("Align").next().is_none(),
             "the Align menu should be gone"
         );
         for label in [
@@ -13197,7 +13197,7 @@ mod tests {
             "Export SVG...",
         ] {
             assert!(
-                harness.query_by_label(entry).is_some(),
+                harness.query_all_by_label(entry).next().is_some(),
                 "missing File entry {entry}"
             );
         }
