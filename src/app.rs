@@ -13305,13 +13305,13 @@ mod tests {
 
         let mut harness = ui_harness(ui_test_app());
         harness.run();
-        // The shortcut first: after a text field has had focus, egui keeps the
-        // focus id and the shortcut handler deliberately ignores keys.
-        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Command palette...").click();
         harness.run();
         assert!(
             harness.state().palette_open,
-            "Ctrl+K did not open the command palette"
+            "the View menu did not open the command palette"
         );
         harness.key_press(egui::Key::Escape);
         harness.run();
