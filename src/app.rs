@@ -345,6 +345,8 @@ pub struct BeamWrightApp {
     cursor_doc: Option<Point2>,
     needs_fit: bool,
     quit_requested: bool,
+    /// Frames left before a smoke-test run closes itself.
+    smoke_frames: Option<u32>,
     job: Option<crate::gcode::JobReport>,
     active_operation: Option<String>,
     profiles: crate::profiles::ProfileLibrary,
@@ -899,6 +901,11 @@ impl Default for BeamWrightApp {
 }
 
 impl BeamWrightApp {
+    /// Close the editor after `frames` frames, for headless CI.
+    pub fn set_smoke_frames(&mut self, frames: u32) {
+        self.smoke_frames = Some(frames);
+    }
+
     pub fn new(file: Option<PathBuf>) -> Self {
         let document = Document::default();
         let preferences_path = crate::config::preferences::default_path();
@@ -963,6 +970,7 @@ impl BeamWrightApp {
             cursor_doc: None,
             needs_fit: true,
             quit_requested: false,
+            smoke_frames: None,
             job: None,
             active_operation: None,
             profiles: crate::profiles::load_or_default(&crate::profiles::default_path())
@@ -12077,6 +12085,15 @@ impl BeamWrightApp {
 impl eframe::App for BeamWrightApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if let Some(remaining) = self.smoke_frames {
+            if remaining == 0 {
+                self.quit_requested = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                self.smoke_frames = Some(remaining - 1);
+                ctx.request_repaint();
+            }
+        }
         if ctx.input(|input| input.viewport().close_requested())
             && self.is_dirty()
             && !self.quit_requested

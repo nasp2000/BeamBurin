@@ -1,0 +1,45 @@
+# Dependency policy: permits only MIT-compatible licences, denies wildcards,
+# refuses unknown registries and reports security advisories.
+#
+# Fonts bundled by the interface keep their own licences (SIL Open Font
+# License and the Ubuntu font licence); the code around them stays MIT.
+
+[advisories]
+# Ignored findings are transitive, not used by BeamWright directly, and have no
+# fixed release available to this dependency graph yet. The SVG importer itself
+# uses quick-xml 0.42, the fixed line.
+ignore = [
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.38 comes from zbus_xml (accessibility); fixed only in 0.41 and no zbus release allows it yet. SVG input uses 0.42." },
+    { id = "RUSTSEC-2026-0195", reason = "Same zbus_xml quick-xml 0.38 copy; no upstream release with the fix." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; pulled by ab_glyph for text rendering, not used directly." },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained; pulled by zbus for accessibility." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained; pulled by zbus for accessibility." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained; pulled by zbus for accessibility." },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "0BSD",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

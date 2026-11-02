@@ -31,9 +31,43 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+  deny:
+    name: Dependency licences and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  headless:
+    name: Headless start (Xvfb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install a virtual display and software rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libudev-dev
+
+      - name: Build and run a few frames without a screen
+        run: |
+          cargo build
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            ./target/debug/BeamWright --smoke-test
+
   build:
     name: ${{ matrix.name }}
-    needs: quality
+    needs: [quality, deny, headless]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -54,7 +54,11 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::light());
-            Ok(Box::new(BeamWrightApp::new(cli.file)))
+            let mut app = BeamWrightApp::new(cli.file);
+            if cli.smoke_test {
+                app.set_smoke_frames(20);
+            }
+            Ok(Box::new(app))
         }),
     )
 }

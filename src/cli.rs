@@ -17,6 +17,10 @@ pub struct Cli {
     /// Project or SVG file to open in the editor.
     pub file: Option<PathBuf>,
 
+    /// Open the editor, run a few frames and exit (headless CI smoke test).
+    #[arg(long)]
+    pub smoke_test: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

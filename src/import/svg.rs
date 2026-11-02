@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
-use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::{Reader, XmlVersion};
 
 use crate::color::normalize_hex_color;
 use crate::document::Document;
@@ -141,11 +141,11 @@ fn parse_tree_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Result<Node> 
         }
         match reader.read_event() {
             Ok(Event::Start(event)) => {
-                let node = make_node(&event)?;
+                let node = make_node(&event);
                 stack.push(node);
             }
             Ok(Event::Empty(event)) => {
-                let node = make_node(&event)?;
+                let node = make_node(&event);
                 attach(&mut stack, &mut root, node);
             }
             Ok(Event::End(_)) => {
@@ -155,18 +155,16 @@ fn parse_tree_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Result<Node> 
             }
             Ok(Event::Text(event)) => {
                 if let Some(current) = stack.last_mut() {
-                    let text = event.xml_content().map_err(|error| {
-                        BeamError::InvalidInput(format!("invalid SVG text: {error}"))
-                    })?;
-                    current.text.push_str(&text);
+                    current
+                        .text
+                        .push_str(&event.xml_content(XmlVersion::Implicit1_0));
                 }
             }
             Ok(Event::CData(event)) => {
                 if let Some(current) = stack.last_mut() {
-                    let text = event.decode().map_err(|error| {
-                        BeamError::InvalidInput(format!("invalid SVG CDATA: {error}"))
-                    })?;
-                    current.text.push_str(&text);
+                    current
+                        .text
+                        .push_str(&event.xml_content(XmlVersion::Implicit1_0));
                 }
             }
             Ok(Event::Eof) => break,
@@ -180,23 +178,19 @@ fn parse_tree_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Result<Node> 
     root.ok_or_else(|| BeamError::InvalidInput("empty SVG document".to_string()))
 }
 
-fn make_node(event: &quick_xml::events::BytesStart<'_>) -> Result<Node> {
-    let name = String::from_utf8_lossy(event.local_name().as_ref()).into_owned();
+fn make_node(event: &quick_xml::events::BytesStart<'_>) -> Node {
+    let name = event.local_name().into_inner().to_string();
     let mut attrs = HashMap::new();
     for attribute in event.attributes().flatten() {
-        let key = String::from_utf8_lossy(attribute.key.local_name().as_ref()).into_owned();
-        let value = attribute
-            .unescape_value()
-            .map_err(|error| BeamError::InvalidInput(format!("invalid SVG attribute: {error}")))?
-            .into_owned();
-        attrs.insert(key, value);
+        let key = attribute.key.local_name().into_inner().to_string();
+        attrs.insert(key, attribute.value.trim().to_string());
     }
-    Ok(Node {
+    Node {
         name,
         attrs,
         children: Vec::new(),
         text: String::new(),
-    })
+    }
 }
 
 fn attach(stack: &mut [Node], root: &mut Option<Node>, node: Node) {

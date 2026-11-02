@@ -15,6 +15,14 @@ fn cli_no_subcommand() {
     let cli = Cli::try_parse_from(["BeamWright"]).unwrap();
     assert!(cli.command.is_none());
     assert!(cli.file.is_none());
+    assert!(!cli.smoke_test);
+}
+
+#[test]
+fn cli_smoke_test_flag_parses() {
+    let cli = Cli::try_parse_from(["BeamWright", "--smoke-test"]).unwrap();
+    assert!(cli.smoke_test);
+    assert!(cli.command.is_none());
 }
 
 #[test]
