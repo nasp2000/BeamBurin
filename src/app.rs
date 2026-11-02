@@ -16,12 +16,25 @@ use crate::color::{normalize_hex_color, parse_hex_color, to_hex};
 use crate::commands::{CommandId as PaletteAction, PaletteCommand};
 use crate::config::shortcuts::{Command, parse_chord};
 use crate::document::{Document, Shape, Unit};
+use crate::editor::alignment::AlignMode;
 use crate::editor::renderer::{PreviewShape, Theme, format_mm, paint_canvas};
 use crate::editor::{EditorState, Tool};
 use crate::geometry::Point2;
 use crate::report::FileReport;
 use crate::ui::file_dialog::{DialogResult, FileDialog, FileMode};
 use crate::ui::icons::{self, Icon};
+
+/// One row of the layers table.
+type LayerRow = (
+    String,
+    String,
+    String,
+    bool,
+    bool,
+    Option<String>,
+    bool,
+    usize,
+);
 
 /// Result produced by a background task.
 #[derive(Debug)]
@@ -3282,7 +3295,6 @@ impl BeamWrightApp {
 
     /// Alignment and distribution entries, shared by the Align menu and the toolbar.
     fn align_menu(&mut self, ui: &mut Ui) {
-        use crate::editor::alignment::AlignMode;
         let enabled = !self.editor.selection.is_empty();
         for (mode, icon, label) in [
             (AlignMode::Left, Icon::AlignLeft, "Align left"),
@@ -3378,7 +3390,6 @@ impl BeamWrightApp {
                 }
                 ui.separator();
                 let has_selection = !self.editor.selection.is_empty();
-                use crate::editor::alignment::AlignMode;
                 for (mode, icon, label) in [
                     (AlignMode::Left, Icon::AlignLeft, "Align left"),
                     (
@@ -3640,16 +3651,7 @@ impl BeamWrightApp {
                         )
                     })
                     .collect();
-                let rows: Vec<(
-                    String,
-                    String,
-                    String,
-                    bool,
-                    bool,
-                    Option<String>,
-                    bool,
-                    usize,
-                )> = self
+                let rows: Vec<LayerRow> = self
                     .editor
                     .document
                     .layers
@@ -3771,7 +3773,7 @@ impl BeamWrightApp {
                                                 }
                                             });
                                         if &chosen != mode {
-                                            assign = Some((id.to_string(), chosen));
+                                            assign = Some((id.clone(), chosen));
                                         }
                                         let speeds = operation.map_or_else(
                                             || "—".to_string(),
@@ -4051,8 +4053,7 @@ impl BeamWrightApp {
             .editor
             .document
             .layer(id)
-            .map(|layer| (layer.visible, layer.locked))
-            .unwrap_or((true, false));
+            .map_or((true, false), |layer| (layer.visible, layer.locked));
         if ui
             .button(if visible { "Hide layer" } else { "Show layer" })
             .clicked()
