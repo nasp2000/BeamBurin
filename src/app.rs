@@ -3527,9 +3527,29 @@ impl BeamWrightApp {
             });
     }
 
+    /// The operation shared by every object of a layer, and whether the
+    /// objects disagree. A layer has no operation of its own: this keeps the
+    /// existing per-object assignment and presents it as one mode row.
+    fn layer_mode(&self, layer_id: &str) -> (Option<String>, bool) {
+        let mut ids: Vec<&str> = self
+            .editor
+            .document
+            .objects_on_layer(layer_id)
+            .iter()
+            .filter_map(|object| object.operation_id.as_deref())
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        match ids.len() {
+            1 => (Some(ids[0].to_string()), false),
+            0 => (None, false),
+            _ => (None, true),
+        }
+    }
+
     fn layers_panel(&mut self, ui: &mut Ui) {
         egui::Panel::left("layers_panel")
-            .default_size(210.0)
+            .default_size(360.0)
             .resizable(true)
             .show(ui, |ui| {
                 ui.heading("Search");
@@ -3544,7 +3564,7 @@ impl BeamWrightApp {
                 ));
                 if !hits.is_empty() {
                     egui::ScrollArea::vertical()
-                        .max_height(120.0)
+                        .max_height(100.0)
                         .show(ui, |ui| {
                             for hit in &hits {
                                 if ui.button(&hit.label).clicked() {
@@ -3592,85 +3612,354 @@ impl BeamWrightApp {
                             Err(error) => message = Some(error),
                         }
                     }
-                });
-                ui.horizontal(|ui| {
-                    let layer = self.editor.active_layer_id.clone();
-                    if ui.button("Duplicate layer").clicked() {
-                        if let Some(copy) = self.editor.duplicate_layer(&layer) {
-                            self.editor.active_layer_id = copy;
-                        }
-                    }
-                    if ui.button("Select layer objects").clicked() {
-                        let count = self.editor.select_layer_objects(&layer);
-                        self.status = format!("Selected {count} layer object(s)");
-                    }
-                    if ui.button("Group layer").clicked() {
-                        let count = self.editor.group_layer_objects(&layer);
-                        self.status = format!("Grouped {count} layer object(s)");
+                    if ui.button("+ Mode").clicked() {
+                        let id = self.editor.add_operation(
+                            format!("Mode {}", self.editor.document.operations.len() + 1),
+                            crate::operations::OperationType::OutlineCutting,
+                        );
+                        self.active_operation = Some(id);
                     }
                 });
-                ui.separator();
-                let layers: Vec<_> = self
+
+                // One row per layer, with the mode and the switches that matter
+                // for the job. The remaining settings live in the row menu and
+                // in the Cuts / Layers window.
+                let operations: Vec<(String, String, f64, f64, bool, bool)> = self
+                    .editor
+                    .document
+                    .operations
+                    .iter()
+                    .map(|operation| {
+                        (
+                            operation.id.clone(),
+                            operation.name.clone(),
+                            operation.params.speed,
+                            operation.params.power,
+                            operation.enabled,
+                            operation.params.air_assist,
+                        )
+                    })
+                    .collect();
+                let rows: Vec<(
+                    String,
+                    String,
+                    String,
+                    bool,
+                    bool,
+                    Option<String>,
+                    bool,
+                    usize,
+                )> = self
                     .editor
                     .document
                     .layers
                     .iter()
                     .map(|layer| {
+                        let (mode, mixed) = self.layer_mode(&layer.id);
                         (
                             layer.id.clone(),
                             layer.name.clone(),
+                            layer.color.clone(),
                             layer.visible,
                             layer.locked,
-                            layer.color.clone(),
+                            mode,
+                            mixed,
+                            self.editor.document.objects_on_layer(&layer.id).len(),
                         )
                     })
                     .collect();
-                for (id, name, visible, locked, color) in layers.iter().rev() {
-                    ui.horizontal(|ui| {
-                        let mut is_visible = *visible;
-                        if icons::icon_button(ui, is_visible, Icon::Eye, 18.0, "Layer visible")
+
+                let mut assign: Option<(String, Option<String>)> = None;
+                let mut toggle_operation: Option<(String, bool, bool)> = None;
+                egui::ScrollArea::horizontal()
+                    .id_salt("layers_table_scroll")
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.add_sized([26.0, 18.0], egui::Label::new("#"));
+                                ui.add_sized([22.0, 18.0], egui::Label::new(""));
+                                ui.add_sized(
+                                    [104.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Layer").strong()),
+                                );
+                                ui.add_sized(
+                                    [104.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Mode").strong()),
+                                );
+                                ui.add_sized(
+                                    [66.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Spd/Pwr").strong()),
+                                );
+                                ui.add_sized(
+                                    [30.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Out").strong()),
+                                );
+                                ui.add_sized(
+                                    [30.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Show").strong()),
+                                );
+                                ui.add_sized(
+                                    [30.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Air").strong()),
+                                );
+                            });
+                            for (index, row) in rows.iter().enumerate() {
+                                let (id, name, color, visible, locked, mode, mixed, count) = row;
+                                let selected = self.editor.active_layer_id == *id;
+                                let operation = mode.as_deref().and_then(|mode| {
+                                    operations.iter().find(|entry| entry.0 == mode)
+                                });
+                                let response = ui
+                                    .horizontal(|ui| {
+                                        ui.add_sized(
+                                            [26.0, 18.0],
+                                            egui::Label::new(format!("L{:02}", index + 1)),
+                                        );
+                                        let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
+                                        let mut srgb = [rgb.0, rgb.1, rgb.2];
+                                        if ui.color_edit_button_srgb(&mut srgb).changed() {
+                                            if let Some(layer) = self.editor.document.layer_mut(id)
+                                            {
+                                                layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
+                                            }
+                                        }
+                                        if ui
+                                            .add_sized(
+                                                [104.0, 18.0],
+                                                egui::Button::selectable(selected, name.as_str())
+                                                    .frame(false),
+                                            )
+                                            .on_hover_text(format!("{count} object(s)"))
+                                            .clicked()
+                                        {
+                                            self.editor.active_layer_id.clone_from(id);
+                                        }
+                                        let current = if *mixed {
+                                            "Mixed".to_string()
+                                        } else {
+                                            mode.as_deref()
+                                                .and_then(|mode| {
+                                                    operations
+                                                        .iter()
+                                                        .find(|entry| entry.0 == mode)
+                                                        .map(|entry| entry.1.clone())
+                                                })
+                                                .unwrap_or_else(|| "—".to_string())
+                                        };
+                                        let mut chosen = mode.clone();
+                                        egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
+                                            .width(104.0)
+                                            .selected_text(current)
+                                            .show_ui(ui, |ui| {
+                                                if ui
+                                                    .selectable_value(&mut chosen, None, "—")
+                                                    .clicked()
+                                                {
+                                                    ui.close();
+                                                }
+                                                for (op_id, op_name, ..) in &operations {
+                                                    if ui
+                                                        .selectable_value(
+                                                            &mut chosen,
+                                                            Some(op_id.clone()),
+                                                            op_name,
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        ui.close();
+                                                    }
+                                                }
+                                            });
+                                        if &chosen != mode {
+                                            assign = Some((id.to_string(), chosen));
+                                        }
+                                        let speeds = operation.map_or_else(
+                                            || "—".to_string(),
+                                            |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
+                                        );
+                                        ui.add_sized([66.0, 18.0], egui::Label::new(speeds));
+                                        let mut output = operation.is_some_and(|entry| entry.4);
+                                        let output_response = ui.add_sized(
+                                            [30.0, 18.0],
+                                            egui::Checkbox::without_text(&mut output),
+                                        );
+                                        if output_response.changed() {
+                                            if let Some(entry) = operation {
+                                                toggle_operation =
+                                                    Some((entry.0.clone(), output, entry.5));
+                                            }
+                                        }
+                                        output_response
+                                            .on_hover_text("Include this mode in the job");
+                                        let mut shown = *visible;
+                                        if ui
+                                            .add_sized(
+                                                [30.0, 18.0],
+                                                egui::Checkbox::without_text(&mut shown),
+                                            )
+                                            .on_hover_text("Show this layer on the canvas")
+                                            .changed()
+                                        {
+                                            if let Some(layer) = self.editor.document.layer_mut(id)
+                                            {
+                                                layer.visible = shown;
+                                            }
+                                        }
+                                        let mut air = operation.is_some_and(|entry| entry.5);
+                                        let air_response = ui.add_sized(
+                                            [30.0, 18.0],
+                                            egui::Checkbox::without_text(&mut air),
+                                        );
+                                        if air_response.changed() {
+                                            if let Some(entry) = operation {
+                                                toggle_operation =
+                                                    Some((entry.0.clone(), entry.4, air));
+                                            }
+                                        }
+                                        air_response.on_hover_text("Air assist (M8/M9)");
+                                        if *locked {
+                                            ui.label(icons::image_at(ui.ctx(), Icon::Lock, 14.0));
+                                        }
+                                    })
+                                    .response;
+                                response.context_menu(|ui| {
+                                    self.layer_context_menu(ui, id, mode.as_deref());
+                                });
+                            }
+                        });
+                    });
+                if let Some((id, operation)) = assign {
+                    let changed = self
+                        .editor
+                        .assign_operation_to_layer(&id, operation.as_deref());
+                    self.status = format!("Assigned a mode to {changed} object(s)");
+                }
+                if let Some((operation, enabled, air)) = toggle_operation {
+                    if let Some(entry) = self
+                        .editor
+                        .document
+                        .operations
+                        .iter_mut()
+                        .find(|entry| entry.id == operation)
+                    {
+                        entry.enabled = enabled;
+                        entry.params.air_assist = air;
+                    }
+                }
+
+                ui.separator();
+                let active = self.editor.active_layer_id.clone();
+                if let Some(layer) = self.editor.document.layer(&active).cloned() {
+                    ui.strong(format!("Layer: {}", layer.name));
+                    egui::Grid::new("layer_details")
+                        .num_columns(2)
+                        .spacing([8.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("Color");
+                            let rgb = parse_hex_color(&layer.color).unwrap_or((0, 0, 0));
+                            let mut srgb = [rgb.0, rgb.1, rgb.2];
+                            if ui.color_edit_button_srgb(&mut srgb).changed() {
+                                if let Some(layer) = self.editor.document.layer_mut(&active) {
+                                    layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
+                                }
+                            }
+                            ui.end_row();
+                            ui.label("Name");
+                            if let Some(layer) = self.editor.document.layer_mut(&active) {
+                                ui.text_edit_singleline(&mut layer.name);
+                            }
+                            ui.end_row();
+                            let (mode, _) = self.layer_mode(&active);
+                            ui.label("Mode");
+                            let current = mode
+                                .as_deref()
+                                .and_then(|mode| {
+                                    operations
+                                        .iter()
+                                        .find(|entry| entry.0 == mode)
+                                        .map(|entry| entry.1.clone())
+                                })
+                                .unwrap_or_else(|| "—".to_string());
+                            let mut chosen = mode.clone();
+                            egui::ComboBox::from_id_salt("layer_details_mode")
+                                .selected_text(current)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_value(&mut chosen, None, "—").clicked() {
+                                        ui.close();
+                                    }
+                                    for (op_id, op_name, ..) in &operations {
+                                        if ui
+                                            .selectable_value(
+                                                &mut chosen,
+                                                Some(op_id.clone()),
+                                                op_name,
+                                            )
+                                            .clicked()
+                                        {
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            if chosen != mode {
+                                self.editor
+                                    .assign_operation_to_layer(&active, chosen.as_deref());
+                            }
+                            ui.end_row();
+                        });
+                    let (mode, _) = self.layer_mode(&active);
+                    if let Some(operation) = self
+                        .editor
+                        .document
+                        .operations
+                        .iter_mut()
+                        .find(|operation| Some(operation.id.as_str()) == mode.as_deref())
+                    {
+                        egui::Grid::new("layer_operation_details")
+                            .num_columns(2)
+                            .spacing([8.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("Speed (mm/min)");
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.speed)
+                                        .speed(10.0)
+                                        .range(1.0..=100_000.0),
+                                );
+                                ui.end_row();
+                                ui.label("Pass count");
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.passes)
+                                        .speed(0.2)
+                                        .range(1..=100),
+                                );
+                                ui.end_row();
+                                ui.label("Power max (%)");
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.power)
+                                        .speed(1.0)
+                                        .range(0.0..=100.0),
+                                );
+                                ui.end_row();
+                                ui.label("Interval (mm)");
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.line_interval_mm)
+                                        .speed(0.01)
+                                        .range(0.01..=10.0),
+                                );
+                                ui.end_row();
+                            });
+                        if ui
+                            .button("All settings...")
+                            .on_hover_text("Passes, leads, kerf, tabs, fill and output")
                             .clicked()
                         {
-                            is_visible = !is_visible;
-                            if let Some(layer) = self.editor.document.layer_mut(id) {
-                                layer.visible = is_visible;
-                            }
+                            self.active_operation = Some(operation.id.clone());
+                            self.cuts_open = true;
                         }
-                        let mut is_locked = *locked;
-                        if icons::icon_button(
-                            ui,
-                            is_locked,
-                            if is_locked { Icon::Lock } else { Icon::Unlock },
-                            18.0,
-                            "Layer locked",
-                        )
-                        .clicked()
-                        {
-                            is_locked = !is_locked;
-                            if let Some(layer) = self.editor.document.layer_mut(id) {
-                                layer.locked = is_locked;
-                            }
-                        }
-                        let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
-                        let mut srgb = [rgb.0, rgb.1, rgb.2];
-                        if ui.color_edit_button_srgb(&mut srgb).changed() {
-                            if let Some(layer) = self.editor.document.layer_mut(id) {
-                                layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
-                            }
-                        }
-                        let selected = self.editor.active_layer_id == *id;
-                        if ui.selectable_label(selected, name).clicked() {
-                            self.editor.active_layer_id.clone_from(id);
-                        }
-                        let count = self.editor.document.objects_on_layer(id).len();
-                        ui.weak(format!("({count})"));
-                    });
+                    } else {
+                        ui.weak("Choose a mode to set speed and power.");
+                    }
                 }
-                ui.separator();
-                if let Some(layer) = self.editor.document.layer_mut(&self.editor.active_layer_id) {
-                    ui.label("Layer name");
-                    ui.text_edit_singleline(&mut layer.name);
-                }
+
                 if let Some(message) = message {
                     ui.colored_label(Color32::from_rgb(200, 60, 60), message);
                 }
@@ -3711,8 +4000,108 @@ impl BeamWrightApp {
                     }
                 }
                 ui.separator();
-                self.operations_section(ui);
+                egui::CollapsingHeader::new("All operations")
+                    .default_open(false)
+                    .show(ui, |ui| self.operations_section(ui));
             });
+    }
+
+    fn layer_context_menu(&mut self, ui: &mut Ui, id: &str, mode: Option<&str>) {
+        let name = self
+            .editor
+            .document
+            .layer(id)
+            .map(|layer| layer.name.clone())
+            .unwrap_or_default();
+        let operations: Vec<(String, String)> = self
+            .editor
+            .document
+            .operations
+            .iter()
+            .map(|operation| (operation.id.clone(), operation.name.clone()))
+            .collect();
+        let mut assign: Option<Option<String>> = None;
+        if ui.button("Rename (edit below)").clicked() {
+            self.editor.active_layer_id = id.to_string();
+            ui.close();
+        }
+        if ui.button("Duplicate layer").clicked() {
+            if let Some(copy) = self.editor.duplicate_layer(id) {
+                self.editor.active_layer_id = copy;
+            }
+            ui.close();
+        }
+        if ui.button("Delete layer").clicked() {
+            if let Err(error) = self.editor.document.remove_layer(id) {
+                self.status = error;
+            }
+            ui.close();
+        }
+        if ui.button("Select objects").clicked() {
+            let count = self.editor.select_layer_objects(id);
+            self.status = format!("Selected {count} object(s)");
+            ui.close();
+        }
+        if ui.button("Group objects").clicked() {
+            let count = self.editor.group_layer_objects(id);
+            self.status = format!("Grouped {count} object(s)");
+            ui.close();
+        }
+        let (visible, locked) = self
+            .editor
+            .document
+            .layer(id)
+            .map(|layer| (layer.visible, layer.locked))
+            .unwrap_or((true, false));
+        if ui
+            .button(if visible { "Hide layer" } else { "Show layer" })
+            .clicked()
+        {
+            if let Some(layer) = self.editor.document.layer_mut(id) {
+                layer.visible = !visible;
+            }
+            ui.close();
+        }
+        if ui
+            .button(if locked { "Unlock layer" } else { "Lock layer" })
+            .clicked()
+        {
+            if let Some(layer) = self.editor.document.layer_mut(id) {
+                layer.locked = !locked;
+            }
+            ui.close();
+        }
+        ui.menu_button("Mode", |ui| {
+            if ui.button("None").clicked() {
+                assign = Some(None);
+                ui.close();
+            }
+            for (op_id, op_name) in &operations {
+                if ui
+                    .selectable_label(mode == Some(op_id.as_str()), op_name)
+                    .clicked()
+                {
+                    assign = Some(Some(op_id.clone()));
+                    ui.close();
+                }
+            }
+        });
+        if let Some(mode) = mode {
+            if ui.button("All settings...").clicked() {
+                self.active_operation = Some(mode.to_string());
+                self.cuts_open = true;
+                ui.close();
+            }
+        }
+        if let Some(assignment) = assign {
+            let changed = self
+                .editor
+                .assign_operation_to_layer(id, assignment.as_deref());
+            self.status = format!("Assigned a mode to {changed} object(s)");
+        }
+        if name.is_empty() {
+            ui.weak("Missing layer");
+        }
     }
 
     fn operations_section(&mut self, ui: &mut Ui) {
