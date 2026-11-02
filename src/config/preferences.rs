@@ -194,6 +194,13 @@ pub struct Workspace {
     pub grid: bool,
     pub guides: bool,
     pub toolpaths: bool,
+    /// The fixed tool panel; older preference files default to visible.
+    #[serde(default = "default_tool_panel")]
+    pub tool_panel: bool,
+}
+
+fn default_tool_panel() -> bool {
+    true
 }
 
 impl Workspace {
@@ -207,6 +214,7 @@ impl Workspace {
             grid: true,
             guides: true,
             toolpaths: false,
+            tool_panel: true,
         }
     }
 
@@ -841,6 +849,16 @@ mod tests {
                 .unwrap();
         }
         assert!(presets.upsert(sample_export("One too many")).is_err());
+    }
+
+    #[test]
+    fn an_old_workspace_without_the_tool_panel_still_loads() {
+        let json = r#"{"name":"Old","layers_panel":true,"properties_panel":false,"rulers":true,"grid":true,"guides":false,"toolpaths":true}"#;
+        let workspace: Workspace = serde_json::from_str(json).unwrap();
+        assert!(workspace.tool_panel, "older files show the tool panel");
+        let json = serde_json::to_string(&workspace).unwrap();
+        let loaded: Workspace = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded, workspace);
     }
 
     #[test]

@@ -442,6 +442,7 @@ pub struct BeamWrightApp {
     preview_order: bool,
     show_layers_panel: bool,
     show_properties_panel: bool,
+    show_tool_panel: bool,
     doc_properties_open: bool,
     operations_compare_open: bool,
     profile_pending: Option<(String, crate::profiles::OperationProfile)>,
@@ -1058,6 +1059,7 @@ impl BeamWrightApp {
             preview_order: false,
             show_layers_panel: true,
             show_properties_panel: true,
+            show_tool_panel: true,
             doc_properties_open: false,
             operations_compare_open: false,
             profile_pending: None,
@@ -3040,6 +3042,7 @@ impl BeamWrightApp {
                     icons::checkbox(ui, &mut self.preview_toolpaths, Icon::Toolpaths, "Show toolpaths");
                     icons::checkbox(ui, &mut self.show_layers_panel, Icon::Panels, "Layers panel (F9)");
                     icons::checkbox(ui, &mut self.show_properties_panel, Icon::Panels, "Properties panel (F10)");
+                    icons::checkbox(ui, &mut self.show_tool_panel, Icon::Panels, "Tool panel");
                     if icons::button(ui, Icon::Panels, "Workspaces...").clicked() {
                         self.workspaces_open = true;
                         ui.close();
@@ -3251,6 +3254,76 @@ impl BeamWrightApp {
             });
     }
 
+    fn tool_options(&mut self, ui: &mut Ui) {
+        if self.editor.tool == Tool::Polygon {
+            ui.add(
+                egui::DragValue::new(&mut self.polygon_sides)
+                    .speed(1.0)
+                    .range(3..=64),
+            );
+            ui.label("sides");
+        }
+        if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse) {
+            icons::checkbox_at(ui, &mut self.exact_size, Icon::Measure, "Exact size", 18.0);
+            if self.exact_size {
+                ui.add(
+                    egui::DragValue::new(&mut self.exact_width)
+                        .speed(0.5)
+                        .range(0.01..=10000.0)
+                        .suffix(" mm W"),
+                );
+                ui.add(
+                    egui::DragValue::new(&mut self.exact_height)
+                        .speed(0.5)
+                        .range(0.01..=10000.0)
+                        .suffix(" mm H"),
+                );
+            }
+        }
+        if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse | Tool::Line) {
+            ui.weak("Shift: square/circle or 45° steps");
+        }
+        if self.editor.tool == Tool::Line {
+            ui.checkbox(&mut self.line_angle_snap, "Snap 45°")
+                .on_hover_text("Constrain every line to 45° steps without holding Shift");
+        }
+        if self.editor.tool == Tool::Text {
+            ui.add(
+                egui::DragValue::new(&mut self.text_size_mm)
+                    .speed(0.5)
+                    .range(1.0..=500.0)
+                    .suffix(" mm"),
+            )
+            .on_hover_text("Font size of new text objects");
+            ui.label("text size");
+        }
+        match self.editor.tool {
+            Tool::Bezier => {
+                ui.weak("Click to add nodes; Enter finishes; Escape cancels");
+            }
+            Tool::Measure => {
+                ui.weak("Drag to measure; Shift constrains the angle");
+            }
+            Tool::Pencil => {
+                ui.weak("Drag to draw; Arrange → Simplify path smooths it");
+            }
+            _ => {}
+        }
+        if self.editor.tool == Tool::Star {
+            ui.add(
+                egui::DragValue::new(&mut self.star_points)
+                    .speed(1.0)
+                    .range(3..=64),
+            );
+            ui.label("tips");
+            ui.add(
+                egui::Slider::new(&mut self.star_inner, 0.05..=1.0)
+                    .text("inner")
+                    .fixed_decimals(2),
+            );
+        }
+    }
+
     fn toolbar(&mut self, ui: &mut Ui) {
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -3273,73 +3346,7 @@ impl BeamWrightApp {
                     self.redo();
                 }
 
-                if self.editor.tool == Tool::Polygon {
-                    ui.add(
-                        egui::DragValue::new(&mut self.polygon_sides)
-                            .speed(1.0)
-                            .range(3..=64),
-                    );
-                    ui.label("sides");
-                }
-                if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse) {
-                    icons::checkbox_at(ui, &mut self.exact_size, Icon::Measure, "Exact size", 18.0);
-                    if self.exact_size {
-                        ui.add(
-                            egui::DragValue::new(&mut self.exact_width)
-                                .speed(0.5)
-                                .range(0.01..=10000.0)
-                                .suffix(" mm W"),
-                        );
-                        ui.add(
-                            egui::DragValue::new(&mut self.exact_height)
-                                .speed(0.5)
-                                .range(0.01..=10000.0)
-                                .suffix(" mm H"),
-                        );
-                    }
-                }
-                if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse | Tool::Line) {
-                    ui.weak("Shift: square/circle or 45° steps");
-                }
-                if self.editor.tool == Tool::Line {
-                    ui.checkbox(&mut self.line_angle_snap, "Snap 45°")
-                        .on_hover_text("Constrain every line to 45° steps without holding Shift");
-                }
-                if self.editor.tool == Tool::Text {
-                    ui.add(
-                        egui::DragValue::new(&mut self.text_size_mm)
-                            .speed(0.5)
-                            .range(1.0..=500.0)
-                            .suffix(" mm"),
-                    )
-                    .on_hover_text("Font size of new text objects");
-                    ui.label("text size");
-                }
-                match self.editor.tool {
-                    Tool::Bezier => {
-                        ui.weak("Click to add nodes; Enter finishes; Escape cancels");
-                    }
-                    Tool::Measure => {
-                        ui.weak("Drag to measure; Shift constrains the angle");
-                    }
-                    Tool::Pencil => {
-                        ui.weak("Drag to draw; Arrange → Simplify path smooths it");
-                    }
-                    _ => {}
-                }
-                if self.editor.tool == Tool::Star {
-                    ui.add(
-                        egui::DragValue::new(&mut self.star_points)
-                            .speed(1.0)
-                            .range(3..=64),
-                    );
-                    ui.label("tips");
-                    ui.add(
-                        egui::Slider::new(&mut self.star_inner, 0.05..=1.0)
-                            .text("inner")
-                            .fixed_decimals(2),
-                    );
-                }
+                self.tool_options(ui);
                 ui.separator();
                 if ui.button("-").clicked() {
                     self.editor.zoom_out();
@@ -3364,6 +3371,101 @@ impl BeamWrightApp {
                 }
             });
         });
+    }
+
+    /// The fixed tool panel: options, live readout and the pending path.
+    fn tool_panel(&mut self, ui: &mut Ui) {
+        egui::Panel::left("tool_panel")
+            .default_size(230.0)
+            .resizable(true)
+            .show(ui, |ui| {
+                ui.heading("Tool");
+                ui.label(tool_help(self.editor.tool));
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("tool_panel_scroll")
+                    .show(ui, |ui| {
+                        self.tool_options(ui);
+                        ui.separator();
+                        ui.strong("In progress");
+                        let drag = self.drag.clone();
+                        match drag {
+                            Some(DragState::Draw {
+                                tool, start, end, ..
+                            }) => {
+                                ui.monospace(tool.label());
+                                ui.monospace(format!("from {:.2}, {:.2}", start.x, start.y));
+                                ui.monospace(format!("to   {:.2}, {:.2}", end.x, end.y));
+                                ui.weak(format!(
+                                    "{:.2} x {:.2} mm",
+                                    (end.x - start.x).abs(),
+                                    (end.y - start.y).abs()
+                                ));
+                                if ui
+                                    .button("Cancel drawing")
+                                    .on_hover_text("Discard the shape being dragged")
+                                    .clicked()
+                                {
+                                    self.drag = None;
+                                    self.status = "Drawing cancelled".to_string();
+                                }
+                            }
+                            Some(DragState::Marquee { start, end, .. }) => {
+                                ui.monospace(format!(
+                                    "Marquee {:.2} x {:.2} mm",
+                                    (end.x - start.x).abs(),
+                                    (end.y - start.y).abs()
+                                ));
+                            }
+                            Some(DragState::Sketch { points }) => {
+                                ui.monospace(format!("{} freehand point(s)", points.len()));
+                            }
+                            Some(DragState::Move { .. } | DragState::NodeMove { .. }) => {
+                                ui.weak("Dragging; release to apply.");
+                            }
+                            Some(_) => {
+                                ui.weak("Transforming; release to apply.");
+                            }
+                            None => {
+                                ui.weak("Nothing in progress.");
+                            }
+                        }
+                        if self.editor.tool == Tool::Bezier {
+                            ui.add_space(4.0);
+                            ui.monospace(format!("Bézier node(s): {}", self.pen_nodes.len()));
+                            ui.horizontal(|ui| {
+                                let can_apply = self.pen_nodes.len() >= 2;
+                                if ui
+                                    .add_enabled(can_apply, egui::Button::new("Apply path"))
+                                    .on_hover_text("Finish the path with the nodes placed so far")
+                                    .clicked()
+                                {
+                                    self.finish_pen(false);
+                                }
+                                if ui
+                                    .add_enabled(
+                                        !self.pen_nodes.is_empty(),
+                                        egui::Button::new("Cancel path"),
+                                    )
+                                    .on_hover_text("Discard the nodes without creating an object")
+                                    .clicked()
+                                {
+                                    self.pen_nodes.clear();
+                                    self.status = "Bézier path cancelled".to_string();
+                                }
+                            });
+                        }
+                        ui.separator();
+                        ui.strong("Selection");
+                        if let Some((min, max)) = self.editor.selected_bounds() {
+                            ui.monospace(format!("{} object(s)", self.editor.selection.len()));
+                            ui.weak(format!("from {:.2}, {:.2}", min.x, min.y));
+                            ui.weak(format!("{:.2} x {:.2} mm", max.x - min.x, max.y - min.y));
+                        } else {
+                            ui.weak("No selection.");
+                        }
+                    });
+            });
     }
 
     fn layers_panel(&mut self, ui: &mut Ui) {
@@ -9137,6 +9239,7 @@ impl BeamWrightApp {
             grid: self.editor.canvas.grid_visible,
             guides: self.editor.guides_visible,
             toolpaths: self.preview_toolpaths,
+            tool_panel: self.show_tool_panel,
         }
     }
 
@@ -9147,6 +9250,7 @@ impl BeamWrightApp {
         self.editor.canvas.grid_visible = workspace.grid;
         self.editor.guides_visible = workspace.guides;
         self.preview_toolpaths = workspace.toolpaths;
+        self.show_tool_panel = workspace.tool_panel;
         self.preferences.drawing.show_rulers = workspace.rulers;
         self.preferences.drawing.guides_visible = workspace.guides;
     }
@@ -11343,6 +11447,9 @@ impl eframe::App for BeamWrightApp {
         self.tool_strip(ui);
         if self.show_layers_panel {
             self.layers_panel(ui);
+        }
+        if self.show_tool_panel {
+            self.tool_panel(ui);
         }
         if self.show_properties_panel {
             self.properties_panel(ui);
