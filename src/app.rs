@@ -13199,29 +13199,6 @@ mod tests {
         panic!("a background task did not finish");
     }
 
-    fn replace_dialog_name(
-        harness: &mut egui_kittest::Harness<'static, BeamWrightApp>,
-        suffix: &str,
-        text: &str,
-    ) {
-        use egui_kittest::kittest::Queryable as _;
-
-        let field = harness
-            .get_all_by_role(egui::accesskit::Role::TextInput)
-            .find(|node| node.value().is_some_and(|value| value.ends_with(suffix)))
-            .unwrap_or_else(|| panic!("the dialog field ending in {suffix} is missing"));
-        field.focus();
-        harness.run();
-        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::A);
-        harness.run();
-        let field = harness
-            .get_all_by_role(egui::accesskit::Role::TextInput)
-            .find(|node| node.value().is_some_and(|value| value.ends_with(suffix)))
-            .expect("the dialog field disappeared");
-        field.type_text(text);
-        harness.run();
-    }
-
     #[test]
     fn the_ui_keeps_the_menus_and_the_toolbar_align_actions() {
         use egui_kittest::kittest::Queryable as _;
@@ -13339,7 +13316,7 @@ mod tests {
             ("View", "Fit page"),
             ("Help", "About BeamWright"),
         ] {
-            harness.get_by_label(menu).click();
+            harness.get_by_label(menu).click_accesskit();
             harness.run();
             assert!(
                 harness.query_all_by_label(entry).next().is_some(),
@@ -13686,7 +13663,11 @@ mod tests {
         harness.run();
         harness.get_by_label("File").click();
         harness.run();
-        harness.get_by_label("Export G-code...").click();
+        harness
+            .get_all_by_label("Export G-code...")
+            .next()
+            .expect("the export entry is missing")
+            .click();
         harness.run();
         harness.get_by_label("Export").click();
         harness.run();
@@ -13711,15 +13692,21 @@ mod tests {
         use egui_kittest::kittest::Queryable as _;
 
         let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/examples");
+        let directory = ui_temp_path("import_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        std::fs::copy(
+            assets.join("corpus_shapes.svg"),
+            directory.join("drawing.svg"),
+        )
+        .expect("cannot copy the SVG fixture");
         let mut app = ui_test_app();
-        app.preferences.general.default_directory = assets.display().to_string();
+        app.preferences.general.default_directory = directory.display().to_string();
         let mut harness = ui_harness(app);
         harness.run();
         harness.get_by_label("File").click();
         harness.run();
         harness.get_by_label("Import SVG or DXF...").click();
         harness.run();
-        replace_dialog_name(&mut harness, ".svg", "corpus_shapes.svg");
         harness.get_by_label("Open").click();
         harness.run();
         wait_for_task(&mut harness);
