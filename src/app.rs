@@ -13661,13 +13661,7 @@ mod tests {
             .assign_operation_to_layer(&layer, Some(operation.as_str()));
         let mut harness = ui_harness(app);
         harness.run();
-        harness.get_by_label("File").click();
-        harness.run();
-        harness
-            .get_all_by_label("Export G-code...")
-            .next()
-            .expect("the export entry is missing")
-            .click();
+        harness.get_by_label("Export G-code...").click();
         harness.run();
         harness.get_by_label("Export").click();
         harness.run();
@@ -13707,7 +13701,11 @@ mod tests {
         harness.run();
         harness.get_by_label("Import SVG or DXF...").click();
         harness.run();
-        harness.get_by_label("Open").click();
+        harness
+            .get_all_by_label("Open")
+            .last()
+            .expect("the dialog Open button is missing")
+            .click();
         harness.run();
         wait_for_task(&mut harness);
         assert!(
