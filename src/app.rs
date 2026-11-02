@@ -3377,9 +3377,57 @@ impl BeamWrightApp {
                     self.save();
                 }
                 ui.separator();
-                ui.menu_button(icons::menu_label(ui, Icon::Align, "Align"), |ui| {
-                    self.align_menu(ui);
-                });
+                let has_selection = !self.editor.selection.is_empty();
+                use crate::editor::alignment::AlignMode;
+                for (mode, icon, label) in [
+                    (AlignMode::Left, Icon::AlignLeft, "Align left"),
+                    (
+                        AlignMode::CenterH,
+                        Icon::AlignCenterH,
+                        "Align centre horizontally",
+                    ),
+                    (AlignMode::Right, Icon::AlignRight, "Align right"),
+                    (AlignMode::Top, Icon::AlignTop, "Align top"),
+                    (
+                        AlignMode::CenterV,
+                        Icon::AlignCenterV,
+                        "Align centre vertically",
+                    ),
+                    (AlignMode::Bottom, Icon::AlignBottom, "Align bottom"),
+                ] {
+                    if icons::icon_button_enabled(ui, has_selection, icon, 16.0, label)
+                        .on_hover_text(label)
+                        .clicked()
+                    {
+                        self.editor.align_selection(mode);
+                    }
+                }
+                ui.separator();
+                let can_distribute = self.editor.selection.len() >= 3;
+                if icons::icon_button_enabled(
+                    ui,
+                    can_distribute,
+                    Icon::DistributeH,
+                    16.0,
+                    "Distribute horizontally",
+                )
+                .on_hover_text("Distribute horizontally")
+                .clicked()
+                {
+                    self.editor.distribute_selection(true);
+                }
+                if icons::icon_button_enabled(
+                    ui,
+                    can_distribute,
+                    Icon::DistributeV,
+                    16.0,
+                    "Distribute vertically",
+                )
+                .on_hover_text("Distribute vertically")
+                .clicked()
+                {
+                    self.editor.distribute_selection(false);
+                }
             });
         });
     }
@@ -3747,14 +3795,14 @@ impl BeamWrightApp {
                         ui.weak(used.to_string());
                         ui.horizontal(|ui| {
                             if ui
-                                .small_button("\u{2191}")
+                                .small_button("Up")
                                 .on_hover_text("Run this operation earlier")
                                 .clicked()
                             {
                                 self.editor.move_operation(id, -1);
                             }
                             if ui
-                                .small_button("\u{2193}")
+                                .small_button("Down")
                                 .on_hover_text("Run this operation later")
                                 .clicked()
                             {
@@ -4024,7 +4072,27 @@ impl BeamWrightApp {
             .default_size(280.0)
             .resizable(true)
             .show(ui, |ui| {
-                ui.heading("Properties");
+                ui.horizontal(|ui| {
+                    ui.heading("Properties");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .small_button("Hide")
+                            .on_hover_text("Hide the properties panel")
+                            .clicked()
+                        {
+                            self.show_properties_panel = false;
+                        }
+                        ui.separator();
+                        if ui
+                            .selectable_label(self.show_tool_panel, "Tool")
+                            .on_hover_text("Show or hide the tool panel")
+                            .clicked()
+                        {
+                            self.show_tool_panel = !self.show_tool_panel;
+                        }
+                    });
+                });
+                ui.separator();
                 let before = self.editor.document.clone();
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if self.editor.selection.is_empty() {
@@ -4168,7 +4236,7 @@ impl BeamWrightApp {
                     ui.horizontal(|ui| {
                         let step = step(ui);
                         if ui
-                            .small_button("\u{2190}")
+                            .small_button("-")
                             .on_hover_text("Move left 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4179,7 +4247,7 @@ impl BeamWrightApp {
                             object.translate(x - min.x, 0.0);
                         }
                         if ui
-                            .small_button("\u{2192}")
+                            .small_button("+")
                             .on_hover_text("Move right 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4191,7 +4259,7 @@ impl BeamWrightApp {
                     ui.horizontal(|ui| {
                         let step = step(ui);
                         if ui
-                            .small_button("\u{2193}")
+                            .small_button("-")
                             .on_hover_text("Move down 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4202,7 +4270,7 @@ impl BeamWrightApp {
                             object.translate(0.0, y - min.y);
                         }
                         if ui
-                            .small_button("\u{2191}")
+                            .small_button("+")
                             .on_hover_text("Move up 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4226,7 +4294,7 @@ impl BeamWrightApp {
                                 .compose(&object.transform);
                         };
                         if ui
-                            .small_button("\u{2190}")
+                            .small_button("-")
                             .on_hover_text("Narrower 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4251,7 +4319,7 @@ impl BeamWrightApp {
                                 .compose(&object.transform);
                         }
                         if ui
-                            .small_button("\u{2192}")
+                            .small_button("+")
                             .on_hover_text("Wider 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4275,7 +4343,7 @@ impl BeamWrightApp {
                                 .compose(&object.transform);
                         };
                         if ui
-                            .small_button("\u{2193}")
+                            .small_button("-")
                             .on_hover_text("Shorter 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -4300,7 +4368,7 @@ impl BeamWrightApp {
                                 .compose(&object.transform);
                         }
                         if ui
-                            .small_button("\u{2191}")
+                            .small_button("+")
                             .on_hover_text("Taller 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
