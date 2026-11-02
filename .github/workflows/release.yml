@@ -1,0 +1,149 @@
+name: Release
+
+# Locked for now. Nothing is published unless the repository variable
+# RELEASES_ENABLED is set to "true" and the workflow is dispatched by hand.
+# The first release is approved explicitly; tags and pushes to main never
+# publish on their own.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish, for example v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Release lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the release lock
+        env:
+          RELEASES_ENABLED: ${{ vars.RELEASES_ENABLED }}
+        run: |
+          if [ "$RELEASES_ENABLED" != "true" ]; then
+            echo "::error::Releases are locked. Set the RELEASES_ENABLED repository variable when the first release is approved."
+            exit 1
+          fi
+
+  build:
+    name: ${{ matrix.name }}
+    needs: guard
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: BeamWright.exe
+            name: BeamWright-windows-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: BeamWright
+            name: BeamWright-linux-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libgl1-mesa-dev libudev-dev
+
+      - name: Build release
+        env:
+          RUSTFLAGS: ${{ startsWith(matrix.os, 'windows') && '-C target-feature=+crt-static' || '' }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Upload release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: BeamWright-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Check tag against Cargo.toml
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          if [ "$TAG" = "$VERSION" ]; then
+            echo "::error::The tag must start with v, for example v$CARGO_VERSION."
+            exit 1
+          fi
+          if [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag $TAG does not match Cargo.toml version $CARGO_VERSION."
+            exit 1
+          fi
+
+      - name: Prepare assets
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          mkdir -p release
+          cp artifacts/BeamWright.exe "release/BeamWright-${VERSION}-windows-x86_64.exe"
+          cp artifacts/BeamWright "release/BeamWright-${VERSION}-linux-aarch64"
+          cp artifacts/BeamWright.exe "release/BeamWright.exe"
+          cp artifacts/BeamWright "release/BeamWright-linux-aarch64"
+          chmod 0755 release/BeamWright-*-linux-aarch64 release/BeamWright-linux-aarch64
+          (cd release && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          args=(--verify-tag --title "BeamWright $VERSION" --generate-notes)
+          if [[ "$VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+          gh release create "$TAG" "${args[@]}" release/*
