@@ -157,7 +157,7 @@ mod tests {
         ihdr.extend_from_slice(&width.to_be_bytes());
         ihdr.extend_from_slice(&height.to_be_bytes());
         ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
-        png.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+        png.extend_from_slice(&u32::try_from(ihdr.len()).unwrap().to_be_bytes());
         let mut chunk = b"IHDR".to_vec();
         chunk.extend_from_slice(&ihdr);
         png.extend_from_slice(&chunk);
