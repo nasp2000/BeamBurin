@@ -13160,15 +13160,66 @@ mod tests {
             .build_ui_state(|ui, app| app.show(ui), app)
     }
 
+    fn ui_temp_path(prefix: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "beamwright_ui_{prefix}_{}_{}.tmp",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
     fn ui_test_app() -> BeamWrightApp {
         let mut app = BeamWrightApp::new_for_ui_test();
         app.preferences = crate::config::preferences::AppPreferences::default();
-        app.preferences_path =
-            std::env::temp_dir().join(format!("beamwright_ui_{}.json", std::process::id()));
+        app.preferences_path = ui_temp_path("preferences");
+        app.recovery_path = ui_temp_path("recovery");
+        app.profiles_path = ui_temp_path("profiles");
+        app.machines_path = ui_temp_path("machines");
+        app.last_autosave = std::time::Instant::now();
         app.tour_open = false;
         app.recovery_prompt_open = false;
+        app.machine_wizard_open = false;
         app.machines = crate::machines::MachineLibrary::default();
         app
+    }
+
+    fn wait_for_task(harness: &mut egui_kittest::Harness<'static, BeamWrightApp>) {
+        let ctx = harness.ctx.clone();
+        for _ in 0..600 {
+            harness.state_mut().advance(&ctx);
+            harness.run();
+            if harness.state().task.is_none() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("a background task did not finish");
+    }
+
+    fn replace_dialog_name(
+        harness: &mut egui_kittest::Harness<'static, BeamWrightApp>,
+        suffix: &str,
+        text: &str,
+    ) {
+        use egui_kittest::kittest::Queryable as _;
+
+        let field = harness
+            .get_all_by_role(egui::accesskit::Role::TextInput)
+            .find(|node| node.value().is_some_and(|value| value.ends_with(suffix)))
+            .unwrap_or_else(|| panic!("the dialog field ending in {suffix} is missing"));
+        field.focus();
+        harness.run();
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::A);
+        harness.run();
+        let field = harness
+            .get_all_by_role(egui::accesskit::Role::TextInput)
+            .find(|node| node.value().is_some_and(|value| value.ends_with(suffix)))
+            .expect("the dialog field disappeared");
+        field.type_text(text);
+        harness.run();
     }
 
     #[test]
@@ -13612,5 +13663,69 @@ mod tests {
                 "the preview is missing {label}"
             );
         }
+    }
+
+    #[test]
+    fn exporting_gcode_from_the_dialog_writes_the_file() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("export_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let layer = app.editor.active_layer_id.clone();
+        app.editor
+            .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+        let operation = app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.editor
+            .assign_operation_to_layer(&layer, Some(operation.as_str()));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Export G-code...").click();
+        harness.run();
+        harness.get_by_label("Export").click();
+        harness.run();
+        wait_for_task(&mut harness);
+        let path = directory.join("Untitled.nc");
+        assert!(
+            path.is_file(),
+            "the export did not write {}",
+            path.display()
+        );
+        let text = std::fs::read_to_string(&path).expect("cannot read the exported file");
+        assert!(text.contains("G21"), "the export is missing G21");
+        assert!(
+            harness.state().status.contains("Exported"),
+            "the export was not reported: {}",
+            harness.state().status
+        );
+    }
+
+    #[test]
+    fn importing_an_svg_from_the_dialog_loads_its_objects() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/examples");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = assets.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Import SVG or DXF...").click();
+        harness.run();
+        replace_dialog_name(&mut harness, ".svg", "corpus_shapes.svg");
+        harness.get_by_label("Open").click();
+        harness.run();
+        wait_for_task(&mut harness);
+        assert!(
+            !harness.state().editor.document.objects.is_empty(),
+            "the import produced no objects"
+        );
     }
 }
