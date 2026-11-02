@@ -40,6 +40,48 @@ enum PendingAction {
     Quit,
 }
 
+/// One item chosen from the command palette.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PaletteTarget {
+    Command(PaletteAction),
+    Object(String),
+    Layer(String),
+    Operation(String),
+    Parameter,
+}
+
+/// Objects whose name or kind contains `query`, at most eight.
+fn filter_objects<'a>(document: &'a Document, query: &str) -> Vec<&'a crate::document::Object> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    document
+        .objects
+        .iter()
+        .filter(|object| {
+            object.name.to_lowercase().contains(&query)
+                || object.shape.kind_name().to_lowercase().contains(&query)
+        })
+        .take(8)
+        .collect()
+}
+
+fn filter_named<'a, T>(
+    items: impl Iterator<Item = &'a T>,
+    query: &str,
+    name: impl Fn(&T) -> &str,
+) -> Vec<&'a T> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    items
+        .filter(|item| name(item).to_lowercase().contains(&query))
+        .take(8)
+        .collect()
+}
+
 /// Indices of the catalog entries that match `query`, ignoring case.
 fn filter_palette(entries: &[PaletteCommand], query: &str) -> Vec<usize> {
     let query = query.trim().to_lowercase();
@@ -9300,7 +9342,7 @@ impl BeamWrightApp {
 
     fn palette_window(&mut self, ctx: &egui::Context) {
         let mut open = self.palette_open;
-        let mut chosen: Option<PaletteAction> = None;
+        let mut chosen: Option<PaletteTarget> = None;
         let mut close_requested = false;
         egui::Window::new("Command palette")
             .pivot(egui::Align2::CENTER_CENTER)
@@ -9312,7 +9354,7 @@ impl BeamWrightApp {
             .show(ctx, |ui| {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.palette_query)
-                        .hint_text("Type a command, then press Enter")
+                        .hint_text("Type a command, object, layer, operation or parameter")
                         .desired_width(f32::INFINITY),
                 );
                 if self.palette_focus {
@@ -9323,7 +9365,7 @@ impl BeamWrightApp {
                 let matches = filter_palette(entries, &self.palette_query);
                 if ui.input(|input| input.key_pressed(Key::Enter)) {
                     if let Some(index) = matches.first() {
-                        chosen = Some(entries[*index].id);
+                        chosen = Some(PaletteTarget::Command(entries[*index].id));
                     }
                 }
                 if ui.input(|input| input.key_pressed(Key::Escape))
@@ -9352,7 +9394,102 @@ impl BeamWrightApp {
                                 .on_hover_text(command.summary)
                                 .clicked()
                             {
-                                chosen = Some(command.id);
+                                chosen = Some(PaletteTarget::Command(command.id));
+                            }
+                        }
+                        if !self.palette_query.trim().is_empty() {
+                            let query = self.palette_query.clone();
+                            ui.separator();
+                            ui.weak("Objects");
+                            let objects = filter_objects(&self.editor.document, &query);
+                            if objects.is_empty() {
+                                ui.weak("No object matches.");
+                            }
+                            for object in objects {
+                                let text = format!(
+                                    "Object  ·  {} ({})",
+                                    object.name,
+                                    object.shape.kind_name()
+                                );
+                                if ui
+                                    .add(
+                                        egui::Button::new(text)
+                                            .frame(false)
+                                            .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                    )
+                                    .on_hover_text(format!("Select {}", object.id))
+                                    .clicked()
+                                {
+                                    chosen = Some(PaletteTarget::Object(object.id.clone()));
+                                }
+                            }
+                            ui.weak("Layers");
+                            let layers =
+                                filter_named(self.editor.document.layers.iter(), &query, |layer| {
+                                    layer.name.as_str()
+                                });
+                            if layers.is_empty() {
+                                ui.weak("No layer matches.");
+                            }
+                            for layer in layers {
+                                let text = format!("Layer  ·  {}", layer.name);
+                                if ui
+                                    .add(
+                                        egui::Button::new(text)
+                                            .frame(false)
+                                            .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                    )
+                                    .on_hover_text("Make this the active layer")
+                                    .clicked()
+                                {
+                                    chosen = Some(PaletteTarget::Layer(layer.id.clone()));
+                                }
+                            }
+                            ui.weak("Operations");
+                            let operations = filter_named(
+                                self.editor.document.operations.iter(),
+                                &query,
+                                |operation| operation.name.as_str(),
+                            );
+                            if operations.is_empty() {
+                                ui.weak("No operation matches.");
+                            }
+                            for operation in operations {
+                                let text = format!("Operation  ·  {}", operation.name);
+                                if ui
+                                    .add(
+                                        egui::Button::new(text)
+                                            .frame(false)
+                                            .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                    )
+                                    .on_hover_text("Open this operation in Cuts")
+                                    .clicked()
+                                {
+                                    chosen = Some(PaletteTarget::Operation(operation.id.clone()));
+                                }
+                            }
+                            ui.weak("Parameters");
+                            let parameters = filter_named(
+                                self.editor.document.parameters.iter(),
+                                &query,
+                                |parameter| parameter.name.as_str(),
+                            );
+                            if parameters.is_empty() {
+                                ui.weak("No parameter matches.");
+                            }
+                            for parameter in parameters {
+                                let text = format!("Parameter  ·  {}", parameter.name);
+                                if ui
+                                    .add(
+                                        egui::Button::new(text)
+                                            .frame(false)
+                                            .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                    )
+                                    .on_hover_text("Open the parameters window")
+                                    .clicked()
+                                {
+                                    chosen = Some(PaletteTarget::Parameter);
+                                }
                             }
                         }
                     });
@@ -9360,8 +9497,24 @@ impl BeamWrightApp {
         if close_requested {
             open = false;
         }
-        if let Some(action) = chosen {
-            self.run_palette_action(action);
+        if let Some(target) = chosen {
+            match target {
+                PaletteTarget::Command(action) => self.run_palette_action(action),
+                PaletteTarget::Object(id) => {
+                    self.editor.selection.clear();
+                    self.editor.selection.add(id);
+                    self.status = "Selected from the palette".to_string();
+                }
+                PaletteTarget::Layer(id) => {
+                    self.editor.active_layer_id = id;
+                    self.status = "Active layer changed".to_string();
+                }
+                PaletteTarget::Operation(id) => {
+                    self.active_operation = Some(id);
+                    self.open_cuts();
+                }
+                PaletteTarget::Parameter => self.open_parameters(),
+            }
             open = false;
         }
         if !open {
@@ -11555,6 +11708,51 @@ mod tests {
             recorded: true,
         };
         assert!(drag_measurement(Some(&moving)).is_none());
+    }
+
+    #[test]
+    fn the_palette_finds_objects_layers_operations_and_parameters() {
+        let mut document = Document::new("Test", 100.0, 100.0);
+        document.layers[0].name = "Engraving".to_string();
+        let layer_id = document.layers[0].id.clone();
+        let mut object = crate::document::Object::new(
+            layer_id,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        object.name = "Logo plate".to_string();
+        document.add_object(object);
+        document.operations.push(crate::operations::Operation::new(
+            "Deep cut",
+            crate::operations::OperationType::OutlineCutting,
+        ));
+        document.parameters = vec![crate::parameters::Parameter::new("feed", "900")];
+
+        assert_eq!(filter_objects(&document, "logo").len(), 1);
+        assert_eq!(filter_objects(&document, "RECTANGLE").len(), 1);
+        assert_eq!(filter_objects(&document, "zzz").len(), 0);
+        assert_eq!(filter_objects(&document, "").len(), 0);
+
+        let layers = filter_named(document.layers.iter(), "engra", |layer| layer.name.as_str());
+        assert_eq!(layers.len(), 1);
+        let operations = filter_named(document.operations.iter(), "deep", |operation| {
+            operation.name.as_str()
+        });
+        assert_eq!(operations.len(), 1);
+        let parameters = filter_named(document.parameters.iter(), "FEED", |parameter| {
+            parameter.name.as_str()
+        });
+        assert_eq!(parameters.len(), 1);
+        assert_eq!(
+            filter_named(document.parameters.iter(), "none", |parameter| {
+                parameter.name.as_str()
+            })
+            .len(),
+            0
+        );
     }
 
     #[test]
