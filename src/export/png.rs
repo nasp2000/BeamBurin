@@ -559,4 +559,26 @@ mod tests {
         assert!(!path.with_extension("png.tmp").exists());
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn an_a4_page_exports_at_the_requested_dpi() {
+        let document = Document {
+            width_mm: 210.0,
+            height_mm: 297.0,
+            ..Document::default()
+        };
+        for (dpi, expected_width, expected_height) in [(96.0, 794u32, 1123u32), (300.0, 2480, 3508)]
+        {
+            let options = PngOptions {
+                dpi,
+                transparent: false,
+            };
+            let (_, width, height, _) = render_rgba(&document, &options).unwrap();
+            assert_eq!(
+                (width, height),
+                (expected_width, expected_height),
+                "at {dpi} dpi"
+            );
+        }
+    }
 }
