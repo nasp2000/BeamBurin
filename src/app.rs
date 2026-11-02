@@ -3752,6 +3752,14 @@ impl BeamWrightApp {
                                             [26.0, 18.0],
                                             egui::Checkbox::without_text(&mut output),
                                         );
+                                        output_response.widget_info(|| {
+                                            egui::WidgetInfo::selected(
+                                                egui::WidgetType::Checkbox,
+                                                true,
+                                                output,
+                                                "Output",
+                                            )
+                                        });
                                         if output_response.changed() {
                                             if let Some(entry) = operation {
                                                 toggle_operation =
@@ -3761,11 +3769,19 @@ impl BeamWrightApp {
                                         output_response
                                             .on_hover_text("Include this mode in the job");
                                         let mut shown = *visible;
-                                        if ui
-                                            .add_sized(
-                                                [26.0, 18.0],
-                                                egui::Checkbox::without_text(&mut shown),
+                                        let show_response = ui.add_sized(
+                                            [26.0, 18.0],
+                                            egui::Checkbox::without_text(&mut shown),
+                                        );
+                                        show_response.widget_info(|| {
+                                            egui::WidgetInfo::selected(
+                                                egui::WidgetType::Checkbox,
+                                                true,
+                                                shown,
+                                                "Show",
                                             )
+                                        });
+                                        if show_response
                                             .on_hover_text("Show this layer on the canvas")
                                             .changed()
                                         {
@@ -3779,6 +3795,14 @@ impl BeamWrightApp {
                                             [26.0, 18.0],
                                             egui::Checkbox::without_text(&mut air),
                                         );
+                                        air_response.widget_info(|| {
+                                            egui::WidgetInfo::selected(
+                                                egui::WidgetType::Checkbox,
+                                                true,
+                                                air,
+                                                "Air",
+                                            )
+                                        });
                                         if air_response.changed() {
                                             if let Some(entry) = operation {
                                                 toggle_operation =
@@ -13330,6 +13354,147 @@ mod tests {
         assert!(
             harness.query_by_label("File name:").is_none(),
             "the export dialog did not close"
+        );
+    }
+
+    #[test]
+    fn the_layer_buttons_add_and_remove_a_layer() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        let start = harness.state().editor.document.layers.len();
+        harness.get_by_label("+ Layer").click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.layers.len(),
+            start + 1,
+            "+ Layer did not add a layer"
+        );
+        let added = harness.state().editor.active_layer_id.clone();
+        assert_eq!(
+            harness
+                .state()
+                .editor
+                .document
+                .layer(&added)
+                .map(|layer| layer.name.clone()),
+            Some(format!("Layer {}", start + 1)),
+            "the new layer is not active"
+        );
+        harness.get_by_label("- Layer").click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.layers.len(),
+            start,
+            "- Layer did not remove the active layer"
+        );
+        assert!(
+            harness.state().editor.document.layer(&added).is_none(),
+            "the removed layer is still present"
+        );
+    }
+
+    #[test]
+    fn a_layer_mode_assignment_reaches_every_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let layer = app.editor.active_layer_id.clone();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let operation = app.editor.add_operation(
+            "Mode 1".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        let mut harness = ui_harness(app);
+        harness.run();
+        let combo = harness
+            .get_all_by_role(egui::accesskit::Role::ComboBox)
+            .next()
+            .expect("the layer mode combo is missing");
+        combo.click();
+        drop(combo);
+        harness.run();
+        harness.get_by_label("Mode 1").click();
+        harness.run();
+        let document = &harness.state().editor.document;
+        assert!(
+            document
+                .objects_on_layer(&layer)
+                .iter()
+                .all(|object| object.operation_id.as_deref() == Some(operation.as_str())),
+            "the mode was not assigned to the layer objects"
+        );
+        assert!(
+            harness.state().status.contains("Assigned a mode"),
+            "the assignment was not reported: {}",
+            harness.state().status
+        );
+    }
+
+    #[test]
+    fn the_layer_switches_change_the_layer_and_the_mode() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let layer = app.editor.active_layer_id.clone();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let operation = app.editor.add_operation(
+            "Mode 1".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.editor
+            .assign_operation_to_layer(&layer, Some(operation.as_str()));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Show")
+            .click();
+        harness.run();
+        assert!(
+            !harness
+                .state()
+                .editor
+                .document
+                .layer(&layer)
+                .expect("the layer is missing")
+                .visible,
+            "Show did not hide the layer"
+        );
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Air")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .state()
+                .editor
+                .document
+                .operations
+                .iter()
+                .find(|entry| entry.id == operation)
+                .expect("the operation is missing")
+                .params
+                .air_assist,
+            "Air did not enable air assist"
+        );
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Output")
+            .click();
+        harness.run();
+        assert!(
+            !harness
+                .state()
+                .editor
+                .document
+                .operations
+                .iter()
+                .find(|entry| entry.id == operation)
+                .expect("the operation is missing")
+                .enabled,
+            "Output did not disable the mode"
         );
     }
 }
