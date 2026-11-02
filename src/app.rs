@@ -3820,10 +3820,6 @@ impl BeamWrightApp {
                                             }
                                         }
                                         air_response.on_hover_text("Air assist (M8/M9)");
-                                        let menu = ui.menu_button("...", |ui| {
-                                            self.layer_context_menu(ui, id, mode.as_deref());
-                                        });
-                                        menu.response.on_hover_text("Layer options");
                                     })
                                     .response;
                                 response.context_menu(|ui| {
