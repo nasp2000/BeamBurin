@@ -2947,7 +2947,6 @@ impl BeamWrightApp {
                         ui.close();
                     }
                 });
-                ui.menu_button(icons::menu_label(ui, Icon::Align, "Align"), |ui| self.align_menu(ui));
                 ui.menu_button(icons::menu_label(ui, Icon::View, "View"), |ui| {
                     if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {
                         self.editor.zoom_in();
@@ -3290,56 +3289,6 @@ impl BeamWrightApp {
                     .text("inner")
                     .fixed_decimals(2),
             );
-        }
-    }
-
-    /// Alignment and distribution entries, shared by the Align menu and the toolbar.
-    fn align_menu(&mut self, ui: &mut Ui) {
-        let enabled = !self.editor.selection.is_empty();
-        for (mode, icon, label) in [
-            (AlignMode::Left, Icon::AlignLeft, "Align left"),
-            (
-                AlignMode::CenterH,
-                Icon::AlignCenterH,
-                "Align centre horizontally",
-            ),
-            (AlignMode::Right, Icon::AlignRight, "Align right"),
-            (AlignMode::Top, Icon::AlignTop, "Align top"),
-            (
-                AlignMode::CenterV,
-                Icon::AlignCenterV,
-                "Align centre vertically",
-            ),
-            (AlignMode::Bottom, Icon::AlignBottom, "Align bottom"),
-        ] {
-            if ui
-                .add_enabled(enabled, icons::widget(ui, icon, label))
-                .clicked()
-            {
-                self.editor.align_selection(mode);
-                ui.close();
-            }
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                self.editor.selection.len() >= 3,
-                icons::widget(ui, Icon::DistributeH, "Distribute horizontally"),
-            )
-            .clicked()
-        {
-            self.editor.distribute_selection(true);
-            ui.close();
-        }
-        if ui
-            .add_enabled(
-                self.editor.selection.len() >= 3,
-                icons::widget(ui, Icon::DistributeV, "Distribute vertically"),
-            )
-            .clicked()
-        {
-            self.editor.distribute_selection(false);
-            ui.close();
         }
     }
 
