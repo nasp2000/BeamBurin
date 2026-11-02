@@ -13496,4 +13496,62 @@ mod tests {
             "Output did not disable the mode"
         );
     }
+
+    #[test]
+    fn the_preferences_window_switches_sections() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Preferences...").click();
+        harness.run();
+        assert!(
+            harness.state().preferences_open,
+            "the preferences window did not open"
+        );
+        for (label, section) in [
+            ("Interface", crate::config::preferences::Section::Interface),
+            ("Drawing", crate::config::preferences::Section::Drawing),
+            ("Files", crate::config::preferences::Section::Files),
+            ("Shortcuts", crate::config::preferences::Section::Shortcuts),
+        ] {
+            harness.get_by_label(label).click();
+            harness.run();
+            assert!(
+                harness.state().preferences_section == section,
+                "the {label} section was not selected"
+            );
+        }
+    }
+
+    #[test]
+    fn save_as_suggests_the_project_extension_and_can_be_cancelled() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Save as...").click();
+        harness.run();
+        let dialog = harness
+            .state()
+            .dialog
+            .as_ref()
+            .expect("the save dialog did not open");
+        assert_eq!(dialog.mode, FileMode::SaveProject);
+        assert!(
+            dialog.file_name.ends_with(".bwp"),
+            "the suggested name is not a project: {}",
+            dialog.file_name
+        );
+        harness.get_by_label("Cancel").click();
+        harness.run();
+        assert!(
+            harness.state().dialog.is_none(),
+            "Cancel did not close the dialog"
+        );
+    }
 }
