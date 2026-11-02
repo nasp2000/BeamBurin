@@ -1247,92 +1247,10 @@ impl BeamWrightApp {
                 Some(std::path::PathBuf::from(default_directory))
             }
         });
-        let mut builder = rfd::FileDialog::new().set_file_name(&suggested);
-        if let Some(start) = &start {
-            let directory = if start.is_dir() {
-                start.clone()
-            } else {
-                start
-                    .parent()
-                    .map_or_else(|| start.clone(), std::path::Path::to_path_buf)
-            };
-            builder = builder.set_directory(directory);
-        }
-        match mode {
-            FileMode::OpenProject => {
-                builder = builder.add_filter("BeamWright, archive or SVG", &["bwp", "bwpz", "svg"]);
-            }
-            FileMode::ImportFile => {
-                builder = builder.add_filter(
-                    "Drawing or image",
-                    &[
-                        "svg", "dxf", "plt", "hpgl", "pdf", "png", "jpg", "jpeg", "bmp", "tif",
-                        "tiff", "webp", "gif",
-                    ],
-                );
-            }
-            FileMode::RelinkImage => {
-                builder = builder.add_filter(
-                    "Image",
-                    &["png", "jpg", "jpeg", "bmp", "tif", "tiff", "webp", "gif"],
-                );
-            }
-            FileMode::ExportSvg => builder = builder.add_filter("SVG", &["svg"]),
-            FileMode::ExportDxf => builder = builder.add_filter("DXF", &["dxf"]),
-            FileMode::ExportHpgl => builder = builder.add_filter("HPGL", &["plt", "hpgl"]),
-            FileMode::ExportEps => builder = builder.add_filter("EPS", &["eps"]),
-            FileMode::ExportPdf => builder = builder.add_filter("PDF", &["pdf"]),
-            FileMode::ExportImage => {
-                builder = builder.add_filter("Image", &["png", "bmp", "tif", "tiff", "webp"]);
-            }
-            FileMode::ExportGcode | FileMode::PreviewGcode => {
-                builder = builder.add_filter(
-                    "G-code",
-                    &[
-                        "nc", "gcode", "gco", "gc", "ngc", "tap", "cnc", "mpf", "txt",
-                    ],
-                );
-            }
-            FileMode::ExportProfiles
-            | FileMode::ExportMachines
-            | FileMode::ImportProfiles
-            | FileMode::ImportMachines => builder = builder.add_filter("JSON", &["json"]),
-            FileMode::ImportMaterialsCsv | FileMode::ExportMaterialsCsv => {
-                builder = builder.add_filter("CSV", &["csv"]);
-            }
-            FileMode::SaveProject => builder = builder.add_filter("BeamWright", &["bwp"]),
-            FileMode::SaveArchive => {
-                builder = builder.add_filter("BeamWright archive", &["bwpz"]);
-            }
-        }
-        let chosen = match mode {
-            FileMode::OpenProject
-            | FileMode::ImportFile
-            | FileMode::RelinkImage
-            | FileMode::ImportProfiles
-            | FileMode::ImportMachines
-            | FileMode::ImportMaterialsCsv
-            | FileMode::PreviewGcode => builder.pick_file(),
-            _ => builder.save_file(),
-        };
-        let Some(path) = chosen else {
-            return;
-        };
-        if path.exists()
-            && !matches!(
-                mode,
-                FileMode::OpenProject
-                    | FileMode::ImportFile
-                    | FileMode::RelinkImage
-                    | FileMode::ImportProfiles
-                    | FileMode::ImportMachines
-                    | FileMode::PreviewGcode
-            )
-        {
-            self.pending_file = Some((mode, path));
-        } else {
-            self.handle_file(mode, &path);
-        }
+        // The in-app browser is used everywhere: it needs no desktop portal,
+        // works on the portable Windows build and cannot block the interface
+        // waiting for a dialog no window manager shows.
+        self.dialog = Some(FileDialog::new(mode, start.as_deref(), &suggested));
     }
 
     fn handle_file(&mut self, mode: FileMode, path: &Path) {
@@ -12614,6 +12532,21 @@ mod tests {
         assert!(actions.contains(&ContextAction::Preferences));
         assert!(!actions.contains(&ContextAction::Cut));
         assert!(!actions.contains(&ContextAction::Delete));
+    }
+
+    #[test]
+    fn opening_a_dialog_uses_the_in_app_browser() {
+        let mut app = BeamWrightApp::new(None);
+        app.open_dialog(FileMode::ExportGcode);
+        let dialog = app.dialog.as_ref().expect("the dialog is open");
+        assert_eq!(dialog.mode, FileMode::ExportGcode);
+        assert!(
+            std::path::Path::new(&dialog.file_name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("nc")),
+            "{}",
+            dialog.file_name
+        );
     }
 
     #[test]
