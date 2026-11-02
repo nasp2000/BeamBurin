@@ -13310,11 +13310,15 @@ mod tests {
         harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
         harness.run();
         assert!(
-            harness.query_by_label("Command palette").is_some(),
-            "the command palette did not open"
+            harness.state().palette_open,
+            "Ctrl+K did not open the command palette"
         );
         harness.key_press(egui::Key::Escape);
         harness.run();
+        assert!(
+            !harness.state().palette_open,
+            "Escape did not close the command palette"
+        );
         harness.get_by_label("Export G-code...").click();
         harness.run();
         assert!(
