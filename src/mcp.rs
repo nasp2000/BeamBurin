@@ -2421,9 +2421,10 @@ mod tests {
         let opened = call(&mut server, "open_project", json!({"path": "part.bwp"}));
         assert!(opened.get("error").is_none(), "{opened}");
         let status = call(&mut server, "get_status", json!({}));
+        let expected = folder.canonicalize().unwrap();
         assert_eq!(
             status["result"]["workspace"],
-            folder.to_string_lossy().as_ref()
+            expected.to_string_lossy().as_ref()
         );
         let _ = std::fs::remove_dir_all(folder);
     }
