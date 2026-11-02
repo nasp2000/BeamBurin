@@ -425,6 +425,9 @@ pub struct ProfileLibrary {
     pub images: Vec<ImageProfile>,
     #[serde(default)]
     pub projects: Vec<ProjectProfile>,
+    /// Material, machine and head combinations saved from an operation.
+    #[serde(default)]
+    pub recipes: Vec<crate::recipes::Recipe>,
 }
 
 impl Default for ProfileLibrary {
@@ -441,6 +444,7 @@ impl ProfileLibrary {
             operations: Vec::new(),
             images: Vec::new(),
             projects: Vec::new(),
+            recipes: Vec::new(),
         }
     }
 
@@ -600,6 +604,7 @@ impl ProfileLibrary {
             builtin: true,
             meta: ProfileMeta::with_category("Work area"),
         });
+        library.recipes = Vec::new();
         library
     }
 
@@ -636,6 +641,64 @@ impl ProfileLibrary {
                 return Err(format!("duplicate profile id: {}", project.id));
             }
         }
+        let mut recipe_names = std::collections::HashSet::new();
+        for recipe in &self.recipes {
+            recipe.validate()?;
+            if !recipe_names.insert(recipe.name.trim()) {
+                return Err(format!("duplicate recipe name: {}", recipe.name));
+            }
+            if !ids.insert(recipe.id.as_str()) {
+                return Err(format!("duplicate profile id: {}", recipe.id));
+            }
+            // The operation embedded in a recipe keeps its own id; it must not
+            // collide with another profile either.
+            if !ids.insert(recipe.operation.id.as_str()) {
+                return Err(format!("duplicate profile id: {}", recipe.operation.id));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn recipe(&self, id: &str) -> Option<&crate::recipes::Recipe> {
+        self.recipes.iter().find(|recipe| recipe.id == id)
+    }
+
+    /// Recipes that match a material, a machine (empty for any) and a head.
+    pub fn recipes_for(
+        &self,
+        material_id: &str,
+        machine_id: &str,
+        head: &str,
+    ) -> Vec<&crate::recipes::Recipe> {
+        let head = head.trim().to_lowercase();
+        self.recipes
+            .iter()
+            .filter(|recipe| recipe.material_id == material_id)
+            .filter(|recipe| machine_id.is_empty() || recipe.machine_id == machine_id)
+            .filter(|recipe| head.is_empty() || recipe.head.to_lowercase().contains(&head))
+            .collect()
+    }
+
+    pub fn add_recipe(&mut self, recipe: crate::recipes::Recipe) -> Result<(), String> {
+        if self
+            .recipes
+            .iter()
+            .any(|existing| existing.name == recipe.name)
+        {
+            return Err(format!("a recipe named '{}' already exists", recipe.name));
+        }
+        recipe.validate()?;
+        self.recipes.push(recipe);
+        Ok(())
+    }
+
+    pub fn remove_recipe(&mut self, id: &str) -> Result<(), String> {
+        let index = self
+            .recipes
+            .iter()
+            .position(|recipe| recipe.id == id)
+            .ok_or_else(|| format!("unknown recipe: {id}"))?;
+        self.recipes.remove(index);
         Ok(())
     }
 
@@ -892,6 +955,57 @@ impl ProfileLibrary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recipes_are_stored_filtered_and_removed() {
+        let mut library = ProfileLibrary::empty();
+        let material = MaterialProfile::new("Plywood 3 mm", "Plywood", 3.0);
+        let material_id = material.id.clone();
+        library.add_material(material);
+        let mut operation = OperationProfile::new("Cut", OperationType::OutlineCutting);
+        operation.params.speed = 800.0;
+        operation.params.power = 60.0;
+        let mut recipe = crate::recipes::Recipe::new("Workshop plywood", material_id, operation);
+        recipe.machine_id = "machine-1".to_string();
+        recipe.head = "40 W diode".to_string();
+        library.add_recipe(recipe.clone()).unwrap();
+        assert!(library.validate().is_ok());
+        assert_eq!(
+            library
+                .recipes_for(&recipe.material_id, "machine-1", "diode")
+                .len(),
+            1
+        );
+        assert_eq!(
+            library
+                .recipes_for(&recipe.material_id, "machine-2", "")
+                .len(),
+            0
+        );
+        assert_eq!(library.recipe(&recipe.id).unwrap().name, "Workshop plywood");
+        assert!(library.add_recipe(recipe.clone()).is_err());
+        library.remove_recipe(&recipe.id).unwrap();
+        assert!(library.remove_recipe(&recipe.id).is_err());
+        assert!(library.validate().is_ok());
+    }
+
+    #[test]
+    fn recipes_survive_a_json_round_trip() {
+        let mut library = ProfileLibrary::with_builtins();
+        let material_id = library.materials[0].id.clone();
+        let operation = OperationProfile::new("Cut", OperationType::OutlineCutting);
+        library
+            .add_recipe(crate::recipes::Recipe::new(
+                "Test recipe",
+                material_id,
+                operation,
+            ))
+            .unwrap();
+        let json = serde_json::to_string(&library).unwrap();
+        let loaded: ProfileLibrary = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.recipes, library.recipes);
+        assert!(loaded.validate().is_ok());
+    }
 
     #[test]
     fn builtins_are_valid_and_marked() {

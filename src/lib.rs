@@ -41,6 +41,7 @@ pub mod preflight;
 pub mod profiles;
 pub mod project_archive;
 pub mod raster;
+pub mod recipes;
 pub mod regmarks;
 pub mod report;
 pub mod task;

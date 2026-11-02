@@ -391,6 +391,15 @@ pub struct BeamWrightApp {
     constraint_kind_key: String,
     constraint_value: f64,
     constraint_message: String,
+    recipes_open: bool,
+    recipe_name: String,
+    recipe_material: String,
+    recipe_machine: String,
+    recipe_head: String,
+    recipe_search: String,
+    recipe_filter_material: String,
+    recipe_filter_machine: String,
+    recipe_message: String,
     help_shortcuts_open: bool,
     assistant_open: bool,
     multi_props_recorded: bool,
@@ -1003,6 +1012,15 @@ impl BeamWrightApp {
             constraint_kind_key: "horizontal".to_string(),
             constraint_value: 10.0,
             constraint_message: String::new(),
+            recipes_open: false,
+            recipe_name: String::new(),
+            recipe_material: String::new(),
+            recipe_machine: String::new(),
+            recipe_head: String::new(),
+            recipe_search: String::new(),
+            recipe_filter_material: String::new(),
+            recipe_filter_machine: String::new(),
+            recipe_message: String::new(),
             help_shortcuts_open: false,
             assistant_open: false,
             multi_props_recorded: false,
@@ -2132,6 +2150,7 @@ impl BeamWrightApp {
             || self.help_shortcuts_open
             || self.assistant_open
             || self.constraints_open
+            || self.recipes_open
             || self.workspaces_open
             || self.interface_presets_open
             || self.external_gcode_open
@@ -2694,6 +2713,10 @@ impl BeamWrightApp {
                 ui.menu_button(icons::menu_label(ui, Icon::Materials, "Materials and profiles"), |ui| {
                     if icons::button(ui, Icon::Materials, "Materials and operations...").clicked() {
                         self.profiles_open = true;
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::Materials, "Recipes...").clicked() {
+                        self.recipes_open = true;
                         ui.close();
                     }
                     if icons::button(ui, Icon::Import, "Import profiles...").clicked() {
@@ -6937,6 +6960,324 @@ impl BeamWrightApp {
         }
     }
 
+    fn save_active_cut_as_recipe(&mut self) {
+        let name = self.recipe_name.trim().to_string();
+        if name.is_empty() {
+            self.recipe_message = "Give the recipe a name first".to_string();
+            return;
+        }
+        if self.recipe_material.is_empty() {
+            self.recipe_message = "Choose the material this recipe is for".to_string();
+            return;
+        }
+        let Some(active) = self.active_operation.clone() else {
+            self.recipe_message = "Select a cut in Cuts / Layers first".to_string();
+            return;
+        };
+        let Some(operation) = self
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| operation.id == active)
+        else {
+            self.recipe_message = "The active cut no longer exists".to_string();
+            return;
+        };
+        let mut profile = crate::profiles::OperationProfile::new(&name, operation.op_type);
+        profile.params = operation.params.clone();
+        profile.notes = format!("Saved from '{}'", operation.name);
+        let material_id = self.recipe_material.clone();
+        let mut recipe = crate::recipes::Recipe::new(name, material_id, profile);
+        recipe.machine_id.clone_from(&self.recipe_machine);
+        recipe.head = self.recipe_head.trim().to_string();
+        match self.profiles.add_recipe(recipe) {
+            Ok(()) => {
+                self.save_profiles();
+                self.recipe_message =
+                    format!("Saved '{}' for this combination", self.recipe_name.trim());
+                self.recipe_name.clear();
+            }
+            Err(error) => self.recipe_message = error,
+        }
+    }
+
+    fn apply_recipe(&mut self, id: &str) {
+        let Some(recipe) = self.profiles.recipe(id).cloned() else {
+            self.recipe_message = "That recipe no longer exists".to_string();
+            return;
+        };
+        let Some(active) = self.active_operation.clone() else {
+            self.recipe_message = "Open Cuts / Layers and select a cut first".to_string();
+            return;
+        };
+        let mut candidate = self.editor.document.clone();
+        let Some(operation) = candidate
+            .operations
+            .iter_mut()
+            .find(|operation| operation.id == active)
+        else {
+            self.recipe_message = "The active cut no longer exists".to_string();
+            return;
+        };
+        recipe.apply_to(operation);
+        if let Err(error) = candidate.validate() {
+            self.recipe_message = error;
+            return;
+        }
+        self.editor.record_action("Apply recipe");
+        self.editor.document = candidate;
+        self.recipe_message = format!("Applied '{}' to the active cut", recipe.name);
+    }
+
+    fn recipes_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.recipes_open;
+        let mut save = false;
+        let mut close_requested = false;
+        let mut apply: Option<String> = None;
+        let mut delete: Option<String> = None;
+        let recipes = self.profiles.recipes.clone();
+        let materials: Vec<(String, String)> = self
+            .profiles
+            .materials
+            .iter()
+            .map(|material| (material.id.clone(), material.name.clone()))
+            .collect();
+        let machines: Vec<(String, String)> = self
+            .machines
+            .machines
+            .iter()
+            .map(|machine| (machine.id.clone(), machine.name.clone()))
+            .collect();
+        let material_name = |id: &str| {
+            materials
+                .iter()
+                .find(|(candidate, _)| candidate == id)
+                .map_or_else(
+                    || "(unknown material)".to_string(),
+                    |(_, name)| name.clone(),
+                )
+        };
+        let machine_name = |id: &str| {
+            if id.is_empty() {
+                "Any machine".to_string()
+            } else {
+                machines
+                    .iter()
+                    .find(|(candidate, _)| candidate == id)
+                    .map_or_else(|| id.to_string(), |(_, name)| name.clone())
+            }
+        };
+        egui::Window::new("Recipes")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size([640.0, 540.0])
+            .show(ctx, |ui| {
+                ui.label(
+                    "A recipe stores the active cut for one material, machine and head. Values are reference starting points: test on your own material.",
+                );
+                ui.separator();
+                ui.heading("Save the active cut");
+                egui::Grid::new("recipe_save_grid")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.recipe_name);
+                        ui.end_row();
+                        ui.label("Material");
+                        egui::ComboBox::from_id_salt("recipe_save_material")
+                            .selected_text(if self.recipe_material.is_empty() {
+                                "Choose a material".to_string()
+                            } else {
+                                material_name(&self.recipe_material)
+                            })
+                            .show_ui(ui, |ui| {
+                                for (id, name) in &materials {
+                                    ui.selectable_value(
+                                        &mut self.recipe_material,
+                                        id.clone(),
+                                        name,
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                        ui.label("Machine");
+                        egui::ComboBox::from_id_salt("recipe_save_machine")
+                            .selected_text(machine_name(&self.recipe_machine))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.recipe_machine,
+                                    String::new(),
+                                    "Any machine",
+                                );
+                                for (id, name) in &machines {
+                                    ui.selectable_value(
+                                        &mut self.recipe_machine,
+                                        id.clone(),
+                                        name,
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                        ui.label("Head");
+                        ui.text_edit_singleline(&mut self.recipe_head);
+                        ui.end_row();
+                    });
+                if ui
+                    .button("Save active cut as a recipe")
+                    .on_hover_text(
+                        "Copies the mode, speed, power, passes and the rest from the selected cut",
+                    )
+                    .clicked()
+                {
+                    save = true;
+                }
+                if !self.recipe_message.is_empty() {
+                    ui.label(self.recipe_message.clone());
+                }
+                ui.separator();
+                ui.heading("Stored recipes");
+                ui.horizontal(|ui| {
+                    ui.label("Search");
+                    ui.text_edit_singleline(&mut self.recipe_search);
+                    ui.label("Material");
+                    egui::ComboBox::from_id_salt("recipe_filter_material")
+                        .selected_text(if self.recipe_filter_material.is_empty() {
+                            "All".to_string()
+                        } else {
+                            material_name(&self.recipe_filter_material)
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.recipe_filter_material,
+                                String::new(),
+                                "All",
+                            );
+                            for (id, name) in &materials {
+                                ui.selectable_value(
+                                    &mut self.recipe_filter_material,
+                                    id.clone(),
+                                    name,
+                                );
+                            }
+                        });
+                    ui.label("Machine");
+                    egui::ComboBox::from_id_salt("recipe_filter_machine")
+                        .selected_text(machine_name(&self.recipe_filter_machine))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.recipe_filter_machine,
+                                String::new(),
+                                "All machines",
+                            );
+                            for (id, name) in &machines {
+                                ui.selectable_value(
+                                    &mut self.recipe_filter_machine,
+                                    id.clone(),
+                                    name,
+                                );
+                            }
+                        });
+                });
+                let query = self.recipe_search.trim().to_lowercase();
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("recipe_list")
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        let mut shown = 0;
+                        for recipe in &recipes {
+                            if !self.recipe_filter_material.is_empty()
+                                && recipe.material_id != self.recipe_filter_material
+                            {
+                                continue;
+                            }
+                            if !self.recipe_filter_machine.is_empty()
+                                && recipe.machine_id != self.recipe_filter_machine
+                            {
+                                continue;
+                            }
+                            let combination = format!(
+                                "{} · {} · {}",
+                                material_name(&recipe.material_id),
+                                machine_name(&recipe.machine_id),
+                                if recipe.head.trim().is_empty() {
+                                    "any head"
+                                } else {
+                                    recipe.head.trim()
+                                }
+                            );
+                            if !query.is_empty()
+                                && !recipe.name.to_lowercase().contains(&query)
+                                && !combination.to_lowercase().contains(&query)
+                            {
+                                continue;
+                            }
+                            shown += 1;
+                            ui.horizontal(|ui| {
+                                ui.strong(&recipe.name);
+                                ui.weak(&combination);
+                            });
+                            ui.weak(recipe.summary());
+                            if !recipe.notes.trim().is_empty() {
+                                ui.weak(recipe.notes.clone());
+                            }
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .button("Apply to active cut")
+                                    .on_hover_text("Replaces the settings of the selected cut")
+                                    .clicked()
+                                {
+                                    apply = Some(recipe.id.clone());
+                                }
+                                if ui
+                                    .small_button("Delete")
+                                    .on_hover_text("Remove this recipe")
+                                    .clicked()
+                                {
+                                    delete = Some(recipe.id.clone());
+                                }
+                            });
+                            ui.separator();
+                        }
+                        if shown == 0 {
+                            ui.weak("No recipe matches.");
+                        }
+                    });
+                ui.separator();
+                if ui
+                    .button("Close")
+                    .on_hover_text("Close this window")
+                    .clicked()
+                {
+                    close_requested = true;
+                }
+            });
+        if close_requested {
+            open = false;
+        }
+        if save {
+            self.save_active_cut_as_recipe();
+        }
+        if let Some(id) = apply {
+            self.apply_recipe(&id);
+        }
+        if let Some(id) = delete {
+            match self.profiles.remove_recipe(&id) {
+                Ok(()) => {
+                    self.save_profiles();
+                    self.recipe_message = "Recipe removed".to_string();
+                }
+                Err(error) => self.recipe_message = error,
+            }
+        }
+        self.recipes_open = open;
+    }
+
     fn handle_live_request(&mut self, request: &str) -> String {
         let request: serde_json::Value = match serde_json::from_str(request) {
             Ok(value) => value,
@@ -10702,6 +11043,9 @@ impl BeamWrightApp {
                 if icons::button(ui, Icon::Materials, "Materials and operations...").clicked() {
                     self.profiles_open = true;
                 }
+                if icons::button(ui, Icon::Materials, "Recipes...").clicked() {
+                    self.recipes_open = true;
+                }
             }
             Section::Advanced => {
                 egui::Grid::new("pref_advanced")
@@ -11492,6 +11836,9 @@ impl BeamWrightApp {
         }
         if self.constraints_open {
             self.constraints_window(ctx);
+        }
+        if self.recipes_open {
+            self.recipes_window(ctx);
         }
         if self.material_test_open {
             self.material_test_window(ctx);
