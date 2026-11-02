@@ -78,6 +78,7 @@ impl LaserMode {
 
 /// Options for writing a GRBL-compatible job file.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct GCodeOptions {
     pub laser_mode: LaserMode,
     pub dialect: Dialect,
@@ -86,6 +87,8 @@ pub struct GCodeOptions {
     pub line_ending_crlf: bool,
     pub include_comments: bool,
     pub include_travel: bool,
+    /// Replace circular runs of cut moves with `G2`/`G3` arcs.
+    pub arcs: bool,
 }
 
 impl Default for GCodeOptions {
@@ -97,6 +100,7 @@ impl Default for GCodeOptions {
             line_ending_crlf: false,
             include_comments: true,
             include_travel: true,
+            arcs: false,
         }
     }
 }
@@ -118,5 +122,6 @@ mod tests {
         assert_eq!(options.decimals, 3);
         assert!(!options.line_ending_crlf);
         assert!(options.include_comments);
+        assert!(!options.arcs, "arcs are opt-in");
     }
 }

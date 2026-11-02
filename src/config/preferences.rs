@@ -373,6 +373,7 @@ impl InterfacePresetPrefs {
 
 /// A saved set of G-code output options.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ExportPreset {
     pub name: String,
     /// Dialect id: `grbl`, `marlin`, `smoothie` or `linuxcnc`.
@@ -382,6 +383,9 @@ pub struct ExportPreset {
     pub travel: bool,
     pub crlf: bool,
     pub smooth_mm: f64,
+    /// Write circular runs as `G2`/`G3` arcs.
+    #[serde(default)]
+    pub arcs: bool,
 }
 
 /// Largest number of saved export presets.
@@ -799,7 +803,16 @@ mod tests {
             travel: true,
             crlf: false,
             smooth_mm: 0.5,
+            arcs: true,
         }
+    }
+
+    #[test]
+    fn an_export_preset_without_arcs_still_loads() {
+        let json = r#"{"name":"Old","dialect":"grbl","decimals":3,"comments":true,"travel":true,"crlf":false,"smooth_mm":0.0}"#;
+        let preset: ExportPreset = serde_json::from_str(json).unwrap();
+        assert!(!preset.arcs, "older presets keep arcs off");
+        assert!(preset.validate().is_ok());
     }
 
     #[test]

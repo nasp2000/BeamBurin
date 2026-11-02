@@ -1,7 +1,8 @@
 use std::fmt::Write as _;
 
+use crate::gcode::arcs::{self, FittedArc};
 use crate::gcode::dialect::{GCodeOptions, LaserMode};
-use crate::gcode::toolpath::{MoveKind, Toolpath};
+use crate::gcode::toolpath::{Move, MoveKind, Toolpath};
 
 /// Render toolpaths as a GRBL 1.1 job.
 ///
@@ -70,13 +71,16 @@ impl GCodeWriter {
                 );
             }
             let _ = write!(out, "S0{newline}");
+            let mut position: Option<(f64, f64)> = None;
             for pass in 0..toolpath.passes {
                 if pass > 0 {
                     let _ = write!(out, "S0{newline}");
                 }
                 let mut laser_on = false;
                 let mut current_power = 0.0;
-                for movement in &toolpath.moves {
+                let mut index = 0;
+                while index < toolpath.moves.len() {
+                    let movement = toolpath.moves[index];
                     match movement.kind {
                         MoveKind::Travel => {
                             if laser_on {
@@ -92,30 +96,73 @@ impl GCodeWriter {
                                     fmt_num(movement.y, precision)
                                 );
                             }
+                            position = Some((movement.x, movement.y));
+                            index += 1;
                         }
                         MoveKind::Cut => {
                             let power = movement.power.unwrap_or(toolpath.power);
-                            if laser_on {
-                                if (power - current_power).abs() > 0.5 {
-                                    let _ = write!(out, "S{power:.0}{newline}");
+                            let arc = if self.options.arcs {
+                                position.and_then(|start| {
+                                    arc_run(&toolpath.moves, index, start, power, toolpath.power)
+                                })
+                            } else {
+                                None
+                            };
+                            if let Some(arc) = arc {
+                                let command = if arc.clockwise { "G2" } else { "G3" };
+                                if laser_on {
+                                    if (power - current_power).abs() > 0.5 {
+                                        let _ = write!(out, "S{power:.0}{newline}");
+                                        current_power = power;
+                                    }
+                                    let _ = write!(
+                                        out,
+                                        "{command} X{} Y{} I{} J{}{newline}",
+                                        fmt_num(arc.x, precision),
+                                        fmt_num(arc.y, precision),
+                                        fmt_num(arc.i, precision),
+                                        fmt_num(arc.j, precision)
+                                    );
+                                } else {
+                                    let _ = write!(
+                                        out,
+                                        "{command} X{} Y{} I{} J{} F{:.0} S{power:.0}{newline}",
+                                        fmt_num(arc.x, precision),
+                                        fmt_num(arc.y, precision),
+                                        fmt_num(arc.i, precision),
+                                        fmt_num(arc.j, precision),
+                                        toolpath.speed
+                                    );
+                                    laser_on = true;
                                     current_power = power;
                                 }
-                                let _ = write!(
-                                    out,
-                                    "G1 X{} Y{}{newline}",
-                                    fmt_num(movement.x, precision),
-                                    fmt_num(movement.y, precision)
-                                );
+                                position = Some((arc.x, arc.y));
+                                index += arc.moves;
                             } else {
-                                let _ = write!(
-                                    out,
-                                    "G1 X{} Y{} F{:.0} S{power:.0}{newline}",
-                                    fmt_num(movement.x, precision),
-                                    fmt_num(movement.y, precision),
-                                    toolpath.speed
-                                );
-                                laser_on = true;
-                                current_power = power;
+                                if laser_on {
+                                    if (power - current_power).abs() > 0.5 {
+                                        let _ = write!(out, "S{power:.0}{newline}");
+                                        current_power = power;
+                                    }
+                                    let _ = write!(
+                                        out,
+                                        "G1 X{} Y{}{newline}",
+                                        fmt_num(movement.x, precision),
+                                        fmt_num(movement.y, precision)
+                                    );
+                                } else {
+                                    let _ = write!(
+                                        out,
+                                        "G1 X{} Y{} F{:.0} S{power:.0}{newline}",
+                                        fmt_num(movement.x, precision),
+                                        fmt_num(movement.y, precision),
+                                        toolpath.speed
+                                    );
+                                    laser_on = true;
+                                    current_power = power;
+                                }
+                                position = Some((movement.x, movement.y));
+                                index += 1;
                             }
                         }
                     }
@@ -126,6 +173,38 @@ impl GCodeWriter {
         let _ = write!(out, "M5{newline}");
         out
     }
+}
+
+/// Longest run of cut moves that fits one circle, starting at `start_index`.
+///
+/// The run stops at the first travel, power change or point that leaves the
+/// circle, so an arc never carries a power change inside it.
+fn arc_run(
+    moves: &[Move],
+    start_index: usize,
+    start: (f64, f64),
+    power: f64,
+    default_power: f64,
+) -> Option<FittedArc> {
+    let mut points = vec![start];
+    let mut best = None;
+    for movement in &moves[start_index..] {
+        if movement.kind != MoveKind::Cut {
+            break;
+        }
+        if (movement.power.unwrap_or(default_power) - power).abs() > 1e-9 {
+            break;
+        }
+        points.push((movement.x, movement.y));
+        if points.len() < arcs::MIN_POINTS {
+            continue;
+        }
+        match arcs::fit(&points) {
+            Some(arc) => best = Some(arc),
+            None => break,
+        }
+    }
+    best
 }
 
 fn fmt_num(value: f64, decimals: usize) -> String {
@@ -256,5 +335,79 @@ mod tests {
         let text = GCodeWriter::new(options).render(&[]);
         assert!(text.contains("\r\n"));
         assert!(!text.replace("\r\n", "").contains('\n'));
+    }
+
+    fn circle_toolpath() -> Toolpath {
+        let mut toolpath = Toolpath::new("Circle", 1000.0, 500.0, 1);
+        toolpath.push(MoveKind::Travel, 10.0, 0.0);
+        for step in 1..=120 {
+            #[allow(clippy::cast_precision_loss)]
+            let angle = std::f64::consts::TAU * f64::from(step) / 120.0;
+            toolpath.push(MoveKind::Cut, 10.0 * angle.cos(), 10.0 * angle.sin());
+        }
+        toolpath
+    }
+
+    #[test]
+    fn arcs_are_off_by_default() {
+        let text = GCodeWriter::new(GCodeOptions::default()).render(&[circle_toolpath()]);
+        assert!(!text.contains("G2 "), "{text}");
+        assert!(!text.contains("G3 "), "{text}");
+        assert_eq!(text.matches("G1 X").count(), 120);
+    }
+
+    #[test]
+    fn a_circle_becomes_one_arc_when_enabled() {
+        let options = GCodeOptions {
+            arcs: true,
+            ..GCodeOptions::default()
+        };
+        let text = GCodeWriter::new(options).render(&[circle_toolpath()]);
+        assert_eq!(text.matches("G3 ").count(), 1, "{text}");
+        // The closing move stays a straight line, which keeps the file valid
+        // for senders that reject full-circle I/J arcs.
+        assert_eq!(text.matches("G1 X").count(), 1, "{text}");
+        assert!(text.contains("I-10"), "{text}");
+        assert!(text.contains("J0"), "{text}");
+        assert!(text.contains("F1000 S500"), "{text}");
+    }
+
+    #[test]
+    fn a_polygon_keeps_its_straight_lines_with_arcs_on() {
+        let mut toolpath = Toolpath::new("Square", 1000.0, 500.0, 1);
+        toolpath.push(MoveKind::Travel, 0.0, 0.0);
+        for (x, y) in [(10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)] {
+            toolpath.push(MoveKind::Cut, x, y);
+        }
+        let options = GCodeOptions {
+            arcs: true,
+            ..GCodeOptions::default()
+        };
+        let text = GCodeWriter::new(options).render(&[toolpath]);
+        assert!(!text.contains("G2 "), "{text}");
+        assert!(!text.contains("G3 "), "{text}");
+        assert_eq!(text.matches("G1 X").count(), 4);
+    }
+
+    #[test]
+    fn a_power_change_breaks_the_arc() {
+        let mut toolpath = Toolpath::new("Raster", 1000.0, 500.0, 1);
+        toolpath.push(MoveKind::Travel, 10.0, 0.0);
+        for step in 1..=60 {
+            #[allow(clippy::cast_precision_loss)]
+            let angle = std::f64::consts::TAU * f64::from(step) / 120.0;
+            toolpath.push(MoveKind::Cut, 10.0 * angle.cos(), 10.0 * angle.sin());
+        }
+        toolpath.push_powered(MoveKind::Cut, 10.0, 0.0, 250.0);
+        let options = GCodeOptions {
+            arcs: true,
+            ..GCodeOptions::default()
+        };
+        let text = GCodeWriter::new(options).render(&[toolpath]);
+        // The half circle is one arc and the move at a different power is a
+        // straight line.
+        assert_eq!(text.matches("G3 ").count(), 1, "{text}");
+        assert!(text.contains("G1 X10 Y0"), "{text}");
+        assert!(text.contains("S250"), "{text}");
     }
 }

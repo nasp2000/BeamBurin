@@ -415,6 +415,7 @@ pub struct BeamWrightApp {
     gcode_comments: bool,
     gcode_travel: bool,
     gcode_crlf: bool,
+    gcode_arcs: bool,
     export_presets_open: bool,
     export_preset_name: String,
     history_open: bool,
@@ -1042,6 +1043,7 @@ impl BeamWrightApp {
             gcode_comments: true,
             gcode_travel: true,
             gcode_crlf: false,
+            gcode_arcs: false,
             export_presets_open: false,
             export_preset_name: String::new(),
             history_open: false,
@@ -1996,6 +1998,7 @@ impl BeamWrightApp {
             include_comments: self.gcode_comments,
             include_travel: self.gcode_travel,
             line_ending_crlf: self.gcode_crlf,
+            arcs: self.gcode_arcs,
             ..crate::gcode::GCodeOptions::default()
         };
         let smooth_mm = self.gcode_smooth_mm;
@@ -5871,6 +5874,7 @@ impl BeamWrightApp {
         self.gcode_travel = preset.travel;
         self.gcode_crlf = preset.crlf;
         self.gcode_smooth_mm = preset.smooth_mm;
+        self.gcode_arcs = preset.arcs;
     }
 
     fn export_presets_window(&mut self, ctx: &egui::Context) {
@@ -5888,7 +5892,7 @@ impl BeamWrightApp {
             .show(ctx, |ui| {
                 ui.label(
                     "An export preset stores the G-code dialect, decimals, comments, \
-                     travel moves, line endings and smoothing.",
+                     travel moves, line endings, arcs and smoothing.",
                 );
                 ui.horizontal(|ui| {
                     ui.add(
@@ -5915,8 +5919,11 @@ impl BeamWrightApp {
                     ui.horizontal(|ui| {
                         ui.label(&preset.name);
                         ui.weak(format!(
-                            "{} · {} decimals · {} smooth",
-                            preset.dialect, preset.decimals, preset.smooth_mm
+                            "{} · {} decimals · {} smooth{}",
+                            preset.dialect,
+                            preset.decimals,
+                            preset.smooth_mm,
+                            if preset.arcs { " · arcs" } else { "" }
                         ));
                         if ui.button("Apply").clicked() {
                             apply = Some(preset.name.clone());
@@ -5948,6 +5955,7 @@ impl BeamWrightApp {
                 travel: self.gcode_travel,
                 crlf: self.gcode_crlf,
                 smooth_mm: self.gcode_smooth_mm,
+                arcs: self.gcode_arcs,
             };
             match self.preferences.export_presets.upsert(preset) {
                 Ok(()) => {
@@ -6160,6 +6168,11 @@ impl BeamWrightApp {
                     ui.checkbox(&mut self.gcode_comments, "Comments");
                     ui.checkbox(&mut self.gcode_travel, "Travel moves");
                     ui.checkbox(&mut self.gcode_crlf, "CRLF line endings");
+                    ui.checkbox(&mut self.gcode_arcs, "Arcs (G2/G3)")
+                        .on_hover_text(
+                            "Writes circular cut runs as G2/G3 arcs; leave it off if the sender \
+                             does not accept arcs",
+                        );
                     if ui
                         .button("Export presets...")
                         .on_hover_text("Save and reuse these output options")
