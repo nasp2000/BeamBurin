@@ -13305,6 +13305,16 @@ mod tests {
 
         let mut harness = ui_harness(ui_test_app());
         harness.run();
+        // The shortcut first: after a text field has had focus, egui keeps the
+        // focus id and the shortcut handler deliberately ignores keys.
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
+        harness.run();
+        assert!(
+            harness.query_by_label("Command palette").is_some(),
+            "the command palette did not open"
+        );
+        harness.key_press(egui::Key::Escape);
+        harness.run();
         harness.get_by_label("Export G-code...").click();
         harness.run();
         assert!(
@@ -13316,12 +13326,6 @@ mod tests {
         assert!(
             harness.query_by_label("File name:").is_none(),
             "the export dialog did not close"
-        );
-        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
-        harness.run();
-        assert!(
-            harness.query_by_label("Command palette").is_some(),
-            "the command palette did not open"
         );
     }
 }
