@@ -49,6 +49,13 @@ pub struct PngReport {
     pub warnings: Vec<String>,
 }
 
+/// Largest PNG accepted by the raster export, in pixels.
+///
+/// A 600 dpi A3 page is about 69 million pixels, so this leaves room for
+/// normal high-resolution exports without trying to allocate a picture no
+/// machine in the target range can hold.
+pub const MAX_PNG_PIXELS: u64 = 100_000_000;
+
 struct Canvas {
     width: usize,
     height: usize,
@@ -58,12 +65,31 @@ struct Canvas {
 }
 
 impl Canvas {
-    fn new(document: &Document, options: &PngOptions) -> Self {
+    fn new(document: &Document, options: &PngOptions) -> Result<Self> {
         let scale = options.dpi / 25.4;
+        let width = ((document.width_mm * scale).round()).max(1.0);
+        let height = ((document.height_mm * scale).round()).max(1.0);
+        if !width.is_finite()
+            || !height.is_finite()
+            || width > f64::from(u32::MAX)
+            || height > f64::from(u32::MAX)
+        {
+            return Err(crate::errors::BeamError::InvalidInput(
+                "the PNG is too large for the requested resolution".to_string(),
+            ));
+        }
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let width = ((document.width_mm * scale).round() as usize).max(1);
+        let width_px = width as u32;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let height = ((document.height_mm * scale).round() as usize).max(1);
+        let height_px = height as u32;
+        let total = u128::from(width_px) * u128::from(height_px);
+        if total > u128::from(MAX_PNG_PIXELS) {
+            return Err(crate::errors::BeamError::InvalidInput(format!(
+                "the PNG would have {width_px} x {height_px} pixels; the limit is {MAX_PNG_PIXELS}; lower the resolution"
+            )));
+        }
+        let width = usize::try_from(width_px).unwrap_or(1);
+        let height = usize::try_from(height_px).unwrap_or(1);
         let background = if options.transparent {
             [0, 0, 0, 0]
         } else {
@@ -73,13 +99,13 @@ impl Canvas {
         for _ in 0..width * height {
             pixels.extend_from_slice(&background);
         }
-        Self {
+        Ok(Self {
             width,
             height,
             pixels,
             scale,
             height_mm: document.height_mm,
-        }
+        })
     }
 
     /// Document millimetres to pixel coordinates (y axis flipped).
@@ -209,7 +235,7 @@ pub fn render_rgba_cancellable(
     document
         .validate()
         .map_err(crate::errors::BeamError::InvalidInput)?;
-    let mut canvas = Canvas::new(document, options);
+    let mut canvas = Canvas::new(document, options)?;
     let mut warnings = Vec::new();
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -461,6 +487,27 @@ mod tests {
             export_png_cancellable(&document, &path, &PngOptions::default(), &|| true).unwrap_err();
         assert!(error.to_string().contains("cancelled"));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn refuses_a_canvas_that_is_too_large() {
+        let document = Document {
+            width_mm: 200_000.0,
+            height_mm: 200_000.0,
+            ..Document::default()
+        };
+        let error = render_rgba(&document, &PngOptions::default()).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("pixels"), "{message}");
+        assert!(message.contains("limit is"), "{message}");
+
+        let document = Document {
+            width_mm: 1e12,
+            height_mm: 1e12,
+            ..Document::default()
+        };
+        let error = render_rgba(&document, &PngOptions::default()).unwrap_err();
+        assert!(error.to_string().contains("too large"), "{error}");
     }
 
     #[test]
