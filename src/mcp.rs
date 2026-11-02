@@ -342,13 +342,24 @@ impl McpServer {
             "import_file" => {
                 let path = self.required_path(arguments, "path")?;
                 let outcome = crate::import::format::import_with_report(&path)?;
+                let format = crate::import::format::detect_format(&path);
                 let mut document = outcome.document;
                 if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
                     document.name = stem.to_string();
                 }
                 self.editor.set_document(document);
+                // A drawing import replaces the drawing, so the previous
+                // project path must not be reused by a later save; only a
+                // project file keeps its own path.
+                self.path = if matches!(format, "bwp" | "archive") {
+                    Some(path.clone())
+                } else {
+                    None
+                };
                 Ok(json!({
                     "objects": self.editor.document.objects.len(),
+                    "format": format,
+                    "path": self.path.as_ref().map(|path| path.display().to_string()),
                     "warnings": outcome.warnings
                 }))
             }
@@ -1192,13 +1203,19 @@ impl McpServer {
                 }))
             }
             "check_job" => {
-                let report = match string(arguments, "path") {
-                    Some(path) => {
-                        let outcome =
-                            crate::import::format::import_with_report(std::path::Path::new(&path))?;
-                        crate::preflight::check(&outcome.document)
+                let report = if arguments.get("path").is_some() {
+                    let path = self.required_path(arguments, "path")?;
+                    if crate::import::format::detect_format(&path) == "unknown" {
+                        return Err(BeamError::InvalidInput(format!(
+                            "check_job reads a project or drawing file; '{}' is not one. \
+                             Export the job and open it in the external preview instead.",
+                            path.display()
+                        )));
                     }
-                    None => crate::preflight::check(&self.editor.document),
+                    let outcome = crate::import::format::import_with_report(&path)?;
+                    crate::preflight::check(&outcome.document)
+                } else {
+                    crate::preflight::check(&self.editor.document)
                 };
                 Ok(report.to_json())
             }
@@ -1301,7 +1318,40 @@ impl McpServer {
                 Ok(json!({"id": id, "value": value}))
             }
             "solve_constraints" => {
-                let ids = ids(arguments);
+                let requested = ids(arguments);
+                // An id may name a constraint or an object; an object selects
+                // every constraint attached to it. Unknown ids are refused
+                // instead of silently solving nothing.
+                let ids = match requested {
+                    Some(list) => {
+                        let mut constraint_ids: Vec<String> = Vec::new();
+                        for id in &list {
+                            if self
+                                .editor
+                                .document
+                                .constraints
+                                .iter()
+                                .any(|constraint| &constraint.id == id)
+                            {
+                                constraint_ids.push(id.clone());
+                            } else if self.editor.document.object(id).is_some() {
+                                for constraint in &self.editor.document.constraints {
+                                    if constraint.kind.object_ids().contains(&id.as_str())
+                                        && !constraint_ids.contains(&constraint.id)
+                                    {
+                                        constraint_ids.push(constraint.id.clone());
+                                    }
+                                }
+                            } else {
+                                return Err(BeamError::InvalidInput(format!(
+                                    "unknown constraint or object: {id}"
+                                )));
+                            }
+                        }
+                        Some(constraint_ids)
+                    }
+                    None => None,
+                };
                 let (solved, report) =
                     crate::constraints::solve(&self.editor.document, ids.as_deref())?;
                 if report.constraints > 0 {
@@ -1490,7 +1540,10 @@ impl McpServer {
             "objects": document.objects.len(),
             "operations": document.operations.len(),
             "path": self.path.as_ref().map(|path| path.display().to_string()),
-            "dirty": self.editor.history.can_undo(),
+            "dirty": self.editor.history.can_undo()
+                || (self.path.is_none()
+                    && (!self.editor.document.objects.is_empty()
+                        || !self.editor.document.operations.is_empty())),
             "read_only": self.policy.read_only(),
             "workspace": self.policy.workspace().map(|path| path.display().to_string()),
         })
@@ -2004,7 +2057,7 @@ fn tool_definitions() -> Vec<Value> {
         ),
         tool_with(
             "solve_constraints",
-            "Solve the enabled constraints (or the listed ids) and update the path nodes.",
+            "Solve the enabled constraints, or those on the listed constraint or object ids, and update the path nodes.",
             json!({"type": "object", "properties": {
                 "ids": {"type": "array", "items": {"type": "string"}}
             }}),
@@ -2362,6 +2415,78 @@ mod tests {
             folder.to_string_lossy().as_ref()
         );
         let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn an_import_clears_the_previous_project_path() {
+        let folder =
+            std::env::temp_dir().join(format!("beamwright_mcp_import_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("drawing.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="0 0 40 20"><rect x="1" y="1" width="10" height="5"/></svg>"#,
+        )
+        .unwrap();
+        let mut server = McpServer::new();
+        server.set_policy(crate::policy::Policy::new(Some(folder.clone()), false).unwrap());
+        let saved = call(&mut server, "save_project", json!({"path": "part.bwp"}));
+        assert!(saved.get("error").is_none(), "{saved}");
+        let imported = call(&mut server, "import_file", json!({"path": "drawing.svg"}));
+        assert!(imported.get("error").is_none(), "{imported}");
+        assert_eq!(imported["result"]["objects"], 1);
+        assert!(imported["result"]["path"].is_null());
+        let status = call(&mut server, "get_status", json!({}));
+        assert!(status["result"]["path"].is_null(), "{status}");
+        assert_eq!(status["result"]["dirty"], true);
+        // Saving now needs an explicit path; it must not reuse part.bwp.
+        let reused = call(&mut server, "save_project", json!({}));
+        assert!(reused.get("error").is_some());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn check_job_refuses_a_job_file_and_outside_paths() {
+        let folder =
+            std::env::temp_dir().join(format!("beamwright_mcp_check_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("out.nc"), "G21\nG90\nM5\n").unwrap();
+        let mut server = McpServer::new();
+        server.set_policy(crate::policy::Policy::new(Some(folder.clone()), false).unwrap());
+        let job = call(&mut server, "check_job", json!({"path": "out.nc"}));
+        let message = job["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("not one"), "{message}");
+        let outside = call(&mut server, "check_job", json!({"path": "/etc/hostname"}));
+        assert!(outside.get("error").is_some());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn solve_constraints_accepts_an_object_id() {
+        let mut server = McpServer::new();
+        let line = call(
+            &mut server,
+            "add_line",
+            json!({"x1": 0.0, "y1": 0.0, "x2": 10.0, "y2": 5.0}),
+        );
+        let id = line["result"]["id"].as_str().unwrap().to_string();
+        let added = call(
+            &mut server,
+            "add_constraint",
+            json!({
+                "kind": "horizontal",
+                "a": {"object_id": id, "node": 0},
+                "b": {"object_id": id, "node": 1}
+            }),
+        );
+        assert!(added.get("error").is_none(), "{added}");
+        let solved = call(&mut server, "solve_constraints", json!({"ids": [id]}));
+        assert!(solved.get("error").is_none(), "{solved}");
+        assert_eq!(solved["result"]["constraints"], 1);
+        assert!(solved["result"]["moved_nodes"].as_u64().unwrap() >= 1);
+        let unknown = call(&mut server, "solve_constraints", json!({"ids": ["nope"]}));
+        assert!(unknown.get("error").is_some());
     }
 
     #[test]

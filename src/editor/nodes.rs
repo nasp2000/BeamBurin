@@ -417,7 +417,9 @@ impl EditorState {
         }
         let path = self
             .node_path()
-            .ok_or_else(|| "No path is being edited".to_string())?
+            .ok_or_else(|| {
+                "No path is being edited; select a path and start node editing first".to_string()
+            })?
             .clone();
         let simplified = path.simplified(tolerance);
         if simplified.segments.len() >= path.segments.len() {

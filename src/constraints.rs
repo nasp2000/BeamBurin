@@ -117,6 +117,19 @@ impl ConstraintKind {
         }
     }
 
+    /// Objects this constraint refers to, without duplicates.
+    ///
+    /// Used to accept an object id wherever a constraint id is expected.
+    pub fn object_ids(&self) -> Vec<&str> {
+        let mut objects: Vec<&str> = Vec::new();
+        for node in self.nodes() {
+            if !objects.contains(&node.object_id.as_str()) {
+                objects.push(&node.object_id);
+            }
+        }
+        objects
+    }
+
     fn nodes(&self) -> Vec<&NodeRef> {
         match self {
             ConstraintKind::Coincident { a, b }

@@ -31,6 +31,32 @@ fn load_icon() -> egui::IconData {
 use beamwright::app::BeamWrightApp;
 use clap::Parser;
 
+/// Graphics options that also work on the limited adapters found on small
+/// boards and remote sessions.
+///
+/// The default descriptor asks for the full desktop limits, including eight
+/// colour attachments. A software or virtual adapter that exposes four
+/// rejects the device, so the window never opens. The interface only needs one
+/// colour attachment, so the adapter's own limits are requested instead.
+fn native_options() -> eframe::NativeOptions {
+    let mut wgpu = eframe::egui_wgpu::WgpuConfiguration::default();
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut wgpu.wgpu_setup {
+        setup.device_descriptor = std::sync::Arc::new(|adapter| eframe::wgpu::DeviceDescriptor {
+            label: Some("BeamWright device"),
+            required_limits: adapter.limits(),
+            ..Default::default()
+        });
+    }
+    eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("BeamWright")
+            .with_inner_size([1280.0, 800.0])
+            .with_icon(load_icon()),
+        wgpu_options: wgpu,
+        ..Default::default()
+    }
+}
+
 fn main() -> eframe::Result<()> {
     tracing::info!("starting BeamWright");
     let cli = beamwright::cli::Cli::parse();
@@ -41,14 +67,7 @@ fn main() -> eframe::Result<()> {
         }
         return Ok(());
     }
-    let icon_data = load_icon();
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("BeamWright")
-            .with_inner_size([1280.0, 800.0])
-            .with_icon(icon_data),
-        ..Default::default()
-    };
+    let options = native_options();
     eframe::run_native(
         "BeamWright",
         options,
