@@ -345,6 +345,13 @@ enum DragState {
     },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum SidePanelTab {
+    #[default]
+    Properties,
+    Tool,
+}
+
 pub struct BeamWrightApp {
     editor: EditorState,
     dark_mode: bool,
@@ -499,6 +506,7 @@ pub struct BeamWrightApp {
     show_layers_panel: bool,
     show_properties_panel: bool,
     show_tool_panel: bool,
+    side_panel_tab: SidePanelTab,
     doc_properties_open: bool,
     operations_compare_open: bool,
     profile_pending: Option<(String, crate::profiles::OperationProfile)>,
@@ -1137,6 +1145,7 @@ impl BeamWrightApp {
             show_layers_panel: true,
             show_properties_panel: true,
             show_tool_panel: true,
+            side_panel_tab: SidePanelTab::Properties,
             doc_properties_open: false,
             operations_compare_open: false,
             profile_pending: None,
@@ -3007,7 +3016,6 @@ impl BeamWrightApp {
                     icons::checkbox(ui, &mut self.preview_toolpaths, Icon::Toolpaths, "Show toolpaths");
                     icons::checkbox(ui, &mut self.show_layers_panel, Icon::Panels, "Layers panel (F9)");
                     icons::checkbox(ui, &mut self.show_properties_panel, Icon::Panels, "Properties panel (F10)");
-                    icons::checkbox(ui, &mut self.show_tool_panel, Icon::Panels, "Tool panel");
                     if icons::button(ui, Icon::Panels, "Workspaces...").clicked() {
                         self.workspaces_open = true;
                         ui.close();
@@ -3393,97 +3401,91 @@ impl BeamWrightApp {
     }
 
     /// The fixed tool panel: options, live readout and the pending path.
-    fn tool_panel(&mut self, ui: &mut Ui) {
-        egui::Panel::left("tool_panel")
-            .default_size(230.0)
-            .resizable(true)
+    fn tool_contents(&mut self, ui: &mut Ui) {
+        ui.label(tool_help(self.editor.tool));
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .id_salt("tool_contents_scroll")
             .show(ui, |ui| {
-                ui.heading("Tool");
-                ui.label(tool_help(self.editor.tool));
+                self.tool_options(ui);
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("tool_panel_scroll")
-                    .show(ui, |ui| {
-                        self.tool_options(ui);
-                        ui.separator();
-                        ui.strong("In progress");
-                        let drag = self.drag.clone();
-                        match drag {
-                            Some(DragState::Draw {
-                                tool, start, end, ..
-                            }) => {
-                                ui.monospace(tool.label());
-                                ui.monospace(format!("from {:.2}, {:.2}", start.x, start.y));
-                                ui.monospace(format!("to   {:.2}, {:.2}", end.x, end.y));
-                                ui.weak(format!(
-                                    "{:.2} x {:.2} mm",
-                                    (end.x - start.x).abs(),
-                                    (end.y - start.y).abs()
-                                ));
-                                if ui
-                                    .button("Cancel drawing")
-                                    .on_hover_text("Discard the shape being dragged")
-                                    .clicked()
-                                {
-                                    self.drag = None;
-                                    self.status = "Drawing cancelled".to_string();
-                                }
-                            }
-                            Some(DragState::Marquee { start, end, .. }) => {
-                                ui.monospace(format!(
-                                    "Marquee {:.2} x {:.2} mm",
-                                    (end.x - start.x).abs(),
-                                    (end.y - start.y).abs()
-                                ));
-                            }
-                            Some(DragState::Sketch { points }) => {
-                                ui.monospace(format!("{} freehand point(s)", points.len()));
-                            }
-                            Some(DragState::Move { .. } | DragState::NodeMove { .. }) => {
-                                ui.weak("Dragging; release to apply.");
-                            }
-                            Some(_) => {
-                                ui.weak("Transforming; release to apply.");
-                            }
-                            None => {
-                                ui.weak("Nothing in progress.");
-                            }
+                ui.strong("In progress");
+                let drag = self.drag.clone();
+                match drag {
+                    Some(DragState::Draw {
+                        tool, start, end, ..
+                    }) => {
+                        ui.monospace(tool.label());
+                        ui.monospace(format!("from {:.2}, {:.2}", start.x, start.y));
+                        ui.monospace(format!("to   {:.2}, {:.2}", end.x, end.y));
+                        ui.weak(format!(
+                            "{:.2} x {:.2} mm",
+                            (end.x - start.x).abs(),
+                            (end.y - start.y).abs()
+                        ));
+                        if ui
+                            .button("Cancel drawing")
+                            .on_hover_text("Discard the shape being dragged")
+                            .clicked()
+                        {
+                            self.drag = None;
+                            self.status = "Drawing cancelled".to_string();
                         }
-                        if self.editor.tool == Tool::Bezier {
-                            ui.add_space(4.0);
-                            ui.monospace(format!("Bézier node(s): {}", self.pen_nodes.len()));
-                            ui.horizontal(|ui| {
-                                let can_apply = self.pen_nodes.len() >= 2;
-                                if ui
-                                    .add_enabled(can_apply, egui::Button::new("Apply path"))
-                                    .on_hover_text("Finish the path with the nodes placed so far")
-                                    .clicked()
-                                {
-                                    self.finish_pen(false);
-                                }
-                                if ui
-                                    .add_enabled(
-                                        !self.pen_nodes.is_empty(),
-                                        egui::Button::new("Cancel path"),
-                                    )
-                                    .on_hover_text("Discard the nodes without creating an object")
-                                    .clicked()
-                                {
-                                    self.pen_nodes.clear();
-                                    self.status = "Bézier path cancelled".to_string();
-                                }
-                            });
+                    }
+                    Some(DragState::Marquee { start, end, .. }) => {
+                        ui.monospace(format!(
+                            "Marquee {:.2} x {:.2} mm",
+                            (end.x - start.x).abs(),
+                            (end.y - start.y).abs()
+                        ));
+                    }
+                    Some(DragState::Sketch { points }) => {
+                        ui.monospace(format!("{} freehand point(s)", points.len()));
+                    }
+                    Some(DragState::Move { .. } | DragState::NodeMove { .. }) => {
+                        ui.weak("Dragging; release to apply.");
+                    }
+                    Some(_) => {
+                        ui.weak("Transforming; release to apply.");
+                    }
+                    None => {
+                        ui.weak("Nothing in progress.");
+                    }
+                }
+                if self.editor.tool == Tool::Bezier {
+                    ui.add_space(4.0);
+                    ui.monospace(format!("Bézier node(s): {}", self.pen_nodes.len()));
+                    ui.horizontal(|ui| {
+                        let can_apply = self.pen_nodes.len() >= 2;
+                        if ui
+                            .add_enabled(can_apply, egui::Button::new("Apply path"))
+                            .on_hover_text("Finish the path with the nodes placed so far")
+                            .clicked()
+                        {
+                            self.finish_pen(false);
                         }
-                        ui.separator();
-                        ui.strong("Selection");
-                        if let Some((min, max)) = self.editor.selected_bounds() {
-                            ui.monospace(format!("{} object(s)", self.editor.selection.len()));
-                            ui.weak(format!("from {:.2}, {:.2}", min.x, min.y));
-                            ui.weak(format!("{:.2} x {:.2} mm", max.x - min.x, max.y - min.y));
-                        } else {
-                            ui.weak("No selection.");
+                        if ui
+                            .add_enabled(
+                                !self.pen_nodes.is_empty(),
+                                egui::Button::new("Cancel path"),
+                            )
+                            .on_hover_text("Discard the nodes without creating an object")
+                            .clicked()
+                        {
+                            self.pen_nodes.clear();
+                            self.status = "Bézier path cancelled".to_string();
                         }
                     });
+                }
+                ui.separator();
+                ui.strong("Selection");
+                if let Some((min, max)) = self.editor.selected_bounds() {
+                    ui.monospace(format!("{} object(s)", self.editor.selection.len()));
+                    ui.weak(format!("from {:.2}, {:.2}", min.x, min.y));
+                    ui.weak(format!("{:.2} x {:.2} mm", max.x - min.x, max.y - min.y));
+                } else {
+                    ui.weak("No selection.");
+                }
             });
     }
 
@@ -4404,51 +4406,55 @@ impl BeamWrightApp {
         }
     }
 
-    fn properties_panel(&mut self, ui: &mut Ui) {
-        egui::Panel::right("properties_panel")
-            .default_size(280.0)
+    fn side_panel(&mut self, ui: &mut Ui) {
+        egui::Panel::right("side_panel")
+            .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Properties");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .small_button("Hide")
-                            .on_hover_text("Hide the properties panel")
-                            .clicked()
-                        {
-                            self.show_properties_panel = false;
-                        }
-                        ui.separator();
-                        if ui
-                            .selectable_label(self.show_tool_panel, "Tool")
-                            .on_hover_text("Show or hide the tool panel")
-                            .clicked()
-                        {
-                            self.show_tool_panel = !self.show_tool_panel;
-                        }
-                    });
+                    if ui
+                        .selectable_label(
+                            self.side_panel_tab == SidePanelTab::Properties,
+                            "Properties",
+                        )
+                        .clicked()
+                    {
+                        self.side_panel_tab = SidePanelTab::Properties;
+                    }
+                    if ui
+                        .selectable_label(self.side_panel_tab == SidePanelTab::Tool, "Tool")
+                        .clicked()
+                    {
+                        self.side_panel_tab = SidePanelTab::Tool;
+                    }
                 });
                 ui.separator();
-                let before = self.editor.document.clone();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if self.editor.selection.is_empty() {
-                        self.document_properties(ui);
-                    } else if self.editor.selection.len() == 1 {
-                        let id = self.editor.selection.ids()[0].clone();
-                        self.object_properties(ui, &id);
-                    } else {
-                        self.multi_selection_properties(ui);
-                    }
-                    if self.editor.is_editing_nodes() {
-                        ui.separator();
-                        self.node_properties(ui);
-                    }
-                });
-                if self.editor.document != before {
-                    self.editor.history.record(&before, "Edit properties");
+                match self.side_panel_tab {
+                    SidePanelTab::Properties => self.properties_contents(ui),
+                    SidePanelTab::Tool => self.tool_contents(ui),
                 }
             });
+    }
+
+    fn properties_contents(&mut self, ui: &mut Ui) {
+        let before = self.editor.document.clone();
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if self.editor.selection.is_empty() {
+                self.document_properties(ui);
+            } else if self.editor.selection.len() == 1 {
+                let id = self.editor.selection.ids()[0].clone();
+                self.object_properties(ui, &id);
+            } else {
+                self.multi_selection_properties(ui);
+            }
+            if self.editor.is_editing_nodes() {
+                ui.separator();
+                self.node_properties(ui);
+            }
+        });
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Edit properties");
+        }
     }
 
     fn document_properties(&mut self, ui: &mut Ui) {
@@ -12591,11 +12597,8 @@ impl eframe::App for BeamWrightApp {
         if self.show_layers_panel {
             self.layers_panel(ui);
         }
-        if self.show_tool_panel {
-            self.tool_panel(ui);
-        }
         if self.show_properties_panel {
-            self.properties_panel(ui);
+            self.side_panel(ui);
         }
         self.canvas(ui);
         let ctx = ui.ctx().clone();
