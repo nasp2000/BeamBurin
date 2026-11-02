@@ -13293,7 +13293,7 @@ mod tests {
         assert!(harness.state().editor.snap_enabled);
         harness.get_by_label_contains("Undo").click();
         harness.run();
-        assert!(harness.state().editor.document.objects.is_empty());
+        assert_eq!(harness.state().editor.document.objects.len(), 0);
         harness.get_by_label_contains("Redo").click();
         harness.run();
         assert_eq!(harness.state().editor.document.objects.len(), 1);
