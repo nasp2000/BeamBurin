@@ -15,6 +15,7 @@ pub mod cli;
 pub mod color;
 pub mod commands;
 pub mod config;
+pub mod constraints;
 pub mod document;
 pub mod editor;
 pub mod errors;

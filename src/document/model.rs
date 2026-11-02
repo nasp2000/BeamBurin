@@ -210,6 +210,9 @@ pub struct Document {
     /// Named values used by operation expressions.
     #[serde(default)]
     pub parameters: Vec<crate::parameters::Parameter>,
+    /// Geometric constraints solved on demand.
+    #[serde(default)]
+    pub constraints: Vec<crate::constraints::Constraint>,
     pub format_version: u32,
 }
 
@@ -330,6 +333,7 @@ impl Default for Document {
             stock: None,
             restricted_areas: Vec::new(),
             parameters: Vec::new(),
+            constraints: Vec::new(),
             format_version: CURRENT_FORMAT_VERSION,
         }
     }
@@ -373,6 +377,8 @@ impl Document {
         }
         self.validate_material_limits()?;
         self.validate_parameters()?;
+        crate::constraints::validate(&self.constraints, self)
+            .map_err(|error| format!("constraints: {error}"))?;
         if self.layers.is_empty() {
             return Err("document must have at least one layer".to_string());
         }
@@ -691,6 +697,38 @@ mod tests {
         assert!(document.validate().is_err());
         document.operations[0].params.expressions.clear();
         document.parameters[0].expression = "feed +".to_string();
+        assert!(document.validate().is_err());
+    }
+
+    #[test]
+    fn constraints_round_trip_and_validate() {
+        use crate::constraints::{Constraint, ConstraintKind, NodeRef};
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        let object = Object::new(
+            layer_id,
+            crate::document::Shape::Path(crate::geometry::Path::from_points(
+                &[(0.0, 0.0), (10.0, 5.0)],
+                false,
+            )),
+        );
+        let object_id = object.id.clone();
+        document.add_object(object);
+        document
+            .constraints
+            .push(Constraint::new(ConstraintKind::Horizontal {
+                a: NodeRef::new(object_id.clone(), 0),
+                b: NodeRef::new(object_id.clone(), 1),
+            }));
+        assert!(document.validate().is_ok());
+        let json = serde_json::to_string(&document).unwrap();
+        let loaded: Document = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.constraints, document.constraints);
+
+        document.constraints[0].kind = ConstraintKind::Coincident {
+            a: NodeRef::new("missing", 0),
+            b: NodeRef::new(object_id, 1),
+        };
         assert!(document.validate().is_err());
     }
 

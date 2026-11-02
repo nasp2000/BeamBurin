@@ -1237,6 +1237,90 @@ impl McpServer {
                     .cancel(&id)
                     .ok_or_else(|| BeamError::InvalidInput(format!("unknown job: {id}")))
             }
+            "list_constraints" => Ok(json!({
+                "constraints": self
+                    .editor
+                    .document
+                    .constraints
+                    .iter()
+                    .map(|constraint| json!({
+                        "id": constraint.id,
+                        "kind": constraint.kind.key(),
+                        "label": constraint.kind.label(),
+                        "value": constraint.kind.value(),
+                        "enabled": constraint.enabled,
+                        "description": constraint.describe(),
+                    }))
+                    .collect::<Vec<_>>(),
+            })),
+            "add_constraint" => {
+                let kind = parse_constraint(arguments)?;
+                let constraint = crate::constraints::Constraint::new(kind);
+                let id = constraint.id.clone();
+                let mut candidate = self.editor.document.clone();
+                candidate.constraints.push(constraint);
+                candidate.validate().map_err(BeamError::InvalidInput)?;
+                self.editor.record_action("Add constraint");
+                self.editor.document = candidate;
+                Ok(json!({
+                    "id": id,
+                    "constraints": self.editor.document.constraints.len(),
+                }))
+            }
+            "remove_constraint" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                let mut candidate = self.editor.document.clone();
+                let before = candidate.constraints.len();
+                candidate
+                    .constraints
+                    .retain(|constraint| constraint.id != id);
+                if candidate.constraints.len() == before {
+                    return Err(BeamError::InvalidInput(format!("unknown constraint: {id}")));
+                }
+                self.editor.record_action("Remove constraint");
+                self.editor.document = candidate;
+                Ok(json!({"removed": id, "constraints": before - 1}))
+            }
+            "set_constraint_value" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                let value = number(arguments, "value").ok_or_else(|| missing("value"))?;
+                let mut candidate = self.editor.document.clone();
+                let constraint = candidate
+                    .constraints
+                    .iter_mut()
+                    .find(|constraint| constraint.id == id)
+                    .ok_or_else(|| BeamError::InvalidInput(format!("unknown constraint: {id}")))?;
+                if !constraint.kind.set_value(value) {
+                    return Err(BeamError::InvalidInput(format!(
+                        "'{id}' has no driving value"
+                    )));
+                }
+                candidate.validate().map_err(BeamError::InvalidInput)?;
+                self.editor.record_action("Set dimension");
+                self.editor.document = candidate;
+                Ok(json!({"id": id, "value": value}))
+            }
+            "solve_constraints" => {
+                let ids = ids(arguments);
+                let (solved, report) =
+                    crate::constraints::solve(&self.editor.document, ids.as_deref())?;
+                if report.constraints > 0 {
+                    self.editor.record_action("Solve constraints");
+                    self.editor.document = solved;
+                    let selected = self.editor.selection.ids().to_vec();
+                    for id in selected {
+                        if self.editor.document.object(&id).is_none() {
+                            self.editor.selection.remove(&id);
+                        }
+                    }
+                }
+                Ok(json!({
+                    "constraints": report.constraints,
+                    "iterations": report.iterations,
+                    "residual": report.residual,
+                    "moved_nodes": report.moved_nodes,
+                }))
+            }
             "list_commands" => {
                 let query = string(arguments, "query")
                     .unwrap_or_default()
@@ -1890,6 +1974,42 @@ fn tool_definitions() -> Vec<Value> {
             }, "required": ["id"]}),
         ),
         tool_with(
+            "list_constraints",
+            "List the geometric constraints with their driving values.",
+            json!({"type": "object", "properties": {}}),
+        ),
+        tool_with(
+            "add_constraint",
+            "Add a geometric constraint between path nodes: coincident, horizontal, vertical, distance, angle, parallel, perpendicular or tangent.",
+            json!({"type": "object", "properties": {
+                "kind": {"type": "string"},
+                "a": {"type": "object"},
+                "b": {"type": "object"},
+                "c": {"type": "object"},
+                "value": {"type": "number"}
+            }, "required": ["kind", "a", "b"]}),
+        ),
+        tool_with(
+            "remove_constraint",
+            "Remove a constraint by id.",
+            json!({"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}),
+        ),
+        tool_with(
+            "set_constraint_value",
+            "Change the driving distance or angle of a constraint.",
+            json!({"type": "object", "properties": {
+                "id": {"type": "string"},
+                "value": {"type": "number"}
+            }, "required": ["id", "value"]}),
+        ),
+        tool_with(
+            "solve_constraints",
+            "Solve the enabled constraints (or the listed ids) and update the path nodes.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}}
+            }}),
+        ),
+        tool_with(
             "inspect",
             "Describe the project: layers, objects, operations, parameters, stock and selection. Read-only.",
             json!({"type": "object", "properties": {
@@ -1963,6 +2083,74 @@ fn positive(arguments: &Value, key: &str) -> Result<f64> {
         return Err(BeamError::InvalidInput(format!("'{key}' must be positive")));
     }
     Ok(value)
+}
+
+/// Parse a node reference such as `{"object_id": "...", "node": 0}`.
+fn node_ref(arguments: &Value, key: &str) -> Result<crate::constraints::NodeRef> {
+    let value = arguments.get(key).ok_or_else(|| missing(key))?;
+    let object_id = value
+        .get("object_id")
+        .or_else(|| value.get("object"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| missing("object_id"))?;
+    let node = value
+        .get("node")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| missing("node"))?;
+    Ok(crate::constraints::NodeRef::new(
+        object_id,
+        usize::try_from(node)
+            .map_err(|_| BeamError::InvalidInput("the node index is too large".to_string()))?,
+    ))
+}
+
+/// Parse one constraint from a tool call.
+fn parse_constraint(arguments: &Value) -> Result<crate::constraints::ConstraintKind> {
+    use crate::constraints::ConstraintKind;
+    let kind = string(arguments, "kind").ok_or_else(|| missing("kind"))?;
+    let value = number(arguments, "value");
+    Ok(match kind.as_str() {
+        "coincident" => ConstraintKind::Coincident {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        "horizontal" => ConstraintKind::Horizontal {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        "vertical" => ConstraintKind::Vertical {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        "distance" => ConstraintKind::Distance {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+            value_mm: value.ok_or_else(|| missing("value"))?,
+        },
+        "angle" => ConstraintKind::Angle {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+            c: node_ref(arguments, "c")?,
+            degrees: value.ok_or_else(|| missing("value"))?,
+        },
+        "parallel" => ConstraintKind::Parallel {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        "perpendicular" => ConstraintKind::Perpendicular {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        "tangent" => ConstraintKind::Tangent {
+            a: node_ref(arguments, "a")?,
+            b: node_ref(arguments, "b")?,
+        },
+        other => {
+            return Err(BeamError::InvalidInput(format!(
+                "unknown constraint kind: {other}"
+            )));
+        }
+    })
 }
 
 /// The `ids` array, when present and made of strings.
@@ -2494,6 +2682,117 @@ mod tests {
         let report = call(&mut server, "check_job", json!({}));
         assert_eq!(report["result"]["ok"], false);
         assert_eq!(report["result"]["changed_ids"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn constraints_can_be_added_and_solved_through_tools() {
+        let mut server = McpServer::new();
+        let added = call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let object = added["result"]["changed_ids"][0]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let constraint = call(
+            &mut server,
+            "add_constraint",
+            json!({
+                "kind": "distance",
+                "a": {"object_id": object, "node": 0},
+                "b": {"object_id": object, "node": 1},
+                "value": 20.0
+            }),
+        );
+        assert!(constraint.get("error").is_none(), "{constraint}");
+        let id = constraint["result"]["id"].as_str().unwrap().to_string();
+        let listed = call(&mut server, "list_constraints", json!({}));
+        assert_eq!(listed["result"]["constraints"][0]["kind"], "distance");
+
+        let solved = call(&mut server, "solve_constraints", json!({}));
+        assert!(solved.get("error").is_none(), "{solved}");
+        assert_eq!(solved["result"]["constraints"], 1);
+        assert_eq!(solved["result"]["undo_label"], "Solve constraints");
+        let points: Vec<crate::geometry::Point2> = server
+            .editor
+            .document
+            .object(&object)
+            .unwrap()
+            .world_path()
+            .nodes()
+            .into_iter()
+            .map(|node| node.point)
+            .collect();
+        let distance = points[0].distance(points[1]);
+        assert!((distance - 20.0).abs() < 1e-5, "{distance}");
+
+        let changed = call(
+            &mut server,
+            "set_constraint_value",
+            json!({"id": id, "value": 35.0}),
+        );
+        assert!(changed.get("error").is_none(), "{changed}");
+        call(&mut server, "solve_constraints", json!({}));
+        let points: Vec<crate::geometry::Point2> = server
+            .editor
+            .document
+            .object(&object)
+            .unwrap()
+            .world_path()
+            .nodes()
+            .into_iter()
+            .map(|node| node.point)
+            .collect();
+        assert!((points[0].distance(points[1]) - 35.0).abs() < 1e-5);
+
+        let removed = call(&mut server, "remove_constraint", json!({"id": id}));
+        assert!(removed.get("error").is_none(), "{removed}");
+        assert_eq!(server.editor.document.constraints.len(), 0);
+        let missing = call(&mut server, "remove_constraint", json!({"id": "nope"}));
+        assert!(missing.get("error").is_some());
+    }
+
+    #[test]
+    fn bad_constraints_are_refused() {
+        let mut server = McpServer::new();
+        let added = call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let object = added["result"]["changed_ids"][0]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let unknown = call(
+            &mut server,
+            "add_constraint",
+            json!({"kind": "magic", "a": {"object_id": object}, "b": {"object_id": object}}),
+        );
+        assert!(unknown.get("error").is_some());
+        let bad_node = call(
+            &mut server,
+            "add_constraint",
+            json!({
+                "kind": "coincident",
+                "a": {"object_id": object, "node": 99},
+                "b": {"object_id": object, "node": 0}
+            }),
+        );
+        assert!(bad_node.get("error").is_some());
+        assert_eq!(server.editor.document.constraints.len(), 0);
+        let no_value = call(
+            &mut server,
+            "add_constraint",
+            json!({
+                "kind": "distance",
+                "a": {"object_id": object, "node": 0},
+                "b": {"object_id": object, "node": 1}
+            }),
+        );
+        assert!(no_value.get("error").is_some());
     }
 
     #[test]

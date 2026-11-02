@@ -109,6 +109,54 @@ fn cli_inspect_and_measure_report_a_project() {
 }
 
 #[test]
+fn cli_solve_applies_the_constraints() {
+    let project = temp_dir().join("bw_cli_solve.bwp");
+    let output = temp_dir().join("bw_cli_solve_out.bwp");
+    let _ = fs::remove_file(&output);
+    let mut document = beamwright::document::Document::default();
+    let layer_id = document.layers[0].id.clone();
+    let object = beamwright::document::Object::new(
+        layer_id,
+        beamwright::document::Shape::Path(beamwright::geometry::Path::from_points(
+            &[(0.0, 0.0), (10.0, 5.0)],
+            false,
+        )),
+    );
+    let object_id = object.id.clone();
+    document.add_object(object);
+    document
+        .constraints
+        .push(beamwright::constraints::Constraint::new(
+            beamwright::constraints::ConstraintKind::Horizontal {
+                a: beamwright::constraints::NodeRef::new(object_id.clone(), 0),
+                b: beamwright::constraints::NodeRef::new(object_id.clone(), 1),
+            },
+        ));
+    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let cli = Cli::try_parse_from([
+        "BeamWright",
+        "solve",
+        project.to_str().unwrap(),
+        "--output",
+        output.to_str().unwrap(),
+    ])
+    .unwrap();
+    run(cli).unwrap();
+    let solved = beamwright::document::serialization::load_from_file(&output).unwrap();
+    let points: Vec<beamwright::geometry::Point2> = solved
+        .object(&object_id)
+        .unwrap()
+        .world_path()
+        .nodes()
+        .into_iter()
+        .map(|node| node.point)
+        .collect();
+    assert!((points[0].y - points[1].y).abs() < 1e-6);
+    let _ = fs::remove_file(&project);
+    let _ = fs::remove_file(&output);
+}
+
+#[test]
 fn cli_check_reports_a_project() {
     let path = temp_dir().join("bw_cli_check.bwp");
     let document = beamwright::document::Document::default();

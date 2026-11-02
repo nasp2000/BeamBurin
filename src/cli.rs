@@ -140,6 +140,16 @@ pub enum Commands {
         #[arg(long)]
         include_hidden: bool,
     },
+    /// Solve the geometric constraints and save the project
+    Solve {
+        input: PathBuf,
+        /// Write the result here instead of overwriting the input
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Only solve these constraint ids
+        #[arg(long, value_delimiter = ',')]
+        ids: Vec<String>,
+    },
     /// Preflight a project or drawing without exporting
     Check {
         path: PathBuf,
@@ -405,6 +415,22 @@ pub fn run(cli: Cli) -> Result<()> {
             } else {
                 print_measurement(&report);
             }
+            Ok(())
+        }
+        Some(Commands::Solve { input, output, ids }) => {
+            let document = open_document(&input)?;
+            let filter = (!ids.is_empty()).then_some(ids.as_slice());
+            let (solved, report) = crate::constraints::solve(&document, filter)?;
+            let target = output.unwrap_or_else(|| input.clone());
+            serialization::save_to_file(&solved, &target)?;
+            println!(
+                "Solved {} constraint(s): moved {} node(s), residual {:.1e}, {} iteration(s) -> {}",
+                report.constraints,
+                report.moved_nodes,
+                report.residual,
+                report.iterations,
+                target.display()
+            );
             Ok(())
         }
         Some(Commands::Check { path, json }) => {

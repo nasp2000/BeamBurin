@@ -47,6 +47,7 @@ pub enum CommandId {
     ExportGcode,
     Cuts,
     Parameters,
+    Constraints,
     Preview,
     MaterialTest,
     RegistrationMarks,
@@ -464,6 +465,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         true,
         "Edit named parameters and the expressions that use them."
+    ),
+    command!(
+        Constraints,
+        "operations.constraints",
+        "Constraints...",
+        Operations,
+        None,
+        true,
+        "Add, edit and solve geometric constraints between path nodes."
     ),
     command!(
         Preview,

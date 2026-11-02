@@ -25,6 +25,7 @@ use crate::ui::icons::{self, Icon};
 
 /// Result produced by a background task.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum TaskResult {
     Import {
         path: PathBuf,
@@ -38,6 +39,31 @@ enum PendingAction {
     New,
     Open,
     Quit,
+}
+
+/// Constraint kinds the window offers, in display order.
+const CONSTRAINT_KINDS: [&str; 8] = [
+    "coincident",
+    "horizontal",
+    "vertical",
+    "distance",
+    "angle",
+    "parallel",
+    "perpendicular",
+    "tangent",
+];
+
+fn constraint_kind_label(key: &str) -> &'static str {
+    match key {
+        "coincident" => "Coincident",
+        "vertical" => "Vertical",
+        "distance" => "Distance",
+        "angle" => "Angle",
+        "parallel" => "Parallel",
+        "perpendicular" => "Perpendicular",
+        "tangent" => "Tangent",
+        _ => "Horizontal",
+    }
 }
 
 /// One item chosen from the command palette.
@@ -360,6 +386,11 @@ pub struct BeamWrightApp {
     cuts_snapshot: Option<Document>,
     parameters_open: bool,
     parameters_snapshot: Option<Document>,
+    constraints_open: bool,
+    constraints_snapshot: Option<Document>,
+    constraint_kind_key: String,
+    constraint_value: f64,
+    constraint_message: String,
     help_shortcuts_open: bool,
     assistant_open: bool,
     multi_props_recorded: bool,
@@ -967,6 +998,11 @@ impl BeamWrightApp {
             cuts_snapshot: None,
             parameters_open: false,
             parameters_snapshot: None,
+            constraints_open: false,
+            constraints_snapshot: None,
+            constraint_kind_key: "horizontal".to_string(),
+            constraint_value: 10.0,
+            constraint_message: String::new(),
             help_shortcuts_open: false,
             assistant_open: false,
             multi_props_recorded: false,
@@ -2095,6 +2131,7 @@ impl BeamWrightApp {
             || self.image_adjust.is_some()
             || self.help_shortcuts_open
             || self.assistant_open
+            || self.constraints_open
             || self.workspaces_open
             || self.interface_presets_open
             || self.external_gcode_open
@@ -2581,6 +2618,10 @@ impl BeamWrightApp {
                     }
                     if icons::button(ui, Icon::Gear, "Parameters...").clicked() {
                         self.open_parameters();
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::Join, "Constraints...").clicked() {
+                        self.open_constraints();
                         ui.close();
                     }
                     if icons::button(ui, Icon::Plus, "New operation").clicked() {
@@ -6629,6 +6670,273 @@ impl BeamWrightApp {
         }
     }
 
+    fn open_constraints(&mut self) {
+        if self.constraints_snapshot.is_none() {
+            self.constraints_snapshot = Some(self.editor.document.clone());
+        }
+        self.constraint_message.clear();
+        self.constraints_open = true;
+    }
+
+    fn add_constraint_from_selection(&mut self) {
+        use crate::constraints::ConstraintKind;
+        let Some(object_id) = self.editor.node_object.clone() else {
+            self.constraint_message =
+                "Enter node editing (double-click a path) and select the nodes first".to_string();
+            return;
+        };
+        let selection = self.editor.node_selection.clone();
+        let node =
+            |index: usize| crate::constraints::NodeRef::new(object_id.clone(), selection[index]);
+        let key = self.constraint_kind_key.as_str();
+        let needed = if key == "angle" { 3 } else { 2 };
+        if selection.len() < needed {
+            self.constraint_message = format!(
+                "Select {needed} node(s) on the path; {} selected",
+                selection.len()
+            );
+            return;
+        }
+        let kind = match key {
+            "coincident" => ConstraintKind::Coincident {
+                a: node(0),
+                b: node(1),
+            },
+            "vertical" => ConstraintKind::Vertical {
+                a: node(0),
+                b: node(1),
+            },
+            "distance" => ConstraintKind::Distance {
+                a: node(0),
+                b: node(1),
+                value_mm: self.constraint_value.max(0.001),
+            },
+            "angle" => ConstraintKind::Angle {
+                a: node(0),
+                b: node(1),
+                c: node(2),
+                degrees: self.constraint_value,
+            },
+            "parallel" => ConstraintKind::Parallel {
+                a: node(0),
+                b: node(1),
+            },
+            "perpendicular" => ConstraintKind::Perpendicular {
+                a: node(0),
+                b: node(1),
+            },
+            "tangent" => ConstraintKind::Tangent {
+                a: node(0),
+                b: node(1),
+            },
+            _ => ConstraintKind::Horizontal {
+                a: node(0),
+                b: node(1),
+            },
+        };
+        let constraint = crate::constraints::Constraint::new(kind);
+        let mut candidate = self.editor.document.clone();
+        candidate.constraints.push(constraint);
+        if let Err(error) = candidate.validate() {
+            self.constraint_message = error;
+            return;
+        }
+        self.editor.record_action("Add constraint");
+        self.editor.document = candidate;
+        self.constraint_message = "Constraint added".to_string();
+    }
+
+    fn solve_constraints(&mut self) {
+        match crate::constraints::solve(&self.editor.document, None) {
+            Ok((solved, report)) if report.constraints > 0 => {
+                self.editor.record_action("Solve constraints");
+                self.editor.document = solved;
+                self.constraint_message = format!(
+                    "Solved {} constraint(s): moved {} node(s), residual {:.1e} after {} iteration(s)",
+                    report.constraints, report.moved_nodes, report.residual, report.iterations
+                );
+            }
+            Ok(_) => {
+                self.constraint_message = "No enabled constraints to solve".to_string();
+            }
+            Err(error) => {
+                self.constraint_message = error.to_string();
+            }
+        }
+    }
+
+    fn constraints_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.constraints_open;
+        let mut solve = false;
+        let mut add = false;
+        let mut close_requested = false;
+        let mut remove: Option<usize> = None;
+        egui::Window::new("Constraints")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size([620.0, 480.0])
+            .show(ctx, |ui| {
+                ui.label(
+                    "Constraints keep path nodes in place while you edit. They are solved on demand, in document millimetres.",
+                );
+                ui.weak(
+                    "Double-click a path to edit its nodes, select the nodes in the order the constraint needs, then add it here.",
+                );
+                ui.separator();
+                ui.heading("Add");
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("constraint_kind")
+                        .selected_text(constraint_kind_label(&self.constraint_kind_key))
+                        .show_ui(ui, |ui| {
+                            for key in CONSTRAINT_KINDS {
+                                ui.selectable_value(
+                                    &mut self.constraint_kind_key,
+                                    key.to_string(),
+                                    constraint_kind_label(key),
+                                );
+                            }
+                        });
+                    if matches!(
+                        self.constraint_kind_key.as_str(),
+                        "distance" | "angle"
+                    ) {
+                        ui.add(
+                            egui::DragValue::new(&mut self.constraint_value)
+                                .speed(0.5)
+                                .range(-3600.0..=3600.0)
+                                .suffix(if self.constraint_kind_key == "angle" {
+                                    " deg"
+                                } else {
+                                    " mm"
+                                }),
+                        );
+                    }
+                    let needed = if self.constraint_kind_key == "angle" {
+                        3
+                    } else {
+                        2
+                    };
+                    let ready = self.editor.node_object.is_some()
+                        && self.editor.node_selection.len() >= needed;
+                    if ui
+                        .add_enabled(ready, egui::Button::new("Add from selected nodes"))
+                        .on_hover_text(match needed {
+                            3 => "Select three nodes: first arm, vertex, second arm",
+                            _ => "Select two nodes; for parallel, perpendicular and tangent each node starts the segment",
+                        })
+                        .clicked()
+                    {
+                        add = true;
+                    }
+                });
+                if let Some(object_id) = &self.editor.node_object {
+                    let name = self
+                        .editor
+                        .document
+                        .object(object_id)
+                        .map_or("(missing)".to_string(), |object| object.name.clone());
+                    ui.weak(format!(
+                        "Editing '{}': {} node(s) selected",
+                        name,
+                        self.editor.node_selection.len()
+                    ));
+                } else {
+                    ui.weak("Not editing nodes.");
+                }
+                if !self.constraint_message.is_empty() {
+                    ui.label(self.constraint_message.clone());
+                }
+                ui.separator();
+                ui.heading("Stored");
+                let mut removal = None;
+                egui::ScrollArea::vertical()
+                    .id_salt("constraint_list")
+                    .max_height(260.0)
+                    .show(ui, |ui| {
+                        if self.editor.document.constraints.is_empty() {
+                            ui.weak("No constraints yet.");
+                        }
+                        for (index, constraint) in
+                            self.editor.document.constraints.iter_mut().enumerate()
+                        {
+                            ui.horizontal(|ui| {
+                                let mut enabled = constraint.enabled;
+                                if ui.checkbox(&mut enabled, "").changed() {
+                                    constraint.enabled = enabled;
+                                }
+                                ui.label(constraint.kind.label());
+                                ui.weak(constraint.describe());
+                                if let Some(value) = constraint.kind.value() {
+                                    let mut changed = value;
+                                    ui.add(
+                                        egui::DragValue::new(&mut changed)
+                                            .speed(0.5)
+                                            .range(-3600.0..=3600.0),
+                                    );
+                                    if (changed - value).abs() > 1e-9 {
+                                        constraint.kind.set_value(changed);
+                                    }
+                                }
+                                if ui
+                                    .small_button("x")
+                                    .on_hover_text("Delete this constraint")
+                                    .clicked()
+                                {
+                                    removal = Some(index);
+                                }
+                            });
+                        }
+                    });
+                remove = removal;
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Solve")
+                        .on_hover_text("Move the nodes so every enabled constraint holds")
+                        .clicked()
+                    {
+                        solve = true;
+                    }
+                    if ui
+                        .button("Close")
+                        .on_hover_text("Close this window")
+                        .clicked()
+                    {
+                        close_requested = true;
+                    }
+                });
+            });
+        if close_requested {
+            open = false;
+        }
+        if add {
+            self.add_constraint_from_selection();
+        }
+        if let Some(index) = remove {
+            let mut candidate = self.editor.document.clone();
+            if index < candidate.constraints.len() {
+                candidate.constraints.remove(index);
+                self.editor.record_action("Remove constraint");
+                self.editor.document = candidate;
+                self.constraint_message = "Constraint removed".to_string();
+            }
+        }
+        if solve {
+            self.solve_constraints();
+        }
+        self.constraints_open = open;
+        if !open {
+            if let Some(snapshot) = self.constraints_snapshot.take() {
+                if snapshot != self.editor.document {
+                    self.editor.history.record(&snapshot, "Constraints");
+                }
+            }
+        }
+    }
+
     fn handle_live_request(&mut self, request: &str) -> String {
         let request: serde_json::Value = match serde_json::from_str(request) {
             Ok(value) => value,
@@ -9304,6 +9612,7 @@ impl BeamWrightApp {
             Action::ExportGcode => self.open_dialog(FileMode::ExportGcode),
             Action::Cuts => self.open_cuts(),
             Action::Parameters => self.open_parameters(),
+            Action::Constraints => self.open_constraints(),
             Action::Preview => self.open_preview(),
             Action::MaterialTest => self.material_test_open = true,
             Action::RegistrationMarks => self.regmarks_open = true,
@@ -11180,6 +11489,9 @@ impl BeamWrightApp {
         }
         if self.parameters_open {
             self.parameters_window(ctx);
+        }
+        if self.constraints_open {
+            self.constraints_window(ctx);
         }
         if self.material_test_open {
             self.material_test_window(ctx);
