@@ -22,6 +22,13 @@ use crate::objects::{ImageObject, TextObject};
 const DPI: f64 = 96.0;
 const PX_TO_MM: f64 = 25.4 / DPI;
 
+/// Deepest element nesting accepted in an SVG document.
+///
+/// The importer walks groups recursively and the XML tree is dropped
+/// recursively too, so a pathological document must be refused before the tree
+/// is built. Real drawings nest a few dozen levels at most.
+pub const MAX_SVG_NESTING: usize = 256;
+
 #[derive(Debug, Clone)]
 pub struct ImportReport {
     pub document: Document,
@@ -141,6 +148,11 @@ fn parse_tree_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Result<Node> 
         }
         match reader.read_event() {
             Ok(Event::Start(event)) => {
+                if stack.len() >= MAX_SVG_NESTING {
+                    return Err(BeamError::InvalidInput(format!(
+                        "SVG nesting is deeper than {MAX_SVG_NESTING} elements"
+                    )));
+                }
                 let node = make_node(&event);
                 stack.push(node);
             }
@@ -1080,6 +1092,30 @@ mod tests {
         let (min, max) = doc.objects[0].bounds().unwrap();
         assert!((min.x - 10.0).abs() < 1e-6);
         assert!((max.x - 30.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn refuses_pathological_nesting() {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm">{}{}<rect x="1" y="1" width="2" height="2"/>{}</svg>"#,
+            "<g>".repeat(MAX_SVG_NESTING),
+            "<g>",
+            "</g>".repeat(MAX_SVG_NESTING + 1)
+        );
+        let error = import_svg(&svg).unwrap_err();
+        assert!(error.to_string().contains("nesting"), "{error}");
+    }
+
+    #[test]
+    fn accepts_reasonable_nesting() {
+        let depth = 64;
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm">{}<rect x="1" y="1" width="2" height="2"/>{}</svg>"#,
+            "<g>".repeat(depth),
+            "</g>".repeat(depth)
+        );
+        let doc = import_svg(&svg).unwrap();
+        assert_eq!(doc.objects.len(), 1);
     }
 
     #[test]

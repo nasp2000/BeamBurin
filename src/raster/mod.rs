@@ -508,6 +508,15 @@ pub fn process_object(
     image: &crate::objects::ImageObject,
 ) -> Result<RasterBitmap> {
     image.validate().map_err(BeamError::InvalidInput)?;
+    // Check the source header before decoding: crop, rotation and a smaller
+    // working size do not reduce the memory the decoder needs for the file.
+    let (width, height) = image_dimensions(path)?;
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > MAX_PIXELS {
+        return Err(BeamError::InvalidInput(format!(
+            "image has {pixels} pixels; the limit is {MAX_PIXELS}"
+        )));
+    }
     let mut picture = image::open(path)
         .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
     if image.settings.flip_horizontal {
@@ -551,6 +560,15 @@ pub fn process_object(
 
 /// Load an image file and produce its burn bitmap.
 pub fn process_file(path: &std::path::Path, settings: &ImageSettings) -> Result<RasterBitmap> {
+    // The header check avoids allocating the pixel buffer of a file that the
+    // limit rejects a moment later.
+    let (width, height) = image_dimensions(path)?;
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > MAX_PIXELS {
+        return Err(BeamError::InvalidInput(format!(
+            "image has {pixels} pixels; the limit is {MAX_PIXELS}"
+        )));
+    }
     let image = image::open(path)
         .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
     let pixels = u64::from(image.width()) * u64::from(image.height());
@@ -1003,5 +1021,49 @@ mod tests {
         assert_eq!(bitmap.height, 2);
         assert_eq!(bitmap.burned(), 4);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_huge_header_is_rejected_before_decoding() {
+        let path = std::env::temp_dir().join("beamwright_huge_header.png");
+        write_header_only_png(&path, 60_000, 60_000);
+        let error = process_file(&path, &ImageSettings::default()).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("3600000000 pixels"), "{message}");
+        assert!(message.contains("limit is"), "{message}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn write_header_only_png(path: &std::path::Path, width: u32, height: u32) {
+        fn crc32(data: &[u8]) -> u32 {
+            let mut crc = 0xFFFF_FFFFu32;
+            for byte in data {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    let mask = (crc & 1).wrapping_neg();
+                    crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+                }
+            }
+            !crc
+        }
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+        png.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+        let mut chunk = b"IHDR".to_vec();
+        chunk.extend_from_slice(&ihdr);
+        png.extend_from_slice(&chunk);
+        png.extend_from_slice(&crc32(&chunk).to_be_bytes());
+        // An empty IDAT keeps the PNG header parseable while leaving no image
+        // data to decode.
+        png.extend_from_slice(&0u32.to_be_bytes());
+        png.extend_from_slice(b"IDAT");
+        png.extend_from_slice(&crc32(b"IDAT").to_be_bytes());
+        png.extend_from_slice(&0u32.to_be_bytes());
+        png.extend_from_slice(b"IEND");
+        png.extend_from_slice(&crc32(b"IEND").to_be_bytes());
+        std::fs::write(path, png).unwrap();
     }
 }
