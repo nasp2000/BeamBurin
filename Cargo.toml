@@ -55,8 +55,8 @@ all = "warn"
 pedantic = "warn"
 # Style-only lints introduced or widened by clippy 1.99. The explicit nested
 # conditions are deliberate in the panel code; the arithmetic forms are clear.
-collapsible_if = "allow"
-manual_is_multiple_of = "allow"
-chunks_exact_to_as_chunks = "allow"
+collapsible_if = { level = "allow", priority = 1 }
+manual_is_multiple_of = { level = "allow", priority = 1 }
+chunks_exact_to_as_chunks = { level = "allow", priority = 1 }
 [target.'cfg(windows)'.build-dependencies]
 winres = "=0.1.12"
