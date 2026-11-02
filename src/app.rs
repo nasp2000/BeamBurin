@@ -929,6 +929,17 @@ impl BeamWrightApp {
     }
 
     pub fn new(file: Option<PathBuf>) -> Self {
+        Self::new_inner(file, true)
+    }
+
+    /// A deterministic application for widget tests: no live bridge and no
+    /// machine or recovery state from the user's data directory.
+    #[cfg(test)]
+    pub(crate) fn new_for_ui_test() -> Self {
+        Self::new_inner(None, false)
+    }
+
+    fn new_inner(file: Option<PathBuf>, start_bridge: bool) -> Self {
         let document = Document::default();
         let preferences_path = crate::config::preferences::default_path();
         let preferences =
@@ -1074,11 +1085,15 @@ impl BeamWrightApp {
             image_test_open: false,
             image_test_options: crate::image_test::Options::default(),
             image_test_target: None,
-            bridge: crate::bridge::LiveBridge::start(
-                bridge_bind,
-                crate::bridge::configured_port(),
-                Some(crate::bridge::effective_token()),
-            ),
+            bridge: if start_bridge {
+                crate::bridge::LiveBridge::start(
+                    bridge_bind,
+                    crate::bridge::configured_port(),
+                    Some(crate::bridge::effective_token()),
+                )
+            } else {
+                None
+            },
             live_server: crate::mcp::McpServer::new(),
             toasts: Vec::new(),
             preferences: preferences.clone(),
@@ -12555,8 +12570,8 @@ impl BeamWrightApp {
     }
 }
 
-impl eframe::App for BeamWrightApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+impl BeamWrightApp {
+    pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         if let Some(remaining) = self.smoke_frames {
             if remaining == 0 {
@@ -12609,7 +12624,7 @@ impl eframe::App for BeamWrightApp {
         }
     }
 
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn advance(&mut self, ctx: &egui::Context) {
         self.persist_theme();
         let requests = self
             .bridge
@@ -12637,6 +12652,16 @@ impl eframe::App for BeamWrightApp {
         if current.as_deref() != Some(title.as_str()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
+    }
+}
+
+impl eframe::App for BeamWrightApp {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.advance(ctx);
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.show(ui);
     }
 }
 
@@ -13103,5 +13128,123 @@ mod tests {
         assert_eq!(app.redo_label(), "Redo Move");
         app.redo();
         assert_eq!(app.status, "Redo Move");
+    }
+
+    fn ui_harness(app: BeamWrightApp) -> egui_kittest::Harness<'static, BeamWrightApp> {
+        egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui_state(|ui, app| app.show(ui), app)
+    }
+
+    fn ui_test_app() -> BeamWrightApp {
+        let mut app = BeamWrightApp::new_for_ui_test();
+        app.preferences = crate::config::preferences::AppPreferences::default();
+        app.preferences_path =
+            std::env::temp_dir().join(format!("beamwright_ui_{}.json", std::process::id()));
+        app.tour_open = false;
+        app.recovery_prompt_open = false;
+        app.machines = crate::machines::MachineLibrary::default();
+        app
+    }
+
+    #[test]
+    fn the_ui_keeps_the_menus_and_the_toolbar_align_actions() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        for label in [
+            "File",
+            "Edit",
+            "Draw",
+            "Operations",
+            "Materials and profiles",
+            "Arrange",
+            "View",
+            "Help",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "missing menu {label}"
+            );
+        }
+        assert!(
+            harness.query_by_label("Align").is_none(),
+            "the Align menu should be gone"
+        );
+        for label in [
+            "Align left",
+            "Align centre horizontally",
+            "Align right",
+            "Align top",
+            "Align centre vertically",
+            "Align bottom",
+            "Distribute horizontally",
+            "Distribute vertically",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "missing toolbar action {label}"
+            );
+        }
+        harness.get_by_label("File").click();
+        harness.run();
+        for entry in [
+            "New",
+            "Open...",
+            "Save",
+            "Export G-code...",
+            "Export SVG...",
+        ] {
+            assert!(
+                harness.query_by_label(entry).is_some(),
+                "missing File entry {entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_side_panel_switches_between_properties_and_tool() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        assert!(harness.query_by_label("Properties").is_some());
+        harness.get_by_label("Tool").click();
+        harness.run();
+        assert!(
+            harness.query_by_label("In progress").is_some(),
+            "the Tool tab did not show its content"
+        );
+        harness.get_by_label("Properties").click();
+        harness.run();
+        assert!(
+            harness.query_by_label("Document").is_some(),
+            "the Properties tab did not come back"
+        );
+    }
+
+    #[test]
+    fn a_selected_object_exposes_the_plus_and_minus_controls() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        if let Some(id) = app
+            .editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        {
+            app.editor.selection.add(id);
+        }
+        let mut harness = ui_harness(app);
+        harness.run();
+        assert!(harness.query_by_label("Position (mm)").is_some());
+        assert!(
+            harness.query_all_by_label("+").count() >= 5,
+            "the size/position plus controls are missing"
+        );
+        assert!(
+            harness.query_all_by_label("-").count() >= 5,
+            "the size/position minus controls are missing"
+        );
     }
 }
