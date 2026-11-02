@@ -3818,7 +3818,7 @@ impl BeamWrightApp {
                                         }
                                         air_response.on_hover_text("Air assist (M8/M9)");
                                         if *locked {
-                                            ui.label(icons::image_at(ui.ctx(), Icon::Lock, 14.0));
+                                            ui.add(icons::image_at(ui.ctx(), Icon::Lock, 14.0));
                                         }
                                     })
                                     .response;
