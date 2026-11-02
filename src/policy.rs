@@ -1,9 +1,9 @@
 //! Restrictions an MCP session runs under.
 //!
 //! `--workspace <dir>` confines every path the agent sends to one folder and
-//! `--read-only` refuses tools that change the document. The policy lives in the
-//! front-end (stdio or HTTP), so it also applies when the requests are forwarded
-//! to a running editor.
+//! `--read-only` refuses tools that change the document or write files. The
+//! policy lives in the front-end (stdio or HTTP), so it also applies when the
+//! requests are forwarded to a running editor.
 
 use std::path::{Path, PathBuf};
 

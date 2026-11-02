@@ -88,7 +88,7 @@ pub enum Commands {
         /// Confine every path the agent sends to this folder
         #[arg(long)]
         workspace: Option<PathBuf>,
-        /// Refuse tools that change the document
+        /// Refuse tools that change the document or write files
         #[arg(long)]
         read_only: bool,
     },
@@ -103,7 +103,7 @@ pub enum Commands {
         /// Confine every path the agent sends to this folder
         #[arg(long)]
         workspace: Option<PathBuf>,
-        /// Refuse tools that change the document
+        /// Refuse tools that change the document or write files
         #[arg(long)]
         read_only: bool,
     },
