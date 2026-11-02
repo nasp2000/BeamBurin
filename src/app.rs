@@ -13414,7 +13414,6 @@ mod tests {
             .next()
             .expect("the layer mode combo is missing");
         combo.click();
-        drop(combo);
         harness.run();
         harness.get_by_label("Mode 1").click();
         harness.run();
