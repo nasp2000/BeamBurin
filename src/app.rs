@@ -13513,11 +13513,17 @@ mod tests {
         );
         for (label, section) in [
             ("Interface", crate::config::preferences::Section::Interface),
-            ("Drawing", crate::config::preferences::Section::Drawing),
-            ("Files", crate::config::preferences::Section::Files),
+            (
+                "Drawing and snapping",
+                crate::config::preferences::Section::Drawing,
+            ),
+            (
+                "Files and backup",
+                crate::config::preferences::Section::Files,
+            ),
             ("Shortcuts", crate::config::preferences::Section::Shortcuts),
         ] {
-            harness.get_by_label(label).click();
+            harness.get_by_label(label).click_accesskit();
             harness.run();
             assert!(
                 harness.state().preferences_section == section,
