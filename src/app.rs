@@ -13562,4 +13562,55 @@ mod tests {
             "Cancel did not close the dialog"
         );
     }
+
+    #[test]
+    fn the_operations_section_adds_and_removes_an_operation() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("All operations").click();
+        harness.run();
+        let start = harness.state().editor.document.operations.len();
+        harness.get_by_label("+ Operation").click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.operations.len(),
+            start + 1,
+            "+ Operation did not add an operation"
+        );
+        assert!(
+            harness.state().active_operation.is_some(),
+            "the new operation is not active"
+        );
+        harness.get_by_label("- Operation").click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.operations.len(),
+            start,
+            "- Operation did not remove the active operation"
+        );
+    }
+
+    #[test]
+    fn the_preview_window_opens_with_playback_controls() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Preview and G-code...").click();
+        harness.run();
+        assert!(
+            harness.state().preview_open,
+            "the preview window did not open"
+        );
+        for label in ["Play", "Stop", "Refresh", "Speed"] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "the preview is missing {label}"
+            );
+        }
+    }
 }
