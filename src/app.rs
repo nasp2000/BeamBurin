@@ -3560,7 +3560,7 @@ impl BeamWrightApp {
 
     fn layers_panel(&mut self, ui: &mut Ui) {
         egui::Panel::left("layers_panel")
-            .default_size(360.0)
+            .default_size(380.0)
             .resizable(true)
             .show(ui, |ui| {
                 ui.heading("Search");
