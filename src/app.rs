@@ -13247,4 +13247,81 @@ mod tests {
             "the size/position minus controls are missing"
         );
     }
+
+    #[test]
+    fn every_top_level_menu_opens_with_its_main_entry() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        for (menu, entry) in [
+            ("File", "Export G-code..."),
+            ("Edit", "Select all"),
+            ("Draw", "Rectangle"),
+            ("Operations", "Cuts / Layers..."),
+            ("Materials and profiles", "Materials and operations..."),
+            ("Arrange", "Bring to front"),
+            ("View", "Fit page"),
+            ("Help", "About BeamWright"),
+        ] {
+            harness.get_by_label(menu).click();
+            harness.run();
+            assert!(
+                harness.query_all_by_label(entry).next().is_some(),
+                "missing {entry} in {menu}"
+            );
+            harness.key_press(egui::Key::Escape);
+            harness.run();
+        }
+    }
+
+    #[test]
+    fn toolbar_toggles_and_history_change_the_model() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        let grid = harness.state().editor.canvas.grid_visible;
+        harness.get_by_label("Grid").click();
+        harness.run();
+        assert_ne!(harness.state().editor.canvas.grid_visible, grid);
+        harness.get_by_label("Snap").click();
+        harness.run();
+        assert!(harness.state().editor.snap_enabled);
+        harness.get_by_label_contains("Undo").click();
+        harness.run();
+        assert!(harness.state().editor.document.objects.is_empty());
+        harness.get_by_label_contains("Redo").click();
+        harness.run();
+        assert_eq!(harness.state().editor.document.objects.len(), 1);
+    }
+
+    #[test]
+    fn the_export_dialog_and_the_command_palette_open() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Export G-code...").click();
+        harness.run();
+        assert!(
+            harness.query_by_label("File name:").is_some(),
+            "the export dialog did not open"
+        );
+        harness.get_by_label("Cancel").click();
+        harness.run();
+        assert!(
+            harness.query_by_label("File name:").is_none(),
+            "the export dialog did not close"
+        );
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
+        harness.run();
+        assert!(
+            harness.query_by_label("Command palette").is_some(),
+            "the command palette did not open"
+        );
+    }
 }
