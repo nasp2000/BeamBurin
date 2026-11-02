@@ -3560,7 +3560,7 @@ impl BeamWrightApp {
 
     fn layers_panel(&mut self, ui: &mut Ui) {
         egui::Panel::left("layers_panel")
-            .default_size(380.0)
+            .default_size(420.0)
             .resizable(true)
             .show(ui, |ui| {
                 ui.heading("Search");
@@ -3820,6 +3820,10 @@ impl BeamWrightApp {
                                             }
                                         }
                                         air_response.on_hover_text("Air assist (M8/M9)");
+                                        let menu = ui.menu_button("...", |ui| {
+                                            self.layer_context_menu(ui, id, mode.as_deref());
+                                        });
+                                        menu.response.on_hover_text("Layer options");
                                     })
                                     .response;
                                 response.context_menu(|ui| {
