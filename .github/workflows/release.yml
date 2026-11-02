@@ -132,7 +132,7 @@ jobs:
           cp artifacts/BeamWright.exe "release/BeamWright.exe"
           cp artifacts/BeamWright "release/BeamWright-linux-aarch64"
           chmod 0755 release/BeamWright-*-linux-aarch64 release/BeamWright-linux-aarch64
-          (cd release && sha256sum * > SHA256SUMS.txt)
+          (cd release && sha256sum ./* > SHA256SUMS.txt)
 
       - name: Create the GitHub Release
         env:
