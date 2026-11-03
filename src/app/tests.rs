@@ -575,7 +575,7 @@ fn the_layer_order_arrows_move_a_layer_in_the_cut_table() {
         .query_all_by_label("\u{25bc}")
         .next()
         .expect("the first row has no down arrow")
-        .click();
+        .click_accesskit();
     harness.run();
     let layers: Vec<String> = harness
         .state()
