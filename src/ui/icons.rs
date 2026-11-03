@@ -1025,6 +1025,171 @@ fn prims(icon: Icon) -> Vec<Prim> {
 }
 
 impl Icon {
+    /// Accent colour for this icon, chosen for the current theme.
+    ///
+    /// The drawing is a white alpha mask, so a tint keeps the shape and gives
+    /// each group a recognisable colour without another asset.
+    pub fn color(self, dark: bool) -> Color32 {
+        let (r, g, b) = match self {
+            Icon::File
+            | Icon::New
+            | Icon::Open
+            | Icon::Save
+            | Icon::Import
+            | Icon::Export
+            | Icon::Page
+            | Icon::Image
+            | Icon::Recover
+            | Icon::Exit => {
+                if dark {
+                    (96, 165, 250)
+                } else {
+                    (37, 99, 235)
+                }
+            }
+            Icon::Edit
+            | Icon::Undo
+            | Icon::Redo
+            | Icon::SelectAll
+            | Icon::Cut
+            | Icon::Copy
+            | Icon::Paste
+            | Icon::Duplicate
+            | Icon::Delete
+            | Icon::Invert
+            | Icon::Lock
+            | Icon::Unlock
+            | Icon::Preferences
+            | Icon::Group
+            | Icon::Ungroup => {
+                if dark {
+                    (167, 139, 250)
+                } else {
+                    (109, 40, 217)
+                }
+            }
+            Icon::Draw
+            | Icon::Select
+            | Icon::Line
+            | Icon::Rectangle
+            | Icon::Ellipse
+            | Icon::Polygon
+            | Icon::Star
+            | Icon::Text
+            | Icon::Measure
+            | Icon::Bezier
+            | Icon::Freehand
+            | Icon::Pan
+            | Icon::Nodes
+            | Icon::Trim
+            | Icon::Join
+            | Icon::Pencil => {
+                if dark {
+                    (251, 146, 60)
+                } else {
+                    (194, 65, 12)
+                }
+            }
+            Icon::Operations
+            | Icon::Plus
+            | Icon::Compare
+            | Icon::Play
+            | Icon::Clock
+            | Icon::Check
+            | Icon::Gear
+            | Icon::Layers
+            | Icon::Book => {
+                if dark {
+                    (74, 222, 128)
+                } else {
+                    (21, 128, 61)
+                }
+            }
+            Icon::Materials | Icon::Profiles => {
+                if dark {
+                    (251, 191, 36)
+                } else {
+                    (180, 83, 9)
+                }
+            }
+            Icon::Arrange
+            | Icon::Align
+            | Icon::ToFront
+            | Icon::ToBack
+            | Icon::Center
+            | Icon::DistributeH
+            | Icon::DistributeV
+            | Icon::RotateLeft
+            | Icon::RotateRight
+            | Icon::FlipH
+            | Icon::FlipV
+            | Icon::ScaleUp
+            | Icon::ScaleDown
+            | Icon::TextOutline
+            | Icon::TextOnPath
+            | Icon::TransformCenter
+            | Icon::Skew
+            | Icon::GridArray
+            | Icon::ClosePath
+            | Icon::Simplify
+            | Icon::Repeat
+            | Icon::Nest
+            | Icon::FindDuplicates
+            | Icon::Intersections
+            | Icon::Boolean
+            | Icon::BooleanUnion
+            | Icon::BooleanIntersection
+            | Icon::BooleanDifference
+            | Icon::BooleanExclusion
+            | Icon::OutlineStroke
+            | Icon::Offset
+            | Icon::AlignLeft
+            | Icon::AlignCenterH
+            | Icon::AlignRight
+            | Icon::AlignTop
+            | Icon::AlignCenterV
+            | Icon::AlignBottom => {
+                if dark {
+                    (196, 181, 253)
+                } else {
+                    (126, 34, 206)
+                }
+            }
+            Icon::View
+            | Icon::ZoomIn
+            | Icon::ZoomOut
+            | Icon::ZoomFit
+            | Icon::ZoomSelection
+            | Icon::Grid
+            | Icon::Rulers
+            | Icon::Guides
+            | Icon::Snap
+            | Icon::SnapCenter
+            | Icon::SnapMidpoint
+            | Icon::SnapLimits
+            | Icon::Toolpaths
+            | Icon::Panels
+            | Icon::DarkMode
+            | Icon::Search
+            | Icon::Palette
+            | Icon::Eye => {
+                if dark {
+                    (45, 212, 191)
+                } else {
+                    (15, 118, 110)
+                }
+            }
+            Icon::Help | Icon::Info => {
+                if dark {
+                    (148, 163, 184)
+                } else {
+                    (71, 85, 105)
+                }
+            }
+        };
+        Color32::from_rgb(r, g, b)
+    }
+
     /// Rasterise the icon to a 32×32 white texture.
     ///
     /// Exposed so tests and previews can inspect the drawing without a GPU.
@@ -1220,7 +1385,20 @@ pub fn image(ctx: &Context, icon: Icon) -> Image<'static> {
 /// The icon as an egui image at an explicit size, for toolbars.
 pub fn image_at(ctx: &Context, icon: Icon, size: f32) -> Image<'static> {
     let handle = texture(ctx, icon);
-    Image::new(egui::load::SizedTexture::from_handle(&handle)).fit_to_exact_size(Vec2::splat(size))
+    let dark = ctx.style().visuals.dark_mode;
+    Image::new(egui::load::SizedTexture::from_handle(&handle))
+        .fit_to_exact_size(Vec2::splat(size))
+        .tint(icon.color(dark))
+}
+
+/// The icon, dimmed when its control is disabled.
+fn image_for(ui: &Ui, icon: Icon, size: f32) -> Image<'static> {
+    let image = image_at(ui.ctx(), icon, size);
+    if ui.is_enabled() {
+        image
+    } else {
+        image.tint(ui.visuals().weak_text_color())
+    }
 }
 
 /// One-line description shown when hovering an entry.
@@ -1406,19 +1584,14 @@ pub fn widget_at(ui: &Ui, icon: Icon, text: impl Into<WidgetText>, size: f32) ->
     let text = text.into();
     let label = text.text().to_owned();
     IconWidget {
-        button: egui::Button::new((image_at(ui.ctx(), icon, size), text))
-            .gap(6.0)
-            .image_tint_follows_text_color(true),
+        button: egui::Button::new((image_for(ui, icon, size), text)).gap(6.0),
         label,
     }
 }
 
 /// Icon and label for a menu title, tinted like the surrounding text.
 pub fn menu_label(ui: &Ui, icon: Icon, text: &str) -> (Image<'static>, String) {
-    (
-        image(ui.ctx(), icon).tint(ui.visuals().text_color()),
-        text.to_owned(),
-    )
+    (image_for(ui, icon, ICON_SIZE), text.to_owned())
 }
 
 /// Add a plain icon button.
@@ -1457,8 +1630,7 @@ pub fn selectable_at(
     let text = text.into();
     let label = text.text().to_owned();
     ui.add(IconWidget {
-        button: egui::Button::selectable(selected, (image_at(ui.ctx(), icon, size), text))
-            .image_tint_follows_text_color(true),
+        button: egui::Button::selectable(selected, (image_for(ui, icon, size), text)),
         label,
     })
 }
@@ -1492,8 +1664,8 @@ pub fn checkbox(
 
 /// Icon-only button for the vertical tool strip.
 pub fn icon_button(ui: &mut Ui, selected: bool, icon: Icon, size: f32, label: &str) -> Response {
-    let image = image_at(ui.ctx(), icon, size);
-    let button = egui::Button::selectable(selected, image).image_tint_follows_text_color(true);
+    let image = image_for(ui, icon, size);
+    let button = egui::Button::selectable(selected, image);
     let response = ui.add(button);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label)
@@ -1510,7 +1682,12 @@ pub fn icon_button_enabled(
     label: &str,
 ) -> Response {
     let image = image_at(ui.ctx(), icon, size);
-    let button = egui::Button::new(image).image_tint_follows_text_color(true);
+    let image = if enabled {
+        image
+    } else {
+        image.tint(ui.visuals().weak_text_color())
+    };
+    let button = egui::Button::new(image);
     let response = ui.add_enabled(enabled, button);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
     response
@@ -1526,7 +1703,7 @@ pub fn checkbox_at(
 ) -> Response {
     let text = text.into();
     let label = text.text().to_owned();
-    let image = image_at(ui.ctx(), icon, size).tint(ui.visuals().text_color());
+    let image = image_for(ui, icon, size);
     with_tooltip(ui.checkbox(checked, (image, text)), &label)
 }
 

@@ -352,8 +352,7 @@ impl FileDialog {
                 .to_string();
             let target = directory.clone();
             ui.horizontal(|ui| {
-                let icon =
-                    icons::image_at(ui.ctx(), Icon::File, 14.0).tint(ui.visuals().text_color());
+                let icon = icons::image_at(ui.ctx(), Icon::File, 14.0);
                 ui.add(icon);
                 if ui
                     .selectable_label(false, name.as_str())
@@ -372,8 +371,7 @@ impl FileDialog {
                 .and_then(|value| value.to_str())
                 .unwrap_or("?");
             ui.horizontal(|ui| {
-                let icon =
-                    icons::image_at(ui.ctx(), Icon::Page, 14.0).tint(ui.visuals().text_color());
+                let icon = icons::image_at(ui.ctx(), Icon::Page, 14.0);
                 ui.add(icon);
                 if ui.selectable_label(false, name).clicked() {
                     self.file_name = name.to_string();
