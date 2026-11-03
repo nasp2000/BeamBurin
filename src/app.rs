@@ -13190,7 +13190,7 @@ mod tests {
         let ctx = harness.ctx.clone();
         for _ in 0..600 {
             harness.state_mut().advance(&ctx);
-            harness.run();
+            harness.step();
             if harness.state().task.is_none() {
                 return;
             }
@@ -13664,7 +13664,7 @@ mod tests {
         harness.get_by_label("Export G-code...").click();
         harness.run();
         harness.get_by_label("Export").click();
-        harness.run();
+        harness.step();
         wait_for_task(&mut harness);
         let path = directory.join("Untitled.nc");
         assert!(
@@ -13706,7 +13706,7 @@ mod tests {
             .find(|node| node.rect().min.y > 90.0)
             .expect("the dialog Open button is missing")
             .click();
-        harness.run();
+        harness.step();
         wait_for_task(&mut harness);
         assert!(
             !harness.state().editor.document.objects.is_empty(),
