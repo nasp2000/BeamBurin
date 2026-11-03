@@ -13953,6 +13953,14 @@ mod tests {
             harness.state().playback_playing,
             "Play did not start the playback"
         );
+        harness.get_by_label("Pause").click_accesskit();
+        harness.run();
+        assert!(
+            !harness.state().playback_playing,
+            "Pause did not stop the playback"
+        );
+        harness.get_by_label("Play").click_accesskit();
+        harness.run();
         harness.get_by_label("Stop").click();
         harness.run();
         assert!(
@@ -14255,6 +14263,76 @@ mod tests {
         assert!(
             harness.query_by_label_contains("DejaVu Sans").is_some(),
             "the bundled font licence is missing"
+        );
+    }
+
+    #[test]
+    fn a_saved_project_opens_through_the_dialog() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("open_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let path = directory.join("untitled.bwp");
+        let mut document = crate::document::Document::default();
+        document.name = "Loaded project".to_string();
+        crate::document::serialization::save_to_file(&document, &path)
+            .expect("cannot write the project fixture");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Open...").click();
+        harness.run();
+        harness
+            .get_all_by_label("Open")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Open button is missing")
+            .click_accesskit();
+        harness.step();
+        wait_for_task(&mut harness);
+        assert_eq!(
+            harness.state().editor.document.name,
+            "Loaded project",
+            "the project was not loaded"
+        );
+        assert_eq!(
+            harness.state().current_path.as_deref(),
+            Some(path.as_path()),
+            "the current path was not set"
+        );
+    }
+
+    #[test]
+    fn the_theme_preference_switches_to_light() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Preferences...").click();
+        harness.run();
+        harness.get_by_label("Interface").click_accesskit();
+        harness.run();
+        assert_eq!(
+            harness.state().preferences.general.theme,
+            "dark",
+            "the default theme should be dark"
+        );
+        harness.get_by_label("Dark").click_accesskit();
+        harness.run();
+        harness.get_by_label("Light").click_accesskit();
+        harness.run();
+        assert_eq!(
+            harness.state().preferences.general.theme,
+            "light",
+            "the theme combo did not switch"
+        );
+        assert!(
+            !harness.state().dark_mode,
+            "the live theme did not follow the preference"
         );
     }
 }
