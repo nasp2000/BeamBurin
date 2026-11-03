@@ -579,22 +579,8 @@ fn the_layer_switches_change_the_layer_and_the_mode() {
     let mut harness = ui_harness(app);
     harness.run();
     harness
-        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Show")
-        .click();
-    harness.run();
-    assert!(
-        !harness
-            .state()
-            .editor
-            .document
-            .layer(&layer)
-            .expect("the layer is missing")
-            .visible,
-        "Show did not hide the layer"
-    );
-    harness
         .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Air")
-        .click();
+        .click_accesskit();
     harness.run();
     assert!(
         harness
@@ -608,6 +594,20 @@ fn the_layer_switches_change_the_layer_and_the_mode() {
             .params
             .air_assist,
         "Air did not enable air assist"
+    );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Show")
+        .click_accesskit();
+    harness.run();
+    assert!(
+        !harness
+            .state()
+            .editor
+            .document
+            .layer(&layer)
+            .expect("the layer is missing")
+            .visible,
+        "Show did not hide the layer"
     );
     harness
         .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Output")
