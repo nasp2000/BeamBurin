@@ -14054,4 +14054,145 @@ mod tests {
             "the copied layer did not copy its objects"
         );
     }
+
+    #[test]
+    fn estimate_reports_a_job_for_the_current_document() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let layer = app.editor.active_layer_id.clone();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let operation = app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.editor
+            .assign_operation_to_layer(&layer, Some(operation.as_str()));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("Estimate").click_accesskit();
+        harness.run();
+        let job = harness
+            .state()
+            .job
+            .as_ref()
+            .expect("Estimate did not build a job");
+        assert!(job.paths > 0, "the job has no paths");
+        assert!(job.lines > 0, "the job has no lines");
+        assert!(
+            harness.query_by_label("Paths:").is_some(),
+            "the job report is not shown"
+        );
+    }
+
+    #[test]
+    fn the_cuts_window_toggles_output_options() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Cuts / Layers...").click();
+        harness.run();
+        assert!(harness.state().gcode_comments);
+        harness.get_by_label("Comments").click_accesskit();
+        harness.run();
+        assert!(!harness.state().gcode_comments, "Comments did not turn off");
+        assert!(!harness.state().gcode_arcs);
+        harness.get_by_label("Arcs (G2/G3)").click_accesskit();
+        harness.run();
+        assert!(harness.state().gcode_arcs, "Arcs (G2/G3) did not turn on");
+    }
+
+    #[test]
+    fn the_property_y_and_height_controls_resize_the_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        let before = harness
+            .state()
+            .editor
+            .selected_bounds()
+            .expect("no selection");
+        let before_height = before.1.y - before.0.y;
+        harness
+            .get_all_by_label("+")
+            .filter(|node| node.rect().min.x > 700.0)
+            .nth(1)
+            .expect("the Y plus control is missing")
+            .click_accesskit();
+        harness.run();
+        assert!(
+            (harness.state().editor.document.objects[0].transform.ty - before.0.y - 1.0).abs()
+                < 0.01,
+            "the Y plus did not move the object down"
+        );
+        harness
+            .get_all_by_label("+")
+            .filter(|node| node.rect().min.x > 700.0)
+            .nth(3)
+            .expect("the height plus control is missing")
+            .click_accesskit();
+        harness.run();
+        let after = harness
+            .state()
+            .editor
+            .selected_bounds()
+            .expect("no selection");
+        let after_height = after.1.y - after.0.y;
+        assert!(
+            (after_height - before_height - 1.0).abs() < 0.01,
+            "the height plus changed the height by {}",
+            after_height - before_height
+        );
+    }
+
+    #[test]
+    fn saving_over_an_existing_file_asks_before_replacing() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("replace_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let target = directory.join("untitled.bwp");
+        std::fs::write(&target, "keep me").expect("cannot create the existing project");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Save as...").click();
+        harness.run();
+        harness
+            .get_all_by_label("Save")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Save button is missing")
+            .click_accesskit();
+        harness.run();
+        assert!(
+            harness.state().pending_file.is_some(),
+            "the replace prompt did not open"
+        );
+        assert!(
+            harness.query_by_label("Replace").is_some(),
+            "the Replace button is missing"
+        );
+        harness.get_by_label("Cancel").click_accesskit();
+        harness.run();
+        assert!(
+            harness.state().pending_file.is_none(),
+            "Cancel did not dismiss the replace prompt"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("the file disappeared"),
+            "keep me",
+            "Cancel overwrote the existing file"
+        );
+    }
 }
