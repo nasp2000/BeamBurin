@@ -14273,8 +14273,10 @@ mod tests {
         let directory = ui_temp_path("open_dir");
         std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
         let path = directory.join("untitled.bwp");
-        let mut document = crate::document::Document::default();
-        document.name = "Loaded project".to_string();
+        let document = crate::document::Document {
+            name: "Loaded project".to_string(),
+            ..Default::default()
+        };
         crate::document::serialization::save_to_file(&document, &path)
             .expect("cannot write the project fixture");
         let mut app = ui_test_app();
