@@ -561,7 +561,12 @@ fn paint_objects(
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            paint_object(painter, rect, editor, theme, object, layer_color, images);
+            let object_color = object
+                .color
+                .as_deref()
+                .and_then(parse_hex_color)
+                .map_or(layer_color, |(r, g, b)| Color32::from_rgb(r, g, b));
+            paint_object(painter, rect, editor, theme, object, object_color, images);
         }
     }
 }
@@ -575,7 +580,14 @@ fn paint_object(
     layer_color: Color32,
     images: &ImageTextures,
 ) {
-    let stroke_color = theme.object_color(object.style.stroke.as_deref(), layer_color);
+    let stroke_color = object
+        .color
+        .as_deref()
+        .and_then(parse_hex_color)
+        .map_or_else(
+            || theme.object_color(object.style.stroke.as_deref(), layer_color),
+            |(r, g, b)| Color32::from_rgb(r, g, b),
+        );
     let width = (object.style.stroke_width_mm * editor.canvas.zoom) as f32;
     let stroke = Stroke::new(width.max(1.0), stroke_color);
     let fill_color = object

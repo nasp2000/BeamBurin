@@ -41,7 +41,7 @@ pub fn export_svg(doc: &Document) -> Result<String> {
 
 fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page_height: f64) {
     let style = &object.style;
-    let (stroke, fill) = effective_colors(style, layer_rgb);
+    let (stroke, fill) = effective_colors(object, style, layer_rgb);
     match &object.shape {
         Shape::Text(text) => {
             let world = object.transform.apply(Point2::new(text.x, text.y));
@@ -142,9 +142,13 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
     }
 }
 
-fn effective_colors(style: &Style, layer_rgb: (u8, u8, u8)) -> (String, String) {
+fn effective_colors(object: &Object, style: &Style, layer_rgb: (u8, u8, u8)) -> (String, String) {
     let fallback = crate::color::to_hex(layer_rgb.0, layer_rgb.1, layer_rgb.2);
-    let stroke = style.stroke.clone().unwrap_or(fallback);
+    let stroke = object
+        .color
+        .clone()
+        .or_else(|| style.stroke.clone())
+        .unwrap_or(fallback);
     let fill = style.fill.clone().unwrap_or_else(|| "none".to_string());
     (stroke, fill)
 }

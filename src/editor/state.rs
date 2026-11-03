@@ -906,8 +906,10 @@ impl EditorState {
         if layer.locked || !layer.visible {
             return None;
         }
+        let layer_color = layer.color.clone();
         self.record_action(&format!("Draw {}", shape.kind_name()));
-        let object = Object::new(self.active_layer_id.clone(), shape).with_transform(transform);
+        let mut object = Object::new(self.active_layer_id.clone(), shape).with_transform(transform);
+        object.color = Some(layer_color);
         let id = object.id.clone();
         self.document.add_object(object);
         self.selection.clear();

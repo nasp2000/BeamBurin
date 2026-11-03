@@ -97,7 +97,7 @@ impl BeamBurinApp {
                         (
                             layer.id.clone(),
                             layer.name.clone(),
-                            layer.color.clone(),
+                            self.layer_display_colour(&layer.id),
                             layer.visible,
                             layer.locked,
                             mode,
@@ -112,190 +112,182 @@ impl BeamBurinApp {
                 egui::ScrollArea::horizontal()
                     .id_salt("layers_table_scroll")
                     .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            ui.horizontal(|ui| {
-                                ui.add_sized([20.0, 18.0], egui::Label::new("#"));
-                                ui.add_sized([18.0, 18.0], egui::Label::new(""));
-                                ui.add_sized(
-                                    [82.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Layer").strong()),
-                                );
-                                ui.add_sized(
-                                    [82.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Mode").strong()),
-                                );
-                                ui.add_sized(
-                                    [52.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Spd/Pwr").strong()),
-                                );
+                        egui::Grid::new("layers_grid")
+                            .num_columns(7)
+                            .striped(true)
+                            .spacing([4.0, 2.0])
+                            .show(ui, |ui| {
                                 ui.add_sized(
                                     [26.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Out").strong()),
+                                    egui::Label::new(egui::RichText::new("#").strong()),
                                 );
-                                ui.add_sized(
-                                    [26.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Show").strong()),
-                                );
-                                ui.add_sized(
-                                    [26.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Air").strong()),
-                                );
-                            });
-                            for (index, row) in rows.iter().enumerate() {
-                                let (id, name, color, visible, _locked, mode, mixed, count) = row;
-                                let selected = self.editor.active_layer_id == *id;
-                                let operation = mode.as_deref().and_then(|mode| {
-                                    operations.iter().find(|entry| entry.0 == mode)
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label(egui::RichText::new("Layer").strong());
                                 });
-                                let mut name_hit: Option<egui::Response> = None;
-                                let response = ui
-                                    .horizontal(|ui| {
-                                        ui.add_sized(
-                                            [20.0, 18.0],
-                                            egui::Label::new(format!("L{:02}", index + 1)),
-                                        );
-                                        let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
-                                        let mut srgb = [rgb.0, rgb.1, rgb.2];
-                                        if ui.color_edit_button_srgb(&mut srgb).changed() {
-                                            if let Some(layer) = self.editor.document.layer_mut(id)
-                                            {
-                                                layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
+                                for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
+                                    let width = if header == "Mode" {
+                                        104.0
+                                    } else if header == "Spd/Pwr" {
+                                        52.0
+                                    } else {
+                                        26.0
+                                    };
+                                    ui.add_sized(
+                                        [width, 18.0],
+                                        egui::Label::new(egui::RichText::new(header).strong()),
+                                    );
+                                }
+                                ui.end_row();
+                                for (index, row) in rows.iter().enumerate() {
+                                    let (id, name, color, visible, _locked, mode, mixed, count) =
+                                        row;
+                                    let selected = self.editor.active_layer_id == *id;
+                                    let operation = mode.as_deref().and_then(|mode| {
+                                        operations.iter().find(|entry| entry.0 == mode)
+                                    });
+                                    let mut name_hit: Option<egui::Response> = None;
+                                    ui.add_sized(
+                                        [26.0, 18.0],
+                                        egui::Label::new(format!("L{:02}", index + 1)),
+                                    );
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(120.0, 18.0),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
+                                            let mut srgb = [rgb.0, rgb.1, rgb.2];
+                                            if ui.color_edit_button_srgb(&mut srgb).changed() {
+                                                let colour = to_hex(srgb[0], srgb[1], srgb[2]);
+                                                self.set_layer_colour(id, colour);
                                             }
-                                        }
-                                        let name_button = ui
-                                            .add_sized(
-                                                [82.0, 18.0],
-                                                egui::Button::selectable(selected, name.as_str())
+                                            let name_button = ui
+                                                .add_sized(
+                                                    [82.0, 18.0],
+                                                    egui::Button::selectable(
+                                                        selected,
+                                                        name.as_str(),
+                                                    )
                                                     .frame(false),
-                                            )
-                                            .on_hover_text(format!("{count} object(s)"));
-                                        if name_button.clicked() {
-                                            self.editor.active_layer_id.clone_from(id);
-                                        }
-                                        name_hit = Some(name_button);
-                                        let current = if *mixed {
-                                            "Mixed".to_string()
-                                        } else {
-                                            mode.as_deref()
-                                                .and_then(|mode| {
-                                                    operations
-                                                        .iter()
-                                                        .find(|entry| entry.0 == mode)
-                                                        .map(|entry| entry.1.clone())
-                                                })
-                                                .unwrap_or_else(|| "—".to_string())
-                                        };
-                                        let mut chosen = mode.clone();
-                                        egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                            .width(104.0)
-                                            .selected_text(current)
-                                            .show_ui(ui, |ui| {
+                                                )
+                                                .on_hover_text(format!("{count} object(s)"));
+                                            if name_button.clicked() {
+                                                self.editor.active_layer_id.clone_from(id);
+                                            }
+                                            name_hit = Some(name_button);
+                                        },
+                                    );
+                                    let current = if *mixed {
+                                        "Mixed".to_string()
+                                    } else {
+                                        mode.as_deref()
+                                            .and_then(|mode| {
+                                                operations
+                                                    .iter()
+                                                    .find(|entry| entry.0 == mode)
+                                                    .map(|entry| entry.1.clone())
+                                            })
+                                            .unwrap_or_else(|| "—".to_string())
+                                    };
+                                    let mut chosen = mode.clone();
+                                    egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
+                                        .width(100.0)
+                                        .selected_text(current)
+                                        .show_ui(ui, |ui| {
+                                            if ui.selectable_value(&mut chosen, None, "—").clicked()
+                                            {
+                                                ui.close();
+                                            }
+                                            for (op_id, op_name, ..) in &operations {
                                                 if ui
-                                                    .selectable_value(&mut chosen, None, "—")
+                                                    .selectable_value(
+                                                        &mut chosen,
+                                                        Some(op_id.clone()),
+                                                        op_name,
+                                                    )
                                                     .clicked()
                                                 {
                                                     ui.close();
                                                 }
-                                                for (op_id, op_name, ..) in &operations {
-                                                    if ui
-                                                        .selectable_value(
-                                                            &mut chosen,
-                                                            Some(op_id.clone()),
-                                                            op_name,
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        ui.close();
-                                                    }
-                                                }
-                                            });
-                                        if &chosen != mode {
-                                            assign = Some((id.clone(), chosen));
-                                        }
-                                        let speeds = operation.map_or_else(
-                                            || "—".to_string(),
-                                            |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
-                                        );
-                                        ui.add_sized([52.0, 18.0], egui::Label::new(speeds));
-                                        let mut output = operation.is_some_and(|entry| entry.4);
-                                        let output_response = ui.add_sized(
-                                            [26.0, 18.0],
-                                            egui::Checkbox::without_text(&mut output),
-                                        );
-                                        output_response.widget_info(|| {
-                                            egui::WidgetInfo::selected(
-                                                egui::WidgetType::Checkbox,
-                                                true,
-                                                output,
-                                                "Output",
-                                            )
-                                        });
-                                        if output_response.changed() {
-                                            if let Some(entry) = operation {
-                                                toggle_operation =
-                                                    Some((entry.0.clone(), output, entry.5));
                                             }
-                                        }
-                                        output_response
-                                            .on_hover_text("Include this mode in the job");
-                                        let mut shown = *visible;
-                                        let show_response = ui.add_sized(
-                                            [26.0, 18.0],
-                                            egui::Checkbox::without_text(&mut shown),
-                                        );
-                                        show_response.widget_info(|| {
-                                            egui::WidgetInfo::selected(
-                                                egui::WidgetType::Checkbox,
-                                                true,
-                                                shown,
-                                                "Show",
-                                            )
                                         });
-                                        if show_response
-                                            .on_hover_text("Show this layer on the canvas")
-                                            .changed()
-                                        {
-                                            if let Some(layer) = self.editor.document.layer_mut(id)
-                                            {
-                                                layer.visible = shown;
-                                            }
-                                        }
-                                        let mut air = operation.is_some_and(|entry| entry.5);
-                                        let air_response = ui.add_sized(
-                                            [26.0, 18.0],
-                                            egui::Checkbox::without_text(&mut air),
-                                        );
-                                        air_response.widget_info(|| {
-                                            egui::WidgetInfo::selected(
-                                                egui::WidgetType::Checkbox,
-                                                true,
-                                                air,
-                                                "Air",
-                                            )
-                                        });
-                                        if air_response.changed() {
-                                            if let Some(entry) = operation {
-                                                toggle_operation =
-                                                    Some((entry.0.clone(), entry.4, air));
-                                            }
-                                        }
-                                        air_response.on_hover_text("Air assist (M8/M9)");
-                                    })
-                                    .response
-                                    // The row itself must sense clicks for the
-                                    // secondary button to open its menu.
-                                    .interact(egui::Sense::click());
-                                if let Some(name_button) = name_hit {
-                                    name_button.context_menu(|ui| {
-                                        self.layer_context_menu(ui, id, mode.as_deref());
+                                    if &chosen != mode {
+                                        assign = Some((id.clone(), chosen));
+                                    }
+                                    let speeds = operation.map_or_else(
+                                        || "—".to_string(),
+                                        |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
+                                    );
+                                    ui.add_sized([52.0, 18.0], egui::Label::new(speeds));
+                                    let mut output = operation.is_some_and(|entry| entry.4);
+                                    let output_response = ui.add_sized(
+                                        [26.0, 18.0],
+                                        egui::Checkbox::without_text(&mut output),
+                                    );
+                                    output_response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Checkbox,
+                                            true,
+                                            output,
+                                            "Output",
+                                        )
                                     });
+                                    if output_response.changed() {
+                                        if let Some(entry) = operation {
+                                            toggle_operation =
+                                                Some((entry.0.clone(), output, entry.5));
+                                        }
+                                    }
+                                    output_response.on_hover_text("Include this mode in the job");
+                                    let mut shown = *visible;
+                                    let show_response = ui.add_sized(
+                                        [26.0, 18.0],
+                                        egui::Checkbox::without_text(&mut shown),
+                                    );
+                                    show_response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Checkbox,
+                                            true,
+                                            shown,
+                                            "Show",
+                                        )
+                                    });
+                                    if show_response
+                                        .on_hover_text("Show this layer on the canvas")
+                                        .changed()
+                                    {
+                                        if let Some(layer) = self.editor.document.layer_mut(id) {
+                                            layer.visible = shown;
+                                        }
+                                    }
+                                    let mut air = operation.is_some_and(|entry| entry.5);
+                                    let air_response = ui.add_sized(
+                                        [26.0, 18.0],
+                                        egui::Checkbox::without_text(&mut air),
+                                    );
+                                    air_response.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Checkbox,
+                                            true,
+                                            air,
+                                            "Air",
+                                        )
+                                    });
+                                    if air_response.changed() {
+                                        if let Some(entry) = operation {
+                                            toggle_operation =
+                                                Some((entry.0.clone(), entry.4, air));
+                                        }
+                                    }
+                                    air_response.on_hover_text("Air assist (M8/M9)");
+                                    ui.end_row();
+                                    if let Some(name_button) = name_hit {
+                                        name_button.context_menu(|ui| {
+                                            self.layer_context_menu(ui, id, mode.as_deref());
+                                        });
+                                    }
                                 }
-                                response.context_menu(|ui| {
-                                    self.layer_context_menu(ui, id, mode.as_deref());
-                                });
-                            }
-                        });
+                            });
                     });
                 if let Some((id, operation)) = assign {
                     let changed = self
@@ -328,9 +320,7 @@ impl BeamBurinApp {
                             let rgb = parse_hex_color(&layer.color).unwrap_or((0, 0, 0));
                             let mut srgb = [rgb.0, rgb.1, rgb.2];
                             if ui.color_edit_button_srgb(&mut srgb).changed() {
-                                if let Some(layer) = self.editor.document.layer_mut(&active) {
-                                    layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
-                                }
+                                self.set_layer_colour(&active, to_hex(srgb[0], srgb[1], srgb[2]));
                             }
                             ui.end_row();
                             ui.label("Name");
@@ -614,12 +604,29 @@ impl BeamBurinApp {
 
     fn apply_drawing_colour(&mut self, colour: &str) {
         let before = self.editor.document.clone();
-        let mut layers: Vec<String> = if self.editor.selection.is_empty() {
-            vec![self.editor.active_layer_id.clone()]
+        let selected = self.editor.selection.ids().to_vec();
+        if selected.is_empty() {
+            let active = self.editor.active_layer_id.clone();
+            if let Some(layer) = self.editor.document.layer_mut(&active) {
+                layer.color = colour.to_string();
+            }
+            if let Some(operation) = self.layer_mode(&active).0.and_then(|id| {
+                self.editor
+                    .document
+                    .operations
+                    .iter_mut()
+                    .find(|operation| operation.id == id)
+            }) {
+                operation.params.color = colour.to_string();
+            }
+            self.status = format!("New objects will use {colour}");
         } else {
-            self.editor
-                .selection
-                .ids()
+            for id in &selected {
+                if let Some(object) = self.editor.document.object_mut(id) {
+                    object.color = Some(colour.to_string());
+                }
+            }
+            let mut layers: Vec<String> = selected
                 .iter()
                 .filter_map(|id| {
                     self.editor
@@ -627,38 +634,75 @@ impl BeamBurinApp {
                         .object(id)
                         .map(|object| object.layer_id.clone())
                 })
-                .collect()
-        };
-        layers.sort_unstable();
-        layers.dedup();
-        layers.retain(|id| self.editor.document.layer(id).is_some());
-        if layers.is_empty() {
-            return;
-        }
-        let operations: Vec<String> = layers
-            .iter()
-            .filter_map(|id| self.layer_mode(id).0)
-            .collect();
-        for id in &layers {
-            if let Some(layer) = self.editor.document.layer_mut(id) {
-                layer.color = colour.to_string();
+                .collect();
+            layers.sort_unstable();
+            layers.dedup();
+            for layer_id in layers {
+                let Some(layer) = self.editor.document.layer(&layer_id) else {
+                    continue;
+                };
+                let colours: Vec<String> = self
+                    .editor
+                    .document
+                    .objects_on_layer(&layer_id)
+                    .iter()
+                    .map(|object| object.color.clone().unwrap_or_else(|| layer.color.clone()))
+                    .collect();
+                if colours.iter().all(|value| value == colour) {
+                    if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
+                        layer.color = colour.to_string();
+                    }
+                    if let Some(operation) = self.layer_mode(&layer_id).0.and_then(|id| {
+                        self.editor
+                            .document
+                            .operations
+                            .iter_mut()
+                            .find(|operation| operation.id == id)
+                    }) {
+                        operation.params.color = colour.to_string();
+                    }
+                }
             }
-        }
-        for id in operations {
-            if let Some(operation) = self
-                .editor
-                .document
-                .operations
-                .iter_mut()
-                .find(|operation| operation.id == id)
-            {
-                operation.params.color = colour.to_string();
-            }
+            self.status = format!("Colour {colour} applied to {} object(s)", selected.len());
         }
         if self.editor.document != before {
             self.editor.history.record(&before, "Colour");
         }
-        self.status = format!("Colour {colour} applied to {} layer(s)", layers.len());
+    }
+
+    fn set_layer_colour(&mut self, layer_id: &str, colour: String) {
+        let ids: Vec<String> = self
+            .editor
+            .document
+            .objects_on_layer(layer_id)
+            .iter()
+            .map(|object| object.id.clone())
+            .collect();
+        if let Some(layer) = self.editor.document.layer_mut(layer_id) {
+            layer.color.clone_from(&colour);
+        }
+        for id in ids {
+            if let Some(object) = self.editor.document.object_mut(&id) {
+                object.color = Some(colour.clone());
+            }
+        }
+    }
+
+    fn layer_display_colour(&self, layer_id: &str) -> String {
+        let Some(layer) = self.editor.document.layer(layer_id) else {
+            return "#000000".to_string();
+        };
+        let objects = self.editor.document.objects_on_layer(layer_id);
+        let mut colours: Vec<String> = objects
+            .iter()
+            .map(|object| object.color.clone().unwrap_or_else(|| layer.color.clone()))
+            .collect();
+        colours.sort_unstable();
+        colours.dedup();
+        match colours.as_slice() {
+            [colour] => colour.clone(),
+            _ => layer.color.clone(),
+        }
     }
 
     pub(super) fn operations_section(&mut self, ui: &mut Ui) {

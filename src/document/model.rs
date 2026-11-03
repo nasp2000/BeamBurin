@@ -26,6 +26,10 @@ pub struct Object {
     pub id: String,
     pub name: String,
     pub layer_id: String,
+    /// Drawing/cut colour for this object. Older projects leave it empty and
+    /// fall back to the layer colour.
+    #[serde(default)]
+    pub color: Option<String>,
     pub transform: Transform2,
     pub shape: Shape,
     pub style: Style,
@@ -50,6 +54,7 @@ impl Object {
             id: Uuid::new_v4().to_string(),
             name: kind,
             layer_id: layer_id.into(),
+            color: None,
             transform: Transform2::identity(),
             shape,
             style: Style::default(),
@@ -99,6 +104,11 @@ impl Object {
         self.style
             .validate()
             .map_err(|e| format!("object {}: {e}", self.id))?;
+        if let Some(color) = &self.color {
+            if crate::color::normalize_hex_color(color).is_none() {
+                return Err(format!("object {} has an invalid colour: {color}", self.id));
+            }
+        }
         if let Some(operation_id) = &self.operation_id {
             if operation_id.trim().is_empty() {
                 return Err(format!("object {} has an empty operation id", self.id));
