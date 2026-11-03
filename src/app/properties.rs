@@ -10,7 +10,7 @@ impl BeamBurinApp {
             .show(ui, |ui| {
                 egui::Panel::bottom("side_tabs")
                     .exact_size(28.0)
-                    .show_inside(ui, |ui| {
+                    .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             if icons::selectable(
