@@ -14081,7 +14081,7 @@ mod tests {
         assert!(job.paths > 0, "the job has no paths");
         assert!(job.lines > 0, "the job has no lines");
         assert!(
-            harness.query_by_label("Paths:").is_some(),
+            harness.query_by_label_contains("Paths:").is_some(),
             "the job report is not shown"
         );
     }
