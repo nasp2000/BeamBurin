@@ -14026,7 +14026,7 @@ mod tests {
             .assign_operation_to_layer(&layer, Some(operation.as_str()));
         let mut harness = ui_harness(app);
         harness.run();
-        harness.get_by_label("1000 / 80").click_secondary();
+        harness.get_by_label("1000 / 20").click_secondary();
         harness.run();
         assert!(
             harness.query_by_label("Duplicate layer").is_some(),
