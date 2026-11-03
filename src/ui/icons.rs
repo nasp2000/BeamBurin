@@ -1385,7 +1385,7 @@ pub fn image(ctx: &Context, icon: Icon) -> Image<'static> {
 /// The icon as an egui image at an explicit size, for toolbars.
 pub fn image_at(ctx: &Context, icon: Icon, size: f32) -> Image<'static> {
     let handle = texture(ctx, icon);
-    let dark = ctx.style().visuals.dark_mode;
+    let dark = ctx.theme() == egui::Theme::Dark;
     Image::new(egui::load::SizedTexture::from_handle(&handle))
         .fit_to_exact_size(Vec2::splat(size))
         .tint(icon.color(dark))
