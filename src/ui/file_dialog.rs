@@ -191,6 +191,9 @@ pub struct FileDialog {
     show_all_files: bool,
     /// Editable copy of the current folder, so a path can be typed.
     path_text: String,
+    /// Folder history for the Back/Forward buttons.
+    back: Vec<PathBuf>,
+    forward: Vec<PathBuf>,
 }
 
 pub enum DialogResult {
@@ -226,6 +229,8 @@ impl FileDialog {
             error: None,
             show_all_files: false,
             path_text,
+            back: Vec::new(),
+            forward: Vec::new(),
         }
     }
 
@@ -237,22 +242,35 @@ impl FileDialog {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_width(620.0)
-            .max_width(760.0)
+            .default_size([780.0, 540.0])
+            .min_width(640.0)
+            .max_width(980.0)
             .open(&mut open)
             .show(ctx, |ui| {
-                // A standard address bar: Up, Home, the current folder and Go.
+                // Explorer-style address bar with history.
                 ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(!self.back.is_empty(), egui::Button::new("Back"))
+                        .on_hover_text("Previous folder")
+                        .clicked()
+                    {
+                        self.go_back();
+                    }
+                    if ui
+                        .add_enabled(!self.forward.is_empty(), egui::Button::new("Forward"))
+                        .on_hover_text("Next folder")
+                        .clicked()
+                    {
+                        self.go_forward();
+                    }
                     if ui.button("Up").on_hover_text("Parent folder").clicked() {
                         if let Some(parent) = self.directory.parent() {
-                            self.directory = parent.to_path_buf();
-                            self.path_text = self.directory.display().to_string();
+                            self.navigate(parent.to_path_buf());
                         }
                     }
                     if ui.button("Home").on_hover_text("Home folder").clicked() {
                         if let Some(home) = home_directory() {
-                            self.directory = home;
-                            self.path_text = self.directory.display().to_string();
+                            self.navigate(home);
                         }
                     }
                     let width = (ui.available_width() - 52.0).max(120.0);
@@ -262,24 +280,52 @@ impl FileDialog {
                         || (response.lost_focus()
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
                     if go {
-                        let candidate = PathBuf::from(self.path_text.trim());
-                        if candidate.is_dir() {
-                            self.directory = candidate;
-                            self.path_text = self.directory.display().to_string();
-                            self.error = None;
-                        } else {
-                            self.error = Some(format!("Folder not found: {}", candidate.display()));
-                        }
+                        self.navigate(PathBuf::from(self.path_text.trim()));
                     }
                 });
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(300.0)
-                    .max_width(600.0)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        self.listing(ui);
+                let mut target: Option<PathBuf> = None;
+                ui.horizontal(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(150.0, 330.0),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("dialog_places")
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    ui.label(egui::RichText::new("Quick access").strong());
+                                    for (label, path) in places() {
+                                        if ui
+                                            .selectable_label(self.directory == path, label)
+                                            .clicked()
+                                        {
+                                            target = Some(path);
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("dialog_files")
+                                .max_height(300.0)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    if let Some(path) = self.listing(ui) {
+                                        target = Some(path);
+                                    }
+                                });
+                        });
+                        ui.add_space(4.0);
+                        ui.weak(format!("{} item(s)", self.item_count()));
                     });
+                });
+                if let Some(path) = target {
+                    self.navigate(path);
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("File name:");
@@ -318,7 +364,52 @@ impl FileDialog {
         result
     }
 
-    fn listing(&mut self, ui: &mut egui::Ui) {
+    fn navigate(&mut self, target: PathBuf) {
+        if !target.is_dir() {
+            self.error = Some(format!("Folder not found: {}", target.display()));
+            return;
+        }
+        if self.directory != target {
+            self.back.push(self.directory.clone());
+            self.forward.clear();
+            self.directory = target;
+        }
+        self.path_text = self.directory.display().to_string();
+        self.error = None;
+    }
+
+    fn go_back(&mut self) {
+        if let Some(previous) = self.back.pop() {
+            let current = std::mem::replace(&mut self.directory, previous);
+            self.forward.push(current);
+            self.path_text = self.directory.display().to_string();
+            self.error = None;
+        }
+    }
+
+    fn go_forward(&mut self) {
+        if let Some(next) = self.forward.pop() {
+            let current = std::mem::replace(&mut self.directory, next);
+            self.back.push(current);
+            self.path_text = self.directory.display().to_string();
+            self.error = None;
+        }
+    }
+
+    fn item_count(&self) -> usize {
+        let Ok(entries) = std::fs::read_dir(&self.directory) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .filter(|entry| {
+                let path = entry.path();
+                path.is_dir() || self.show_all_files || self.mode.accepts(&path)
+            })
+            .count()
+    }
+
+    fn listing(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
         let entries = match std::fs::read_dir(&self.directory) {
             Ok(entries) => entries,
             Err(error) => {
@@ -326,7 +417,7 @@ impl FileDialog {
                     egui::Color32::from_rgb(200, 60, 60),
                     format!("Cannot read directory: {error}"),
                 );
-                return;
+                return None;
             }
         };
         let mut directories = Vec::new();
@@ -343,42 +434,65 @@ impl FileDialog {
         files.sort();
         if directories.is_empty() && files.is_empty() {
             ui.weak("This folder is empty or has no supported files.");
+            return None;
         }
-        for directory in directories {
-            let name = directory
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or("?")
-                .to_string();
-            let target = directory.clone();
-            ui.horizontal(|ui| {
-                let icon = icons::image_at(ui.ctx(), Icon::File, 14.0);
-                ui.add(icon);
-                if ui
-                    .selectable_label(false, name.as_str())
-                    .on_hover_text("Open this folder")
-                    .clicked()
-                {
-                    self.path_text = target.display().to_string();
-                    self.directory = target;
-                    self.error = None;
+        let mut target = None;
+        egui::Grid::new("dialog_listing")
+            .num_columns(3)
+            .striped(true)
+            .spacing([8.0, 2.0])
+            .show(ui, |ui| {
+                ui.strong("Name");
+                ui.strong("Type");
+                ui.strong("Size");
+                ui.end_row();
+                for directory in directories {
+                    let name = directory
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    ui.horizontal(|ui| {
+                        let icon = icons::image_at(ui.ctx(), Icon::File, 14.0);
+                        ui.add(icon);
+                        if ui
+                            .selectable_label(false, name.as_str())
+                            .on_hover_text("Open this folder")
+                            .clicked()
+                        {
+                            target = Some(directory.clone());
+                        }
+                    });
+                    ui.label("Folder");
+                    ui.weak("—");
+                    ui.end_row();
+                }
+                for file in files {
+                    let name = file
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("?");
+                    ui.horizontal(|ui| {
+                        let icon = icons::image_at(ui.ctx(), Icon::Page, 14.0);
+                        ui.add(icon);
+                        if ui.selectable_label(false, name).clicked() {
+                            self.file_name = name.to_string();
+                            self.error = None;
+                        }
+                    });
+                    let kind = file
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .map_or_else(|| "File".to_string(), |value| value.to_ascii_uppercase());
+                    ui.label(kind);
+                    let size = std::fs::metadata(&file)
+                        .map(|metadata| format_size(metadata.len()))
+                        .unwrap_or_else(|_| "—".to_string());
+                    ui.weak(size);
+                    ui.end_row();
                 }
             });
-        }
-        for file in files {
-            let name = file
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or("?");
-            ui.horizontal(|ui| {
-                let icon = icons::image_at(ui.ctx(), Icon::Page, 14.0);
-                ui.add(icon);
-                if ui.selectable_label(false, name).clicked() {
-                    self.file_name = name.to_string();
-                    self.error = None;
-                }
-            });
-        }
+        target
     }
 
     fn resolve(&self) -> Result<PathBuf, String> {
@@ -446,6 +560,41 @@ fn home_directory() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
+}
+
+fn places() -> Vec<(&'static str, PathBuf)> {
+    let Some(home) = home_directory() else {
+        return Vec::new();
+    };
+    let mut places = vec![("Home", home.clone())];
+    for (label, name) in [
+        ("Desktop", "Desktop"),
+        ("Documents", "Documents"),
+        ("Downloads", "Downloads"),
+    ] {
+        let path = home.join(name);
+        if path.is_dir() {
+            places.push((label, path));
+        }
+    }
+    if cfg!(windows) {
+        places.push(("This PC", PathBuf::from(r"C:\")));
+    } else {
+        places.push(("Root", PathBuf::from("/")));
+    }
+    places
+}
+
+fn format_size(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = KIB * 1024;
+    if bytes >= MIB {
+        format!("{:.1} MB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.0} KB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 #[cfg(test)]
