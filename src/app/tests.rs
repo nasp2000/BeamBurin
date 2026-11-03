@@ -1872,37 +1872,37 @@ fn the_layer_menu_deletes_an_empty_layer() {
         harness.state().editor.document.layer(&second).is_none(),
         "the deleted layer is still present"
     );
+}
 
-    #[test]
-    fn the_material_test_and_registration_windows_open() {
-        use egui_kittest::kittest::Queryable as _;
+#[test]
+fn the_material_test_and_registration_windows_open() {
+    use egui_kittest::kittest::Queryable as _;
 
-        let mut harness = ui_harness(ui_test_app());
-        harness.run();
-        harness.get_by_label("Operations").click();
-        harness.run();
-        harness.get_by_label("Material test...").click();
-        harness.run();
-        assert!(harness.state().material_test_open);
-        for label in ["Columns / rows", "Speed range (mm/min)", "Power range (%)"] {
-            assert!(
-                harness.query_by_label(label).is_some(),
-                "the material test is missing {label}"
-            );
-        }
-        harness.key_press(egui::Key::Escape);
-        harness.run();
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Operations").click();
+    harness.run();
+    harness.get_by_label("Material test...").click();
+    harness.run();
+    assert!(harness.state().material_test_open);
+    for label in ["Columns / rows", "Speed range (mm/min)", "Power range (%)"] {
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "the material test is missing {label}"
+        );
+    }
+    harness.key_press(egui::Key::Escape);
+    harness.run();
 
-        harness.get_by_label("Operations").click();
-        harness.run();
-        harness.get_by_label("Registration marks...").click();
-        harness.run();
-        assert!(harness.state().regmarks_open);
-        for label in ["Size (mm)", "Margin (mm)", "Style"] {
-            assert!(
-                harness.query_by_label(label).is_some(),
-                "the registration marks are missing {label}"
-            );
-        }
+    harness.get_by_label("Operations").click();
+    harness.run();
+    harness.get_by_label("Registration marks...").click();
+    harness.run();
+    assert!(harness.state().regmarks_open);
+    for label in ["Size (mm)", "Margin (mm)", "Style"] {
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "the registration marks are missing {label}"
+        );
     }
 }
