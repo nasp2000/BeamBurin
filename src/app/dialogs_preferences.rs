@@ -1864,7 +1864,7 @@ impl BeamBurinApp {
                                         changed = true;
                                     }
                                     Err(error) => {
-                                        self.profile_message = format!("Import failed: {error}")
+                                        self.profile_message = format!("Import failed: {error}");
                                     }
                                 }
                             }
@@ -1876,7 +1876,7 @@ impl BeamBurinApp {
                                             format!("Exported profiles to {}", path.display());
                                     }
                                     Err(error) => {
-                                        self.profile_message = format!("Export failed: {error}")
+                                        self.profile_message = format!("Export failed: {error}");
                                     }
                                 }
                             }
