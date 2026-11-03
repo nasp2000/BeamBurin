@@ -3,6 +3,7 @@
 use super::*;
 
 impl BeamBurinApp {
+    /// Close the editor after `frames` frames, for headless CI.
     pub fn set_smoke_frames(&mut self, frames: u32) {
         self.smoke_frames = Some(frames);
     }

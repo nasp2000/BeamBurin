@@ -941,8 +941,6 @@ impl Default for BeamBurinApp {
 }
 
 impl BeamBurinApp {
-    /// Close the editor after `frames` frames, for headless CI.
-
     /// Keep the saved theme in step with the Dark mode toggle and presets.
     fn persist_theme(&mut self) {
         let theme = if self.dark_mode { "dark" } else { "light" };
