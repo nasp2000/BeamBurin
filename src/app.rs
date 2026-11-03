@@ -8601,7 +8601,15 @@ impl BeamBurinApp {
                                     image.settings.mode = mode;
                                     ui.end_row();
                                     ui.label("Negative image");
-                                    ui.checkbox(&mut image.settings.invert, "");
+                                    let negative = ui.checkbox(&mut image.settings.invert, "");
+                                    negative.widget_info(|| {
+                                        egui::WidgetInfo::selected(
+                                            egui::WidgetType::Checkbox,
+                                            true,
+                                            image.settings.invert,
+                                            "Negative image",
+                                        )
+                                    });
                                     ui.end_row();
                                     ui.label("Cells per inch");
                                     ui.weak(format!(
@@ -14704,5 +14712,58 @@ mod tests {
         );
         assert!(params.cross_hatch, "Cross-hatch did not turn on");
         assert!(params.constant_power, "Constant power did not turn on");
+    }
+
+    #[test]
+    fn the_image_adjust_window_edits_the_settings() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("adjust_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let path = directory.join("photo.png");
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+            .save(&path)
+            .expect("cannot write the PNG fixture");
+        let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+        let id = document
+            .objects
+            .first()
+            .expect("the import produced no object")
+            .id
+            .clone();
+        let mut app = ui_test_app();
+        app.editor.set_document(document);
+        app.image_adjust = Some(id.clone());
+        let mut harness = ui_harness(app);
+        harness.run();
+        for label in [
+            "Target DPI",
+            "Image mode",
+            "Line interval (mm)",
+            "Contrast",
+            "Brightness",
+            "Negative image",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "the image window is missing {label}"
+            );
+        }
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Negative image")
+            .click_accesskit();
+        harness.run();
+        let object = harness
+            .state()
+            .editor
+            .document
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        assert!(image.settings.invert, "the negative switch did not apply");
     }
 }
