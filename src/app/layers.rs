@@ -119,7 +119,7 @@ impl BeamBurinApp {
                             .spacing([3.0, 2.0])
                             .show(ui, |ui| {
                                 ui.add_sized(
-                                    [22.0, 18.0],
+                                    [20.0, 18.0],
                                     egui::Label::new(egui::RichText::new("#").strong()),
                                 );
                                 ui.add_sized(
@@ -128,11 +128,11 @@ impl BeamBurinApp {
                                 );
                                 for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
                                     let width = if header == "Mode" {
-                                        84.0
+                                        68.0
                                     } else if header == "Spd/Pwr" {
-                                        44.0
+                                        40.0
                                     } else {
-                                        22.0
+                                        21.0
                                     };
                                     ui.add_sized(
                                         [width, 18.0],
@@ -153,7 +153,7 @@ impl BeamBurinApp {
                                     });
                                     let mut name_hit: Option<egui::Response> = None;
                                     ui.add_sized(
-                                        [22.0, 18.0],
+                                        [20.0, 18.0],
                                         egui::Label::new(format!("L{:02}", index + 1)),
                                     );
                                     ui.allocate_ui_with_layout(
@@ -196,7 +196,7 @@ impl BeamBurinApp {
                                     };
                                     let mut chosen = mode.clone();
                                     egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(76.0)
+                                        .width(62.0)
                                         .selected_text(current)
                                         .show_ui(ui, |ui| {
                                             if ui.selectable_value(&mut chosen, None, "—").clicked()
@@ -223,7 +223,7 @@ impl BeamBurinApp {
                                         || "—".to_string(),
                                         |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                     );
-                                    ui.add_sized([44.0, 18.0], egui::Label::new(speeds));
+                                    ui.add_sized([40.0, 18.0], egui::Label::new(speeds));
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
@@ -298,7 +298,7 @@ impl BeamBurinApp {
                                     }
                                     air_response.on_hover_text("Air assist (M8/M9)");
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(36.0, 18.0),
+                                        egui::vec2(34.0, 18.0),
                                         egui::Layout::left_to_right(egui::Align::Center),
                                         |ui| {
                                             ui.spacing_mut().item_spacing.x = 1.0;
@@ -308,7 +308,7 @@ impl BeamBurinApp {
                                                         egui::RichText::new("\u{25b2}").monospace(),
                                                     )
                                                     .small()
-                                                    .min_size(egui::vec2(15.0, 16.0)),
+                                                    .min_size(egui::vec2(14.0, 16.0)),
                                                 )
                                                 .on_hover_text("Cut this layer earlier")
                                                 .clicked()
@@ -321,7 +321,7 @@ impl BeamBurinApp {
                                                         egui::RichText::new("\u{25bc}").monospace(),
                                                     )
                                                     .small()
-                                                    .min_size(egui::vec2(15.0, 16.0)),
+                                                    .min_size(egui::vec2(14.0, 16.0)),
                                                 )
                                                 .on_hover_text("Cut this layer later")
                                                 .clicked()
