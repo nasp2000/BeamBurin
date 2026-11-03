@@ -14766,4 +14766,78 @@ mod tests {
         };
         assert!(image.settings.invert, "the negative switch did not apply");
     }
+
+    #[test]
+    fn the_image_adjust_window_applies_a_preset() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("preset_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let path = directory.join("photo.png");
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+            .save(&path)
+            .expect("cannot write the PNG fixture");
+        let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+        let id = document
+            .objects
+            .first()
+            .expect("the import produced no object")
+            .id
+            .clone();
+        let mut app = ui_test_app();
+        app.editor.set_document(document);
+        app.image_adjust = Some(id.clone());
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("Wood").click_accesskit();
+        harness.run();
+        let object = harness
+            .state()
+            .editor
+            .document
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        assert_eq!(
+            image.settings.mode,
+            crate::objects::ImageMode::Stucki,
+            "the Wood preset did not change the mode"
+        );
+        assert!(
+            (image.settings.contrast - 1.25).abs() < f32::EPSILON,
+            "the Wood preset did not change the contrast"
+        );
+    }
+
+    #[test]
+    fn the_layer_menu_deletes_an_empty_layer() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let second = app.editor.document.add_layer("Layer 2").id.clone();
+        app.editor.active_layer_id = second.clone();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("Layer 2").click_secondary();
+        harness.run();
+        assert!(
+            harness.query_by_label("Delete layer").is_some(),
+            "the row menu did not open"
+        );
+        harness.get_by_label("Delete layer").click_accesskit();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.layers.len(),
+            1,
+            "the empty layer was not deleted"
+        );
+        assert!(
+            harness.state().editor.document.layer(&second).is_none(),
+            "the deleted layer is still present"
+        );
+    }
 }
