@@ -14318,12 +14318,23 @@ mod tests {
         harness.run();
         harness.get_by_label("Interface").click_accesskit();
         harness.run();
+        assert!(
+            matches!(
+                harness.state().preferences_section,
+                crate::config::preferences::Section::Interface
+            ),
+            "the Interface section was not selected"
+        );
         assert_eq!(
             harness.state().preferences.general.theme,
             "dark",
             "the default theme should be dark"
         );
-        harness.get_by_label("Dark").click_accesskit();
+        harness
+            .get_all_by_role(egui::accesskit::Role::ComboBox)
+            .find(|node| node.rect().min.x > 450.0 && node.rect().min.y > 120.0)
+            .expect("the theme combo is missing")
+            .click_accesskit();
         harness.run();
         harness.get_by_label("Light").click_accesskit();
         harness.run();
