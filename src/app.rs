@@ -13927,9 +13927,9 @@ mod tests {
         harness.run();
         harness.get_by_label("Preferences...").click();
         harness.run();
-        assert_eq!(
+        assert!(
             harness.state().preferences.general.confirm_destructive,
-            true
+            "confirmations should start enabled"
         );
         harness
             .get_by_label("Confirm before discarding unsaved changes")
