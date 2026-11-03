@@ -13810,4 +13810,134 @@ mod tests {
             harness.state().status
         );
     }
+
+    #[test]
+    fn operation_actions_assign_duplicate_and_reorder() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("All operations").click();
+        harness.run();
+        harness.get_by_label("+ Operation").click();
+        harness.run();
+        let first = harness
+            .state()
+            .active_operation
+            .clone()
+            .expect("the new operation is not active");
+        harness.get_by_label("Assign to selection").click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.objects[0]
+                .operation_id
+                .as_deref(),
+            Some(first.as_str()),
+            "Assign to selection did not set the operation"
+        );
+        harness
+            .get_all_by_label("Duplicate")
+            .next()
+            .expect("the duplicate button is missing")
+            .click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.operations.len(),
+            2,
+            "Duplicate did not copy the operation"
+        );
+        let copy = harness
+            .state()
+            .active_operation
+            .clone()
+            .expect("the copy is not active");
+        assert_ne!(copy, first, "the copy reused the original id");
+        harness
+            .get_all_by_label("Up")
+            .last()
+            .expect("the second Up button is missing")
+            .click();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.operations[0].id,
+            copy,
+            "Up did not move the operation earlier"
+        );
+    }
+
+    #[test]
+    fn the_property_plus_moves_the_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        let before = harness.state().editor.document.objects[0].transform.tx;
+        harness
+            .get_all_by_label("+")
+            .next()
+            .expect("the first plus control is missing")
+            .click();
+        harness.run();
+        let after = harness.state().editor.document.objects[0].transform.tx;
+        assert!(
+            (after - before - 1.0).abs() < 0.001,
+            "the X plus moved the object by {}",
+            after - before
+        );
+    }
+
+    #[test]
+    fn preview_play_and_stop_change_the_playback_state() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Preview and G-code...").click();
+        harness.run();
+        harness.get_by_label("Play").click();
+        harness.run();
+        assert!(
+            harness.state().playback_playing,
+            "Play did not start the playback"
+        );
+        harness.get_by_label("Stop").click();
+        harness.run();
+        assert!(
+            !harness.state().playback_playing,
+            "Stop did not end the playback"
+        );
+        assert_eq!(harness.state().playback_progress, 0.0);
+    }
+
+    #[test]
+    fn a_preference_checkbox_updates_the_preferences() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Preferences...").click();
+        harness.run();
+        assert_eq!(
+            harness.state().preferences.general.confirm_destructive,
+            true
+        );
+        harness
+            .get_by_label("Confirm before discarding unsaved changes")
+            .click();
+        harness.run();
+        assert!(
+            !harness.state().preferences.general.confirm_destructive,
+            "the checkbox did not change the preference"
+        );
+    }
 }
