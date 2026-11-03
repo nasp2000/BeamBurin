@@ -1792,7 +1792,7 @@ fn the_image_adjust_window_edits_the_settings() {
 }
 
 #[test]
-fn the_image_adjust_window_applies_a_preset() {
+fn the_image_adjust_window_applies_every_preset() {
     use egui_kittest::kittest::Queryable as _;
 
     let directory = ui_temp_path("preset_dir");
@@ -1813,28 +1813,37 @@ fn the_image_adjust_window_applies_a_preset() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
-    harness.get_by_label("Wood").click_accesskit();
-    harness.run();
-    let object = harness
-        .state()
-        .editor
-        .document
-        .objects
-        .iter()
-        .find(|object| object.id == id)
-        .expect("the image disappeared");
-    let crate::document::Shape::Image(image) = &object.shape else {
-        panic!("the object is not an image");
-    };
-    assert_eq!(
-        image.settings.mode,
-        crate::objects::ImageMode::Stucki,
-        "the Wood preset did not change the mode"
-    );
-    assert!(
-        (image.settings.contrast - 1.25).abs() < f32::EPSILON,
-        "the Wood preset did not change the contrast"
-    );
+    for (label, mode, contrast) in [
+        ("Photo", crate::objects::ImageMode::Jarvis, 1.15),
+        ("Wood", crate::objects::ImageMode::Stucki, 1.25),
+        ("Metal", crate::objects::ImageMode::Atkinson, 1.4),
+        ("Acrylic", crate::objects::ImageMode::FloydSteinberg, 1.1),
+        ("Newsprint", crate::objects::ImageMode::Newsprint, 1.2),
+        ("Sketch", crate::objects::ImageMode::Sketch, 1.3),
+    ] {
+        harness.get_by_label(label).click_accesskit();
+        harness.run();
+        let object = harness
+            .state()
+            .editor
+            .document
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        assert_eq!(
+            image.settings.mode, mode,
+            "the {label} preset did not apply"
+        );
+        assert!(
+            (image.settings.contrast - contrast).abs() < f32::EPSILON,
+            "the {label} preset kept contrast {}",
+            image.settings.contrast
+        );
+    }
 }
 
 #[test]
@@ -1863,4 +1872,37 @@ fn the_layer_menu_deletes_an_empty_layer() {
         harness.state().editor.document.layer(&second).is_none(),
         "the deleted layer is still present"
     );
+
+    #[test]
+    fn the_material_test_and_registration_windows_open() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Material test...").click();
+        harness.run();
+        assert!(harness.state().material_test_open);
+        for label in ["Columns / rows", "Speed range (mm/min)", "Power range (%)"] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "the material test is missing {label}"
+            );
+        }
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Registration marks...").click();
+        harness.run();
+        assert!(harness.state().regmarks_open);
+        for label in ["Size (mm)", "Margin (mm)", "Style"] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "the registration marks are missing {label}"
+            );
+        }
+    }
 }
