@@ -14312,40 +14312,31 @@ mod tests {
 
         let mut harness = ui_harness(ui_test_app());
         harness.run();
-        harness.get_by_label("View").click();
-        harness.run();
-        harness.get_by_label("Preferences...").click();
-        harness.run();
-        harness.get_by_label("Interface").click_accesskit();
-        harness.run();
         assert!(
-            matches!(
-                harness.state().preferences_section,
-                crate::config::preferences::Section::Interface
-            ),
-            "the Interface section was not selected"
-        );
-        assert_eq!(
-            harness.state().preferences.general.theme,
-            "dark",
+            harness.state().dark_mode,
             "the default theme should be dark"
         );
-        harness
-            .get_all_by_role(egui::accesskit::Role::ComboBox)
-            .find(|node| node.rect().min.x > 450.0 && node.rect().min.y > 120.0)
-            .expect("the theme combo is missing")
-            .click_accesskit();
+        harness.get_by_label("View").click();
         harness.run();
-        harness.get_by_label("Light").click_accesskit();
+        harness.get_by_label("Dark mode").click_accesskit();
         harness.run();
+        assert!(
+            !harness.state().dark_mode,
+            "the Dark mode toggle did not switch the live theme"
+        );
+        let ctx = harness.ctx.clone();
+        harness.state_mut().advance(&ctx);
         assert_eq!(
             harness.state().preferences.general.theme,
             "light",
-            "the theme combo did not switch"
+            "the theme preference did not follow the toggle"
         );
-        assert!(
-            !harness.state().dark_mode,
-            "the live theme did not follow the preference"
+        let path = harness.state().preferences_path.clone();
+        let saved = crate::config::preferences::AppPreferences::load_or_default(&path)
+            .expect("cannot read the saved preferences");
+        assert_eq!(
+            saved.general.theme, "light",
+            "the saved preferences kept the old theme"
         );
     }
 }
