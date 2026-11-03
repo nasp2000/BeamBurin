@@ -1,4 +1,4 @@
-//! `BeamWright`'s visual identity.
+//! `BeamBurin`'s visual identity.
 //!
 //! A blue-grey drawing-tool palette with one clear blue accent, compact controls
 //! and modest rounding. The dark theme is the default; the light theme keeps the

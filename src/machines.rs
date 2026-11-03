@@ -1,7 +1,7 @@
 //! Machine profiles: saved work areas for preparation only.
 //!
 //! A profile stores a name, the work area size and notes. It deliberately holds
-//! no connection, port, controller or firmware settings: `BeamWright` prepares
+//! no connection, port, controller or firmware settings: `BeamBurin` prepares
 //! jobs and never talks to a machine.
 
 use serde::{Deserialize, Serialize};

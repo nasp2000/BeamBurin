@@ -26,7 +26,7 @@ impl GCodeWriter {
         };
         let mut out = String::new();
         if self.options.include_comments {
-            let _ = write!(out, "(BeamWright job){newline}");
+            let _ = write!(out, "(BeamBurin job){newline}");
         }
         let _ = write!(out, "G21{newline}");
         let _ = write!(out, "G90{newline}");

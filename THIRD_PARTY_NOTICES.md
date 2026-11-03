@@ -1,11 +1,11 @@
 # Third-party notices
 
-BeamWright is licensed under the MIT License or the Apache License 2.0, at your
+BeamBurin is licensed under the MIT License or the Apache License 2.0, at your
 option. The project texts are in `LICENSE-MIT` and `LICENSE-APACHE`.
 
 This file lists the licences of the assets and of the crates used by the
 project, including build and test dependencies. It is shown in **Help → Licenses** and printed by
-`BeamWright --licenses`.
+`BeamBurin --licenses`.
 
 ## Bundled fonts
 
@@ -355,15 +355,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Icons
 
-`assets/icons/beamwright.png` and `assets/icons/beamwright.ico` were created for
-BeamWright and are distributed under the same MIT OR Apache-2.0 terms as the
+`assets/icons/beamburin.png` and `assets/icons/beamburin.ico` were created for
+BeamBurin and are distributed under the same MIT OR Apache-2.0 terms as the
 rest of the project.
 
 ## Rust dependencies
 
 <!-- BEGIN DEPENDENCIES -->
 
-436 crates are used by BeamWright (including build and test dependencies). The license shown is the
+436 crates are used by BeamBurin (including build and test dependencies). The license shown is the
 one declared by the crate manifest; where a crate offers a choice, the
 permissive option (MIT or Apache-2.0) is used for this distribution.
 
@@ -819,7 +819,7 @@ licence used here is reproduced below.
 ```
 MIT License
 
-Copyright (c) 2026 BeamWright contributors
+Copyright (c) 2026 BeamBurin contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

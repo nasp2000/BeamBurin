@@ -1,15 +1,15 @@
-use beamwright::document::shape::Shape;
-use beamwright::document::{Document, Object, serialization};
-use beamwright::editor::EditorState;
-use beamwright::export::svg::export_svg;
-use beamwright::geometry::{Point2, Transform2};
-use beamwright::import::svg::import_svg;
+use beamburin::document::shape::Shape;
+use beamburin::document::{Document, Object, serialization};
+use beamburin::editor::EditorState;
+use beamburin::export::svg::export_svg;
+use beamburin::geometry::{Point2, Transform2};
+use beamburin::import::svg::import_svg;
 use std::env::temp_dir;
 
 #[test]
 fn document_round_trip() {
     let document = Document::new("Round trip", 120.0, 80.0);
-    let path = temp_dir().join("beamwright_integration_roundtrip.bwp");
+    let path = temp_dir().join("beamburin_integration_roundtrip.bwp");
     serialization::save_to_file(&document, &path).unwrap();
     let loaded = serialization::load_from_file(&path).unwrap();
     assert_eq!(loaded.name, document.name);
@@ -83,7 +83,7 @@ fn drawing_select_move_save_open_acceptance() {
     editor.record();
     editor.move_selection(5.0, 5.0);
 
-    let path = temp_dir().join("beamwright_acceptance.bwp");
+    let path = temp_dir().join("beamburin_acceptance.bwp");
     editor.save(&path).unwrap();
     let mut reopened = EditorState::new(Document::default());
     reopened.load(&path).unwrap();

@@ -1,7 +1,7 @@
 //! Fonts installed on the machine, plus the bundled fallback.
 //!
 //! The catalogue is built once from the platform font directories (or from
-//! `BEAMWRIGHT_FONT_DIRS`) and is never written to. Text objects store the
+//! `BEAMBURIN_FONT_DIRS`) and is never written to. Text objects store the
 //! chosen font name; the canvas registers only the fonts the document uses, so
 //! opening a project does not load hundreds of files.
 //!
@@ -21,7 +21,7 @@ pub const BUNDLED_NAME: &str = "DejaVu Sans (bundled)";
 pub const BUNDLED_DATA: &[u8] = include_bytes!("../assets/fonts/DejaVuSans.ttf");
 
 /// Prefix that keeps generated font families separate from egui's own.
-const FAMILY_PREFIX: &str = "beamwright-font-";
+const FAMILY_PREFIX: &str = "beamburin-font-";
 
 /// A font file found on the machine.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,19 +111,19 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
     needed.sort();
     needed.dedup();
 
-    let id = egui::Id::new("beamwright_document_fonts");
+    let id = egui::Id::new("beamburin_document_fonts");
     if ctx.data(|data| data.get_temp::<Vec<String>>(id)).as_deref() == Some(needed.as_slice()) {
         return;
     }
 
     let mut definitions = FontDefinitions::default();
     definitions.font_data.insert(
-        "beamwright-bundled".to_string(),
+        "beamburin-bundled".to_string(),
         Arc::new(FontData::from_static(BUNDLED_DATA)),
     );
     definitions.families.insert(
         FontFamily::Name(family_key(BUNDLED_NAME).into()),
-        vec!["beamwright-bundled".to_string()],
+        vec!["beamburin-bundled".to_string()],
     );
 
     for name in &needed {
@@ -131,7 +131,7 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
         definitions
             .families
             .entry(FontFamily::Name(key.as_str().into()))
-            .or_insert_with(|| vec!["beamwright-bundled".to_string()]);
+            .or_insert_with(|| vec!["beamburin-bundled".to_string()]);
         if name == BUNDLED_NAME {
             continue;
         }
@@ -149,7 +149,7 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
             .insert(key.clone(), Arc::new(FontData::from_owned(bytes)));
         definitions.families.insert(
             FontFamily::Name(key.as_str().into()),
-            vec![key, "beamwright-bundled".to_string()],
+            vec![key, "beamburin-bundled".to_string()],
         );
     }
 
@@ -160,7 +160,7 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
 
 /// Font directories for this platform, in preference order.
 fn font_dirs() -> Vec<PathBuf> {
-    if let Some(value) = std::env::var_os("BEAMWRIGHT_FONT_DIRS") {
+    if let Some(value) = std::env::var_os("BEAMBURIN_FONT_DIRS") {
         return std::env::split_paths(&value).collect();
     }
     let mut dirs = Vec::new();
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn family_keys_are_distinct_per_font() {
         assert_ne!(family_key("DejaVu Sans"), family_key("Some Other Font"));
-        assert!(family_key("DejaVu Sans").starts_with("beamwright-font-"));
+        assert!(family_key("DejaVu Sans").starts_with("beamburin-font-"));
     }
 
     #[test]

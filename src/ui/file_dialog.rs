@@ -465,11 +465,11 @@ mod tests {
     fn save_adds_default_extension() {
         let mut dialog = FileDialog::new(
             FileMode::SaveProject,
-            Some(std::path::Path::new("/tmp/beamwright-dialog-test")),
+            Some(std::path::Path::new("/tmp/beamburin-dialog-test")),
             "untitled",
         );
         dialog.directory = std::env::temp_dir();
-        dialog.file_name = "beamwright-dialog-test".to_string();
+        dialog.file_name = "beamburin-dialog-test".to_string();
         let path = dialog.resolve().unwrap();
         assert_eq!(
             path.extension().and_then(|value| value.to_str()),
@@ -502,11 +502,11 @@ mod tests {
     fn gcode_export_uses_nc_extension() {
         let mut dialog = FileDialog::new(
             FileMode::ExportGcode,
-            Some(std::path::Path::new("/tmp/beamwright-job")),
+            Some(std::path::Path::new("/tmp/beamburin-job")),
             "job",
         );
         dialog.directory = std::env::temp_dir();
-        dialog.file_name = "beamwright-job".to_string();
+        dialog.file_name = "beamburin-job".to_string();
         let path = dialog.resolve().unwrap();
         assert_eq!(
             path.extension().and_then(|value| value.to_str()),
@@ -552,11 +552,11 @@ mod tests {
         assert!(!FileMode::ExportMaterialsCsv.accepts(std::path::Path::new("m.json")));
         let mut dialog = FileDialog::new(
             FileMode::ExportMaterialsCsv,
-            Some(std::path::Path::new("/tmp/beamwright-csv")),
-            "beamwright-csv",
+            Some(std::path::Path::new("/tmp/beamburin-csv")),
+            "beamburin-csv",
         );
         dialog.directory = std::env::temp_dir();
-        dialog.file_name = "beamwright-csv".to_string();
+        dialog.file_name = "beamburin-csv".to_string();
         let path = dialog.resolve().unwrap();
         assert_eq!(
             path.extension().and_then(|value| value.to_str()),
@@ -572,7 +572,7 @@ mod tests {
             "profiles",
         );
         dialog.directory = std::env::temp_dir();
-        dialog.file_name = "beamwright-profiles".to_string();
+        dialog.file_name = "beamburin-profiles".to_string();
         let path = dialog.resolve().unwrap();
         assert_eq!(
             path.extension().and_then(|value| value.to_str()),

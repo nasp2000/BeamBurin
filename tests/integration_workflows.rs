@@ -4,10 +4,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use beamwright::document::{Document, Object, Shape};
-use beamwright::editor::EditorState;
-use beamwright::gcode::{JobOptions, Playback, planned_toolpaths, render_job};
-use beamwright::geometry::Point2;
+use beamburin::document::{Document, Object, Shape};
+use beamburin::editor::EditorState;
+use beamburin::gcode::{JobOptions, Playback, planned_toolpaths, render_job};
+use beamburin::geometry::Point2;
 
 fn temporary(name: &str) -> PathBuf {
     std::env::temp_dir().join(name)
@@ -25,15 +25,15 @@ fn sample_document() -> Document {
                 corner_radius: 0.0,
             },
         )
-        .with_transform(beamwright::geometry::Transform2::translate(10.0, 10.0)),
+        .with_transform(beamburin::geometry::Transform2::translate(10.0, 10.0)),
     );
     document.add_object(
         Object::new(layer.clone(), Shape::Ellipse { rx: 5.0, ry: 3.0 })
-            .with_transform(beamwright::geometry::Transform2::translate(50.0, 20.0)),
+            .with_transform(beamburin::geometry::Transform2::translate(50.0, 20.0)),
     );
     document.add_object(Object::new(
         layer,
-        Shape::Path(beamwright::geometry::Path::from_points(
+        Shape::Path(beamburin::geometry::Path::from_points(
             &[(80.0, 10.0), (90.0, 10.0)],
             false,
         )),
@@ -44,8 +44,8 @@ fn sample_document() -> Document {
 #[test]
 fn dxf_export_and_import_round_trip() {
     let document = sample_document();
-    let dxf = beamwright::export::export_dxf(&document).unwrap();
-    let imported = beamwright::import::dxf::import_dxf_report(&dxf).unwrap();
+    let dxf = beamburin::export::export_dxf(&document).unwrap();
+    let imported = beamburin::import::dxf::import_dxf_report(&dxf).unwrap();
     assert_eq!(imported.document.objects.len(), document.objects.len());
     assert_eq!(imported.warnings.len(), 0);
     let (min, max) = imported.document.objects[0].bounds().unwrap();
@@ -56,16 +56,16 @@ fn dxf_export_and_import_round_trip() {
 #[test]
 fn svg_export_and_import_round_trip() {
     let document = sample_document();
-    let svg = beamwright::export::export_svg(&document).unwrap();
-    let report = beamwright::import::svg::import_svg_report(&svg).unwrap();
+    let svg = beamburin::export::export_svg(&document).unwrap();
+    let report = beamburin::import::svg::import_svg_report(&svg).unwrap();
     assert_eq!(report.document.objects.len(), document.objects.len());
     assert_eq!(report.warnings.len(), 0);
 }
 
 #[test]
 fn applied_profile_values_survive_profile_deletion() {
-    use beamwright::operations::OperationType;
-    use beamwright::profiles::{OperationProfile, ProfileLibrary};
+    use beamburin::operations::OperationType;
+    use beamburin::profiles::{OperationProfile, ProfileLibrary};
 
     let mut library = ProfileLibrary::with_builtins();
     let mut profile = OperationProfile::new("Workflow cut", OperationType::OutlineCutting);
@@ -89,14 +89,14 @@ fn applied_profile_values_survive_profile_deletion() {
 #[test]
 fn a_corrupt_project_recovers_its_previous_version() {
     let path = temporary("bw_workflow_recovery.bwp");
-    let backup = beamwright::document::serialization::backup_path(&path);
+    let backup = beamburin::document::serialization::backup_path(&path);
     let _ = fs::remove_file(&path);
     let _ = fs::remove_file(&backup);
     let document = sample_document();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
     fs::write(&path, "{not json").unwrap();
-    let (recovered, note) = beamwright::document::serialization::load_with_recovery(&path).unwrap();
+    let (recovered, note) = beamburin::document::serialization::load_with_recovery(&path).unwrap();
     assert_eq!(recovered.objects.len(), document.objects.len());
     assert!(note.is_some());
     let _ = fs::remove_file(&path);
@@ -108,7 +108,7 @@ fn raster_import_can_be_exported_as_a_job() {
     let path = temporary("bw_workflow_raster.png");
     let image = image::GrayImage::from_pixel(4, 2, image::Luma([0]));
     image.save(&path).unwrap();
-    let document = beamwright::import::raster::import_raster(&path).unwrap();
+    let document = beamburin::import::raster::import_raster(&path).unwrap();
     assert_eq!(document.objects.len(), 1);
     let (_, report) = render_job(&document, &JobOptions::default()).unwrap();
     assert_eq!(report.paths, 1);
@@ -142,7 +142,7 @@ fn saving_a_project_keeps_the_open_document_unchanged() {
     let before = editor.document.clone();
     editor.save(&path).unwrap();
     assert_eq!(editor.document, before);
-    let loaded = beamwright::document::serialization::load_from_file(&path).unwrap();
+    let loaded = beamburin::document::serialization::load_from_file(&path).unwrap();
     assert_eq!(loaded, before);
     let _ = fs::remove_file(&path);
 }

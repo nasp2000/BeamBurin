@@ -179,7 +179,7 @@ mod tests {
 
     fn temp_folder(name: &str) -> PathBuf {
         let path =
-            std::env::temp_dir().join(format!("beamwright_policy_{name}_{}", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_policy_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         path.canonicalize().unwrap()

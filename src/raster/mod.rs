@@ -999,14 +999,14 @@ mod tests {
 
     #[test]
     fn missing_file_is_an_error() {
-        let path = std::env::temp_dir().join("beamwright_missing_raster.png");
+        let path = std::env::temp_dir().join("beamburin_missing_raster.png");
         let _ = std::fs::remove_file(&path);
         assert!(process_file(&path, &ImageSettings::default()).is_err());
     }
 
     #[test]
     fn processes_a_png_file() {
-        let path = std::env::temp_dir().join("beamwright_raster_test.png");
+        let path = std::env::temp_dir().join("beamburin_raster_test.png");
         let mut image = image::GrayImage::new(4, 2);
         for (x, _y, pixel) in image.enumerate_pixels_mut() {
             *pixel = if x < 2 {
@@ -1025,7 +1025,7 @@ mod tests {
 
     #[test]
     fn a_huge_header_is_rejected_before_decoding() {
-        let path = std::env::temp_dir().join("beamwright_huge_header.png");
+        let path = std::env::temp_dir().join("beamburin_huge_header.png");
         write_header_only_png(&path, 60_000, 60_000);
         let error = process_file(&path, &ImageSettings::default()).unwrap_err();
         let message = error.to_string();

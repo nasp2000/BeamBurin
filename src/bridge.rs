@@ -1,7 +1,7 @@
 //! Live bridge to the running editor.
 //!
 //! The GUI listens on `127.0.0.1` and executes JSON-RPC requests on the UI
-//! thread, against the document that is actually open. `BeamWright mcp --live`
+//! thread, against the document that is actually open. `BeamBurin mcp --live`
 //! proxies MCP stdio to this bridge, so an agent controls the visible session
 //! instead of a separate copy.
 //!
@@ -13,19 +13,19 @@ use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-/// Port used when `BEAMWRIGHT_BRIDGE_PORT` is not set.
+/// Port used when `BEAMBURIN_BRIDGE_PORT` is not set.
 pub const DEFAULT_PORT: u16 = 47_821;
 
 /// Environment variable that overrides the port.
-pub const PORT_ENV: &str = "BEAMWRIGHT_BRIDGE_PORT";
+pub const PORT_ENV: &str = "BEAMBURIN_BRIDGE_PORT";
 
 /// Address to bind. Defaults to loopback; set to `0.0.0.0` or a Tailscale
 /// address to accept connections from other machines.
-pub const ADDRESS_ENV: &str = "BEAMWRIGHT_BRIDGE_ADDR";
+pub const ADDRESS_ENV: &str = "BEAMBURIN_BRIDGE_ADDR";
 
 /// Shared secret required for every connection. Generated on first use when the
 /// environment variable is absent and stored in the user data directory.
-pub const TOKEN_ENV: &str = "BEAMWRIGHT_BRIDGE_TOKEN";
+pub const TOKEN_ENV: &str = "BEAMBURIN_BRIDGE_TOKEN";
 
 /// File holding the generated token, readable only by the user on Unix.
 pub const TOKEN_FILE: &str = "bridge.token";
@@ -173,7 +173,7 @@ pub fn proxy_stdio(
     policy: &crate::policy::Policy,
 ) -> Result<(), String> {
     let stream = TcpStream::connect((host, port)).map_err(|error| {
-        format!("no running BeamWright editor on {host}:{port} ({error}); start BeamWright first")
+        format!("no running BeamBurin editor on {host}:{port} ({error}); start BeamBurin first")
     })?;
     if let Some(token) = token {
         authenticate(
@@ -254,7 +254,7 @@ pub fn request(
     request: &str,
 ) -> Result<String, String> {
     let mut stream = TcpStream::connect((host, port)).map_err(|error| {
-        format!("no running BeamWright editor on {host}:{port} ({error}); start BeamWright first")
+        format!("no running BeamBurin editor on {host}:{port} ({error}); start BeamBurin first")
     })?;
     if let Some(token) = token {
         authenticate(

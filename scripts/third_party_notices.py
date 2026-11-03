@@ -59,7 +59,7 @@ def dependency_block() -> str:
     lines = [
         BEGIN,
         "",
-        f"{len(rows)} crates are used by BeamWright (including build and test dependencies). The license shown is the",
+        f"{len(rows)} crates are used by BeamBurin (including build and test dependencies). The license shown is the",
         "one declared by the crate manifest; where a crate offers a choice, the",
         "permissive option (MIT or Apache-2.0) is used for this distribution.",
         "",

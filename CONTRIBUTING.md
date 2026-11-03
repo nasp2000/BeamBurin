@@ -1,13 +1,13 @@
 # Contributing
 
-Thanks for helping. BeamWright is a small, focused project: a feature is done
+Thanks for helping. BeamBurin is a small, focused project: a feature is done
 only when it has logic, UI, persistence, error handling and tests.
 
 ## Before you start
 
 - Open an issue for a behaviour change or a new dependency, so the scope is
   clear before code is written.
-- Keep the scope: BeamWright prepares jobs and never controls machines. Do not
+- Keep the scope: BeamBurin prepares jobs and never controls machines. Do not
   add serial/USB, streaming, homing, `$` settings or connection profiles.
 - Target Rust 1.95 (2024 edition). Dependencies must be MIT-compatible and are
   checked by `cargo-deny`.

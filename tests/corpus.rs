@@ -6,9 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use beamwright::document::{Document, Shape};
-use beamwright::geometry::Transform2;
-use beamwright::operations::{Operation, OperationParams, OperationType};
+use beamburin::document::{Document, Shape};
+use beamburin::geometry::Transform2;
+use beamburin::operations::{Operation, OperationParams, OperationType};
 
 fn samples() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/examples")
@@ -77,7 +77,7 @@ fn check(name: &str, actual: &str) {
 
 fn import(name: &str) -> Document {
     let path = samples().join(name);
-    let outcome = beamwright::import::format::import_with_report(&path)
+    let outcome = beamburin::import::format::import_with_report(&path)
         .unwrap_or_else(|error| panic!("cannot import {name}: {error}"));
     outcome.document
 }
@@ -110,7 +110,7 @@ fn the_svg_sample_imports_and_exports_stably() {
         "objects: {}",
         document.objects.len()
     );
-    let svg = beamwright::export::export_svg(&document).unwrap();
+    let svg = beamburin::export::export_svg(&document).unwrap();
     check("shapes.svg", &svg);
 }
 
@@ -118,7 +118,7 @@ fn the_svg_sample_imports_and_exports_stably() {
 fn the_dxf_sample_imports_and_exports_stably() {
     let document = import("corpus_parts.dxf");
     assert_ne!(document.objects.len(), 0);
-    let dxf = beamwright::export::export_dxf(&document).unwrap();
+    let dxf = beamburin::export::export_dxf(&document).unwrap();
     check("parts.dxf", &dxf);
 }
 
@@ -126,7 +126,7 @@ fn the_dxf_sample_imports_and_exports_stably() {
 fn the_hpgl_sample_imports_and_exports_stably() {
     let document = import("corpus_plot.hpgl");
     assert_ne!(document.objects.len(), 0);
-    let svg = beamwright::export::export_svg(&document).unwrap();
+    let svg = beamburin::export::export_svg(&document).unwrap();
     check("plot.svg", &svg);
 }
 
@@ -134,8 +134,7 @@ fn the_hpgl_sample_imports_and_exports_stably() {
 fn the_svg_sample_produces_stable_gcode() {
     let document = with_cut(import("corpus_shapes.svg"));
     let (text, report) =
-        beamwright::gcode::render_job(&document, &beamwright::gcode::JobOptions::default())
-            .unwrap();
+        beamburin::gcode::render_job(&document, &beamburin::gcode::JobOptions::default()).unwrap();
     assert!(report.lines > 0);
     check("shapes.nc", &text);
 }
@@ -163,15 +162,15 @@ fn a_freehand_square_round_trips_through_svg() {
     // A document built in code, so the corpus also covers export without import.
     let mut document = Document::new("Corpus", 100.0, 100.0);
     let layer_id = document.layers[0].id.clone();
-    let mut object = beamwright::document::Object::new(
+    let mut object = beamburin::document::Object::new(
         layer_id,
-        Shape::Path(beamwright::geometry::Path::from_points(
+        Shape::Path(beamburin::geometry::Path::from_points(
             &[(10.0, 10.0), (50.0, 10.0), (50.0, 40.0), (10.0, 40.0)],
             true,
         )),
     );
     object.transform = Transform2::identity();
     document.add_object(object);
-    let svg = beamwright::export::export_svg(&document).unwrap();
+    let svg = beamburin::export::export_svg(&document).unwrap();
     check("square.svg", &svg);
 }

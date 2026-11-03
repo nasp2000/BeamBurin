@@ -5,7 +5,7 @@
 # License and the Ubuntu font licence); the code around them stays MIT.
 
 [advisories]
-# Ignored findings are transitive, not used by BeamWright directly, and have no
+# Ignored findings are transitive, not used by BeamBurin directly, and have no
 # fixed release available to this dependency graph yet. The SVG importer itself
 # uses quick-xml 0.42, the fixed line.
 ignore = [

@@ -1,4 +1,4 @@
-//! `BeamWright` entry point.
+//! `BeamBurin` entry point.
 //!
 //! The portable Windows release is built as a GUI-subsystem executable so no
 //! console window appears behind the editor. CLI output needs a console build:
@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 fn load_icon() -> egui::IconData {
-    let bytes = include_bytes!("../assets/icons/beamwright.png");
+    let bytes = include_bytes!("../assets/icons/beamburin.png");
     if let Ok(img) = image::load_from_memory(bytes) {
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
@@ -28,7 +28,7 @@ fn load_icon() -> egui::IconData {
     }
 }
 
-use beamwright::app::BeamWrightApp;
+use beamburin::app::BeamBurinApp;
 use clap::Parser;
 
 /// Graphics options that also work on the limited adapters found on small
@@ -42,14 +42,14 @@ fn native_options() -> eframe::NativeOptions {
     let mut wgpu = eframe::egui_wgpu::WgpuConfiguration::default();
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut wgpu.wgpu_setup {
         setup.device_descriptor = std::sync::Arc::new(|adapter| eframe::wgpu::DeviceDescriptor {
-            label: Some("BeamWright device"),
+            label: Some("BeamBurin device"),
             required_limits: adapter.limits(),
             ..Default::default()
         });
     }
     eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("BeamWright")
+            .with_title("BeamBurin")
             .with_inner_size([1280.0, 800.0])
             .with_icon(load_icon()),
         wgpu_options: wgpu,
@@ -58,14 +58,14 @@ fn native_options() -> eframe::NativeOptions {
 }
 
 fn main() -> eframe::Result<()> {
-    tracing::info!("starting BeamWright");
-    let cli = beamwright::cli::Cli::parse();
+    tracing::info!("starting BeamBurin");
+    let cli = beamburin::cli::Cli::parse();
     if cli.licenses {
-        beamwright::cli::print_licenses();
+        beamburin::cli::print_licenses();
         return Ok(());
     }
     if cli.command.is_some() {
-        if let Err(e) = beamwright::cli::run(cli) {
+        if let Err(e) = beamburin::cli::run(cli) {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
@@ -73,11 +73,11 @@ fn main() -> eframe::Result<()> {
     }
     let options = native_options();
     eframe::run_native(
-        "BeamWright",
+        "BeamBurin",
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::light());
-            let mut app = BeamWrightApp::new(cli.file);
+            let mut app = BeamBurinApp::new(cli.file);
             if cli.smoke_test {
                 app.set_smoke_frames(20);
             }

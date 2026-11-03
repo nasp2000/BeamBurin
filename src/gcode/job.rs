@@ -2116,7 +2116,7 @@ mod tests {
 
     #[test]
     fn raster_image_generates_engraving_runs() {
-        let path = std::env::temp_dir().join("beamwright_job_raster.png");
+        let path = std::env::temp_dir().join("beamburin_job_raster.png");
         let mut image = image::GrayImage::new(4, 2);
         for (x, _y, pixel) in image.enumerate_pixels_mut() {
             *pixel = if x < 2 {
@@ -2139,7 +2139,7 @@ mod tests {
 
     #[test]
     fn grayscale_image_varies_the_power_along_the_raster() {
-        let path = std::env::temp_dir().join("beamwright_job_grayscale.png");
+        let path = std::env::temp_dir().join("beamburin_job_grayscale.png");
         let mut picture = image::GrayImage::new(4, 1);
         picture.put_pixel(0, 0, image::Luma([0]));
         picture.put_pixel(1, 0, image::Luma([64]));
@@ -2673,7 +2673,7 @@ mod tests {
 
     #[test]
     fn rotated_image_swaps_its_physical_size() {
-        let path = std::env::temp_dir().join("beamwright_job_rotated.png");
+        let path = std::env::temp_dir().join("beamburin_job_rotated.png");
         let mut picture = image::GrayImage::new(4, 2);
         for (x, _y, pixel) in picture.enumerate_pixels_mut() {
             *pixel = if x < 2 {
@@ -2704,7 +2704,7 @@ mod tests {
 
     #[test]
     fn missing_image_file_is_reported() {
-        let document = image_document(std::path::Path::new("/tmp/beamwright_no_such.png"));
+        let document = image_document(std::path::Path::new("/tmp/beamburin_no_such.png"));
         let (toolpaths, warnings) = build_toolpaths(&document);
         assert_eq!(toolpaths.len(), 0);
         assert_eq!(warnings.len(), 1);
@@ -2713,7 +2713,7 @@ mod tests {
 
     #[test]
     fn blank_image_produces_no_toolpath() {
-        let path = std::env::temp_dir().join("beamwright_job_blank.png");
+        let path = std::env::temp_dir().join("beamburin_job_blank.png");
         let image = image::GrayImage::from_pixel(4, 2, image::Luma([255]));
         image.save(&path).unwrap();
         let document = image_document(&path);
@@ -2726,7 +2726,7 @@ mod tests {
     #[test]
     fn export_writes_file_atomically() {
         let document = document_with_rect();
-        let path = std::env::temp_dir().join("beamwright_job.nc");
+        let path = std::env::temp_dir().join("beamburin_job.nc");
         let _ = std::fs::remove_file(&path);
         let report = export_job(&document, &path, &JobOptions::default()).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();

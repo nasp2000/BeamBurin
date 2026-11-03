@@ -160,7 +160,7 @@ impl McpServer {
             "initialize" => Ok(json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                "serverInfo": {"name": "beamwright", "version": env!("CARGO_PKG_VERSION")}
+                "serverInfo": {"name": "beamburin", "version": env!("CARGO_PKG_VERSION")}
             })),
             "resources/list" => Ok(json!({
                 "resources": crate::mcp_content::resources()
@@ -2305,7 +2305,7 @@ mod tests {
     fn initialize_and_list_tools() {
         let mut server = McpServer::new();
         let init = server.handle(&json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}));
-        assert_eq!(init["result"]["serverInfo"]["name"], "beamwright");
+        assert_eq!(init["result"]["serverInfo"]["name"], "beamburin");
         let list = server.handle(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
         let tools = list["result"]["tools"].as_array().unwrap();
         assert!(tools.len() >= 15);
@@ -2401,7 +2401,7 @@ mod tests {
     #[test]
     fn a_workspace_confines_project_paths() {
         let folder =
-            std::env::temp_dir().join(format!("beamwright_mcp_workspace_{}", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_mcp_workspace_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         let mut server = McpServer::new();
@@ -2409,7 +2409,7 @@ mod tests {
         let saved = call(&mut server, "save_project", json!({"path": "part.bwp"}));
         assert!(saved.get("error").is_none(), "{saved}");
         assert!(folder.join("part.bwp").is_file());
-        let outside = std::env::temp_dir().join("beamwright_mcp_outside.bwp");
+        let outside = std::env::temp_dir().join("beamburin_mcp_outside.bwp");
         let _ = std::fs::remove_file(&outside);
         let refused = call(
             &mut server,
@@ -2432,7 +2432,7 @@ mod tests {
     #[test]
     fn an_import_clears_the_previous_project_path() {
         let folder =
-            std::env::temp_dir().join(format!("beamwright_mcp_import_{}", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_mcp_import_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(
@@ -2460,7 +2460,7 @@ mod tests {
     #[test]
     fn check_job_refuses_a_job_file_and_outside_paths() {
         let folder =
-            std::env::temp_dir().join(format!("beamwright_mcp_check_{}", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_mcp_check_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("out.nc"), "G21\nG90\nM5\n").unwrap();
@@ -2706,7 +2706,7 @@ mod tests {
     #[test]
     fn a_background_export_reports_its_result() {
         let path =
-            std::env::temp_dir().join(format!("beamwright_mcp_job_{}.nc", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_mcp_job_{}.nc", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut server = McpServer::new();
         call(
@@ -2975,7 +2975,7 @@ mod tests {
             "jsonrpc": "2.0",
             "id": 3,
             "method": "resources/read",
-            "params": {"uri": "beamwright://document/summary"}
+            "params": {"uri": "beamburin://document/summary"}
         }));
         let text = read["result"]["contents"][0]["text"].as_str().unwrap();
         assert!(text.contains("\"project\""));
@@ -2983,7 +2983,7 @@ mod tests {
             "jsonrpc": "2.0",
             "id": 4,
             "method": "resources/read",
-            "params": {"uri": "beamwright://nope"}
+            "params": {"uri": "beamburin://nope"}
         }));
         assert!(missing.get("error").is_some());
 
@@ -3623,7 +3623,7 @@ mod tests {
         assert_eq!(estimate["result"]["paths"], 1);
         assert!(estimate["result"]["seconds"].as_f64().unwrap() > 0.0);
 
-        let path = std::env::temp_dir().join("beamwright_mcp_job.nc");
+        let path = std::env::temp_dir().join("beamburin_mcp_job.nc");
         let _ = std::fs::remove_file(&path);
         let exported = call(
             &mut server,
@@ -3637,7 +3637,7 @@ mod tests {
 
     #[test]
     fn save_and_open_round_trip() {
-        let path = std::env::temp_dir().join("beamwright_mcp_project.bwp");
+        let path = std::env::temp_dir().join("beamburin_mcp_project.bwp");
         let _ = std::fs::remove_file(&path);
         let mut server = McpServer::new();
         call(
@@ -3692,7 +3692,7 @@ mod tests {
 
     #[test]
     fn import_svg_into_server() {
-        let path = std::env::temp_dir().join("beamwright_mcp_import.svg");
+        let path = std::env::temp_dir().join("beamburin_mcp_import.svg");
         std::fs::write(
             &path,
             "<svg width=\"20\" height=\"10\"><rect width=\"5\" height=\"5\"/></svg>",

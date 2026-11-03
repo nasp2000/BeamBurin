@@ -1,25 +1,25 @@
-use beamwright::cli::{Cli, Commands, run};
+use beamburin::cli::{Cli, Commands, run};
 use clap::Parser;
 use std::env::temp_dir;
 use std::fs;
 
 #[test]
 fn cli_help_parses() {
-    let cli = Cli::try_parse_from(["BeamWright", "--help"]).err();
+    let cli = Cli::try_parse_from(["BeamBurin", "--help"]).err();
     // --help exits successfully, which clap reports as an error value.
     assert!(cli.is_some());
 }
 
 #[test]
 fn cli_licenses_flag_parses() {
-    let cli = Cli::try_parse_from(["BeamWright", "--licenses"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "--licenses"]).unwrap();
     assert!(cli.licenses);
     assert!(cli.command.is_none());
 }
 
 #[test]
 fn cli_no_subcommand() {
-    let cli = Cli::try_parse_from(["BeamWright"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin"]).unwrap();
     assert!(cli.command.is_none());
     assert!(cli.file.is_none());
     assert!(!cli.smoke_test);
@@ -27,14 +27,14 @@ fn cli_no_subcommand() {
 
 #[test]
 fn cli_smoke_test_flag_parses() {
-    let cli = Cli::try_parse_from(["BeamWright", "--smoke-test"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "--smoke-test"]).unwrap();
     assert!(cli.smoke_test);
     assert!(cli.command.is_none());
 }
 
 #[test]
 fn cli_positional_file() {
-    let cli = Cli::try_parse_from(["BeamWright", "drawing.bwp"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "drawing.bwp"]).unwrap();
     assert!(cli.command.is_none());
     assert_eq!(
         cli.file.as_deref().and_then(|path| path.to_str()),
@@ -45,9 +45,9 @@ fn cli_positional_file() {
 #[test]
 fn cli_info_command() {
     let path = temp_dir().join("bw_cli_info.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "info", path.to_str().unwrap()]).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "info", path.to_str().unwrap()]).unwrap();
     assert!(matches!(cli.command, Some(Commands::Info { .. })));
     run(cli).unwrap();
     let _ = fs::remove_file(&path);
@@ -56,9 +56,9 @@ fn cli_info_command() {
 #[test]
 fn cli_list_layers_command() {
     let path = temp_dir().join("bw_cli_layers.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "list-layers", path.to_str().unwrap()]).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "list-layers", path.to_str().unwrap()]).unwrap();
     run(cli).unwrap();
     let _ = fs::remove_file(&path);
 }
@@ -66,7 +66,7 @@ fn cli_list_layers_command() {
 #[test]
 fn cli_mcp_accepts_workspace_and_read_only_flags() {
     let cli =
-        Cli::try_parse_from(["BeamWright", "mcp", "--workspace", "/tmp", "--read-only"]).unwrap();
+        Cli::try_parse_from(["BeamBurin", "mcp", "--workspace", "/tmp", "--read-only"]).unwrap();
     match cli.command {
         Some(Commands::Mcp {
             workspace,
@@ -79,7 +79,7 @@ fn cli_mcp_accepts_workspace_and_read_only_flags() {
         _ => panic!("expected the mcp command"),
     }
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "mcp-http",
         "--token",
         "secret",
@@ -104,15 +104,15 @@ fn cli_mcp_accepts_workspace_and_read_only_flags() {
 #[test]
 fn cli_inspect_and_measure_report_a_project() {
     let path = temp_dir().join("bw_cli_inspect.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "inspect", path.to_str().unwrap()]).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "inspect", path.to_str().unwrap()]).unwrap();
     run(cli).unwrap();
     let cli =
-        Cli::try_parse_from(["BeamWright", "inspect", path.to_str().unwrap(), "--json"]).unwrap();
+        Cli::try_parse_from(["BeamBurin", "inspect", path.to_str().unwrap(), "--json"]).unwrap();
     run(cli).unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "measure",
         path.to_str().unwrap(),
         "--json",
@@ -128,11 +128,11 @@ fn cli_solve_applies_the_constraints() {
     let project = temp_dir().join("bw_cli_solve.bwp");
     let output = temp_dir().join("bw_cli_solve_out.bwp");
     let _ = fs::remove_file(&output);
-    let mut document = beamwright::document::Document::default();
+    let mut document = beamburin::document::Document::default();
     let layer_id = document.layers[0].id.clone();
-    let object = beamwright::document::Object::new(
+    let object = beamburin::document::Object::new(
         layer_id,
-        beamwright::document::Shape::Path(beamwright::geometry::Path::from_points(
+        beamburin::document::Shape::Path(beamburin::geometry::Path::from_points(
             &[(0.0, 0.0), (10.0, 5.0)],
             false,
         )),
@@ -141,15 +141,15 @@ fn cli_solve_applies_the_constraints() {
     document.add_object(object);
     document
         .constraints
-        .push(beamwright::constraints::Constraint::new(
-            beamwright::constraints::ConstraintKind::Horizontal {
-                a: beamwright::constraints::NodeRef::new(object_id.clone(), 0),
-                b: beamwright::constraints::NodeRef::new(object_id.clone(), 1),
+        .push(beamburin::constraints::Constraint::new(
+            beamburin::constraints::ConstraintKind::Horizontal {
+                a: beamburin::constraints::NodeRef::new(object_id.clone(), 0),
+                b: beamburin::constraints::NodeRef::new(object_id.clone(), 1),
             },
         ));
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "solve",
         project.to_str().unwrap(),
         "--output",
@@ -157,8 +157,8 @@ fn cli_solve_applies_the_constraints() {
     ])
     .unwrap();
     run(cli).unwrap();
-    let solved = beamwright::document::serialization::load_from_file(&output).unwrap();
-    let points: Vec<beamwright::geometry::Point2> = solved
+    let solved = beamburin::document::serialization::load_from_file(&output).unwrap();
+    let points: Vec<beamburin::geometry::Point2> = solved
         .object(&object_id)
         .unwrap()
         .world_path()
@@ -174,10 +174,10 @@ fn cli_solve_applies_the_constraints() {
 #[test]
 fn cli_check_reports_a_project() {
     let path = temp_dir().join("bw_cli_check.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
     let cli =
-        Cli::try_parse_from(["BeamWright", "check", path.to_str().unwrap(), "--json"]).unwrap();
+        Cli::try_parse_from(["BeamBurin", "check", path.to_str().unwrap(), "--json"]).unwrap();
     run(cli).unwrap();
     let _ = fs::remove_file(&path);
 }
@@ -185,8 +185,8 @@ fn cli_check_reports_a_project() {
 #[test]
 fn cli_apply_dry_run_leaves_the_file_untouched() {
     let project = temp_dir().join("bw_cli_apply.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let before = fs::read(&project).unwrap();
     let plan = temp_dir().join("bw_cli_plan.json");
     fs::write(
@@ -195,7 +195,7 @@ fn cli_apply_dry_run_leaves_the_file_untouched() {
     )
     .unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "apply",
         project.to_str().unwrap(),
         "--batch",
@@ -213,8 +213,8 @@ fn cli_apply_dry_run_leaves_the_file_untouched() {
 fn cli_apply_writes_the_result() {
     let project = temp_dir().join("bw_cli_apply_src.bwp");
     let output = temp_dir().join("bw_cli_apply_out.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let _ = fs::remove_file(&output);
     let plan = temp_dir().join("bw_cli_plan_write.json");
     fs::write(
@@ -223,7 +223,7 @@ fn cli_apply_writes_the_result() {
     )
     .unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "apply",
         project.to_str().unwrap(),
         "--batch",
@@ -233,7 +233,7 @@ fn cli_apply_writes_the_result() {
     ])
     .unwrap();
     run(cli).unwrap();
-    let saved = beamwright::document::serialization::load_from_file(&output).unwrap();
+    let saved = beamburin::document::serialization::load_from_file(&output).unwrap();
     assert_eq!(saved.objects.len(), 1);
     let _ = fs::remove_file(&project);
     let _ = fs::remove_file(&output);
@@ -251,7 +251,7 @@ fn cli_import_command() {
     .unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "import",
         source.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -267,11 +267,11 @@ fn cli_import_command() {
 fn cli_export_svg_command() {
     let project = temp_dir().join("bw_cli_export.bwp");
     let output = temp_dir().join("bw_cli_export.svg");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-svg",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -285,13 +285,13 @@ fn cli_export_svg_command() {
 
 #[test]
 fn cli_info_missing_file_errors() {
-    let cli = Cli::try_parse_from(["BeamWright", "info", "/tmp/opencode/nope.bwp"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "info", "/tmp/opencode/nope.bwp"]).unwrap();
     assert!(run(cli).is_err());
 }
 
 #[test]
 fn cli_export_gcode_command() {
-    use beamwright::document::{Document, Object, Shape};
+    use beamburin::document::{Document, Object, Shape};
 
     let project = temp_dir().join("bw_cli_job.bwp");
     let output = temp_dir().join("bw_cli_job.nc");
@@ -305,10 +305,10 @@ fn cli_export_gcode_command() {
             corner_radius: 0.0,
         },
     ));
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-gcode",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -325,7 +325,7 @@ fn cli_export_gcode_command() {
 
 #[test]
 fn cli_export_gcode_out_of_bounds_warns() {
-    use beamwright::document::{Document, Object, Shape};
+    use beamburin::document::{Document, Object, Shape};
 
     let project = temp_dir().join("bw_cli_job_bad.bwp");
     let output = temp_dir().join("bw_cli_job_bad.nc");
@@ -343,9 +343,9 @@ fn cli_export_gcode_out_of_bounds_warns() {
             corner_radius: 0.0,
         },
     ));
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-gcode",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -360,9 +360,9 @@ fn cli_export_gcode_out_of_bounds_warns() {
 #[test]
 fn cli_estimate_command() {
     let project = temp_dir().join("bw_cli_estimate.bwp");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "estimate", project.to_str().unwrap()]).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "estimate", project.to_str().unwrap()]).unwrap();
     run(cli).unwrap();
     let _ = fs::remove_file(&project);
 }
@@ -371,11 +371,11 @@ fn cli_estimate_command() {
 fn cli_export_dxf_command() {
     let project = temp_dir().join("bw_cli_dxf.bwp");
     let output = temp_dir().join("bw_cli_dxf.dxf");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-dxf",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -399,7 +399,7 @@ fn cli_import_dxf_command() {
     .unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "import",
         source.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -413,7 +413,7 @@ fn cli_import_dxf_command() {
 
 #[test]
 fn cli_export_png_command() {
-    use beamwright::document::{Document, Object, Shape};
+    use beamburin::document::{Document, Object, Shape};
 
     let project = temp_dir().join("bw_cli_png.bwp");
     let output = temp_dir().join("bw_cli_png.png");
@@ -429,10 +429,10 @@ fn cli_export_png_command() {
     );
     object.style.fill = Some("#ff0000".to_string());
     document.add_object(object);
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let _ = fs::remove_file(&output);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-png",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -451,10 +451,10 @@ fn cli_export_png_command() {
 fn cli_export_png_rejects_bad_dpi() {
     let project = temp_dir().join("bw_cli_png_dpi.bwp");
     let output = temp_dir().join("bw_cli_png_dpi.png");
-    let document = beamwright::document::Document::default();
-    beamwright::document::serialization::save_to_file(&document, &project).unwrap();
+    let document = beamburin::document::Document::default();
+    beamburin::document::serialization::save_to_file(&document, &project).unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "export-png",
         project.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -470,19 +470,19 @@ fn cli_export_png_rejects_bad_dpi() {
 #[test]
 fn cli_recover_restores_the_backup() {
     let path = temp_dir().join("bw_cli_recover.bwp");
-    let backup = beamwright::document::serialization::backup_path(&path);
+    let backup = beamburin::document::serialization::backup_path(&path);
     let _ = fs::remove_file(&path);
     let _ = fs::remove_file(&backup);
-    let document = beamwright::document::Document {
+    let document = beamburin::document::Document {
         name: "Recovered".to_string(),
-        ..beamwright::document::Document::default()
+        ..beamburin::document::Document::default()
     };
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
-    beamwright::document::serialization::save_to_file(&document, &path).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
+    beamburin::document::serialization::save_to_file(&document, &path).unwrap();
     fs::write(&path, "{broken").unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "recover", path.to_str().unwrap()]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "recover", path.to_str().unwrap()]).unwrap();
     run(cli).unwrap();
-    let reloaded = beamwright::document::serialization::load_from_file(&path).unwrap();
+    let reloaded = beamburin::document::serialization::load_from_file(&path).unwrap();
     assert_eq!(reloaded.name, "Recovered");
     let _ = fs::remove_file(&path);
     let _ = fs::remove_file(&backup);
@@ -491,10 +491,10 @@ fn cli_recover_restores_the_backup() {
 #[test]
 fn cli_recover_without_backup_fails() {
     let path = temp_dir().join("bw_cli_recover_bad.bwp");
-    let backup = beamwright::document::serialization::backup_path(&path);
+    let backup = beamburin::document::serialization::backup_path(&path);
     let _ = fs::remove_file(&backup);
     fs::write(&path, "{broken").unwrap();
-    let cli = Cli::try_parse_from(["BeamWright", "recover", path.to_str().unwrap()]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "recover", path.to_str().unwrap()]).unwrap();
     assert!(run(cli).is_err());
     let _ = fs::remove_file(&path);
 }
@@ -507,31 +507,31 @@ fn cli_import_raster_png() {
     image.save(&source).unwrap();
     let _ = fs::remove_file(&project);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "import",
         source.to_str().unwrap(),
         project.to_str().unwrap(),
     ])
     .unwrap();
     run(cli).unwrap();
-    let document = beamwright::document::serialization::load_from_file(&project).unwrap();
+    let document = beamburin::document::serialization::load_from_file(&project).unwrap();
     assert_eq!(document.objects.len(), 1);
     assert!(matches!(
         document.objects[0].shape,
-        beamwright::document::Shape::Image(_)
+        beamburin::document::Shape::Image(_)
     ));
     let _ = fs::remove_file(&source);
     let _ = fs::remove_file(&project);
 }
 
 fn two_rectangle_project(path: &std::path::Path) {
-    use beamwright::geometry::Point2;
+    use beamburin::geometry::Point2;
 
-    let document = beamwright::document::Document::new("Boolean", 100.0, 100.0);
-    let mut editor = beamwright::editor::EditorState::new(document);
+    let document = beamburin::document::Document::new("Boolean", 100.0, 100.0);
+    let mut editor = beamburin::editor::EditorState::new(document);
     editor.add_rectangle(Point2::new(0.0, 0.0), Point2::new(4.0, 4.0));
     editor.add_rectangle(Point2::new(2.0, 2.0), Point2::new(6.0, 6.0));
-    beamwright::document::serialization::save_to_file(&editor.document, path).unwrap();
+    beamburin::document::serialization::save_to_file(&editor.document, path).unwrap();
 }
 
 #[test]
@@ -542,7 +542,7 @@ fn cli_boolean_union_writes_one_contour() {
     let _ = fs::remove_file(&output);
     two_rectangle_project(&source);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "boolean",
         source.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -550,7 +550,7 @@ fn cli_boolean_union_writes_one_contour() {
     ])
     .unwrap();
     run(cli).unwrap();
-    let document = beamwright::document::serialization::load_from_file(&output).unwrap();
+    let document = beamburin::document::serialization::load_from_file(&output).unwrap();
     assert_eq!(document.objects.len(), 1);
     assert!(document.objects[0].name.starts_with("Union"));
     let (min, max) = document.objects[0].bounds().unwrap();
@@ -562,18 +562,18 @@ fn cli_boolean_union_writes_one_contour() {
 
 #[test]
 fn cli_offset_grows_a_shape() {
-    use beamwright::geometry::Point2;
+    use beamburin::geometry::Point2;
 
     let source = temp_dir().join("bw_cli_offset.bwp");
     let output = temp_dir().join("bw_cli_offset_out.bwp");
     let _ = fs::remove_file(&source);
     let _ = fs::remove_file(&output);
-    let document = beamwright::document::Document::new("Offset", 100.0, 100.0);
-    let mut editor = beamwright::editor::EditorState::new(document);
+    let document = beamburin::document::Document::new("Offset", 100.0, 100.0);
+    let mut editor = beamburin::editor::EditorState::new(document);
     editor.add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0));
-    beamwright::document::serialization::save_to_file(&editor.document, &source).unwrap();
+    beamburin::document::serialization::save_to_file(&editor.document, &source).unwrap();
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "offset",
         source.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -581,7 +581,7 @@ fn cli_offset_grows_a_shape() {
     ])
     .unwrap();
     run(cli).unwrap();
-    let document = beamwright::document::serialization::load_from_file(&output).unwrap();
+    let document = beamburin::document::serialization::load_from_file(&output).unwrap();
     let (min, max) = document.objects[0].bounds().unwrap();
     assert!((min.x - 8.0).abs() < 1e-6);
     assert!((max.y - 22.0).abs() < 1e-6);
@@ -597,7 +597,7 @@ fn cli_boolean_rejects_unknown_ids() {
     let _ = fs::remove_file(&output);
     two_rectangle_project(&source);
     let cli = Cli::try_parse_from([
-        "BeamWright",
+        "BeamBurin",
         "boolean",
         source.to_str().unwrap(),
         output.to_str().unwrap(),
@@ -613,6 +613,6 @@ fn cli_boolean_rejects_unknown_ids() {
 
 #[test]
 fn cli_bench_measures_a_small_project() {
-    let cli = Cli::try_parse_from(["BeamWright", "bench", "--objects", "20"]).unwrap();
+    let cli = Cli::try_parse_from(["BeamBurin", "bench", "--objects", "20"]).unwrap();
     run(cli).unwrap();
 }

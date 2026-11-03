@@ -3119,7 +3119,7 @@ mod tests {
         editor.add_line(Point2::new(0.0, 0.0), Point2::new(5.0, 5.0));
         editor.add_ellipse(Point2::new(20.0, 20.0), Point2::new(30.0, 26.0));
 
-        let path = std::env::temp_dir().join("beamwright_editor_roundtrip.bwp");
+        let path = std::env::temp_dir().join("beamburin_editor_roundtrip.bwp");
         editor.save(&path).unwrap();
         let mut reopened = EditorState::new(Document::default());
         reopened.load(&path).unwrap();

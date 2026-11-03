@@ -538,7 +538,7 @@ mod tests {
         let (data, width, height, _) = render_rgba(&document, &PngOptions::default()).unwrap();
         let picture = image::RgbaImage::from_raw(width, height, data).unwrap();
         for extension in ["png", "bmp", "tif", "webp"] {
-            let path = std::env::temp_dir().join(format!("beamwright_image_export.{extension}"));
+            let path = std::env::temp_dir().join(format!("beamburin_image_export.{extension}"));
             let _ = std::fs::remove_file(&path);
             picture.save(&path).unwrap();
             let decoded = image::open(&path).unwrap();
@@ -550,7 +550,7 @@ mod tests {
     #[test]
     fn writes_a_readable_png() {
         let document = document_with_rect(Some("#00ff00"), false);
-        let path = std::env::temp_dir().join("beamwright_export_test.png");
+        let path = std::env::temp_dir().join("beamburin_export_test.png");
         let _ = std::fs::remove_file(&path);
         let report = export_png(&document, &path, &PngOptions::default()).unwrap();
         assert!(report.width_px > 0);

@@ -352,7 +352,7 @@ enum SidePanelTab {
     Tool,
 }
 
-pub struct BeamWrightApp {
+pub struct BeamBurinApp {
     editor: EditorState,
     dark_mode: bool,
     current_path: Option<PathBuf>,
@@ -917,13 +917,13 @@ struct BurnPreview {
     texture: egui::TextureHandle,
 }
 
-impl Default for BeamWrightApp {
+impl Default for BeamBurinApp {
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl BeamWrightApp {
+impl BeamBurinApp {
     /// Close the editor after `frames` frames, for headless CI.
     pub fn set_smoke_frames(&mut self, frames: u32) {
         self.smoke_frames = Some(frames);
@@ -1198,12 +1198,12 @@ impl BeamWrightApp {
                 );
             } else {
                 app.status = format!(
-                    "Ready - live bridge on 127.0.0.1:{} (BeamWright mcp --live)",
+                    "Ready - live bridge on 127.0.0.1:{} (BeamBurin mcp --live)",
                     bridge.port()
                 );
             }
             if !bridge.is_network() && !bridge_address.is_loopback() {
-                app.status = "Live bridge kept on localhost: set BEAMWRIGHT_BRIDGE_TOKEN to expose it on the network".to_string();
+                app.status = "Live bridge kept on localhost: set BEAMBURIN_BRIDGE_TOKEN to expose it on the network".to_string();
             }
         }
         app
@@ -3077,7 +3077,7 @@ impl BeamWrightApp {
                         self.licenses_open = true;
                         ui.close();
                     }
-                    if icons::button(ui, Icon::Info, "About BeamWright").clicked() {
+                    if icons::button(ui, Icon::Info, "About BeamBurin").clicked() {
                         self.about_open = true;
                         ui.close();
                     }
@@ -5893,7 +5893,7 @@ impl BeamWrightApp {
             .default_size([560.0, 520.0])
             .show(ctx, |ui| {
                 ui.label(
-                    "Hand this project to an agent that speaks MCP. BeamWright embeds no model: you choose the client.",
+                    "Hand this project to an agent that speaks MCP. BeamBurin embeds no model: you choose the client.",
                 );
                 ui.separator();
                 ui.heading("Live bridge");
@@ -5954,7 +5954,7 @@ impl BeamWrightApp {
                         note = Some("Client configuration copied".to_string());
                         copy = Some(crate::assistant::client_config());
                     }
-                    ui.weak("stdio entry for a client that runs BeamWright itself");
+                    ui.weak("stdio entry for a client that runs BeamBurin itself");
                 });
                 ui.separator();
                 ui.heading("Document");
@@ -7849,7 +7849,7 @@ impl BeamWrightApp {
                     "Save the work area of your machine so new projects start with the right size.",
                 );
                 ui.label(
-                    "This is preparation data only: BeamWright never connects to, configures or controls a machine.",
+                    "This is preparation data only: BeamBurin never connects to, configures or controls a machine.",
                 );
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -10515,7 +10515,7 @@ impl BeamWrightApp {
         let mut step = self.tour_step.min(steps.len() - 1);
         let mut finish = false;
         let mut close_requested = false;
-        egui::Window::new("Welcome to BeamWright")
+        egui::Window::new("Welcome to BeamBurin")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
             .open(&mut open)
@@ -12593,14 +12593,14 @@ impl BeamWrightApp {
         }
         if self.about_open {
             let mut open = true;
-            egui::Window::new("About BeamWright")
+            egui::Window::new("About BeamBurin")
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.content_rect().center())
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut open)
                 .show(ctx, |ui| {
-                    ui.heading("BeamWright");
+                    ui.heading("BeamBurin");
                     ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
                     ui.label("Vector drawing and laser job preparation.");
                     ui.label("This build prepares jobs only; it does not control machines.");
@@ -12637,7 +12637,7 @@ impl BeamWrightApp {
     }
 }
 
-impl BeamWrightApp {
+impl BeamBurinApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         if let Some(remaining) = self.smoke_frames {
@@ -12714,7 +12714,7 @@ impl BeamWrightApp {
         self.advance_playback(ctx);
         self.autosave(ctx);
         self.poll_task(ctx);
-        let title = format!("BeamWright - {}", self.title());
+        let title = format!("BeamBurin - {}", self.title());
         let current = ctx.input(|input| input.viewport().title.clone());
         if current.as_deref() != Some(title.as_str()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
@@ -12722,7 +12722,7 @@ impl BeamWrightApp {
     }
 }
 
-impl eframe::App for BeamWrightApp {
+impl eframe::App for BeamBurinApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.advance(ctx);
     }
@@ -13168,7 +13168,7 @@ mod tests {
 
     #[test]
     fn opening_a_dialog_uses_the_in_app_browser() {
-        let mut app = BeamWrightApp::new(None);
+        let mut app = BeamBurinApp::new(None);
         app.open_dialog(FileMode::ExportGcode);
         let dialog = app.dialog.as_ref().expect("the dialog is open");
         assert_eq!(dialog.mode, FileMode::ExportGcode);
@@ -13183,7 +13183,7 @@ mod tests {
 
     #[test]
     fn undo_status_names_the_action() {
-        let mut app = BeamWrightApp::new(None);
+        let mut app = BeamBurinApp::new(None);
         app.editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
         app.editor.record_action("Move");
@@ -13197,7 +13197,7 @@ mod tests {
         assert_eq!(app.status, "Redo Move");
     }
 
-    fn ui_harness(app: BeamWrightApp) -> egui_kittest::Harness<'static, BeamWrightApp> {
+    fn ui_harness(app: BeamBurinApp) -> egui_kittest::Harness<'static, BeamBurinApp> {
         egui_kittest::Harness::builder()
             .with_size(egui::vec2(1280.0, 800.0))
             .build_ui_state(|ui, app| app.show(ui), app)
@@ -13208,14 +13208,14 @@ mod tests {
 
         static NEXT: AtomicU64 = AtomicU64::new(0);
         std::env::temp_dir().join(format!(
-            "beamwright_ui_{prefix}_{}_{}.tmp",
+            "beamburin_ui_{prefix}_{}_{}.tmp",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ))
     }
 
-    fn ui_test_app() -> BeamWrightApp {
-        let mut app = BeamWrightApp::new_for_ui_test();
+    fn ui_test_app() -> BeamBurinApp {
+        let mut app = BeamBurinApp::new_for_ui_test();
         app.preferences = crate::config::preferences::AppPreferences::default();
         app.preferences_path = ui_temp_path("preferences");
         app.recovery_path = ui_temp_path("recovery");
@@ -13229,7 +13229,7 @@ mod tests {
         app
     }
 
-    fn wait_for_task(harness: &mut egui_kittest::Harness<'static, BeamWrightApp>) {
+    fn wait_for_task(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>) {
         let ctx = harness.ctx.clone();
         for _ in 0..600 {
             harness.state_mut().advance(&ctx);
@@ -13357,7 +13357,7 @@ mod tests {
             ("Materials and profiles", "Materials and operations..."),
             ("Arrange", "Bring to front"),
             ("View", "Fit page"),
-            ("Help", "About BeamWright"),
+            ("Help", "About BeamBurin"),
         ] {
             harness.get_by_label(menu).click_accesskit();
             harness.run();

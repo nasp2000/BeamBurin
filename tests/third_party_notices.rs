@@ -16,7 +16,7 @@ fn locked_crates() -> BTreeSet<String> {
             if let Some(rest) = line.strip_prefix("name = \"") {
                 if let Some(name) = rest.strip_suffix('"') {
                     // The root package is the project itself, not a dependency.
-                    if name != "beamwright" {
+                    if name != "beamburin" {
                         names.insert(name.to_string());
                     }
                 }

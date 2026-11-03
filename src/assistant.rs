@@ -21,7 +21,7 @@ pub fn state_prompt(document: &Document) -> String {
         .filter(|object| object.visible)
         .count();
     let mut text = String::new();
-    text.push_str("# BeamWright project\n\n");
+    text.push_str("# BeamBurin project\n\n");
     let _ = writeln!(text, "Name: {}", document.name);
     let _ = writeln!(
         text,
@@ -75,15 +75,15 @@ pub fn state_prompt(document: &Document) -> String {
 /// Launch lines shown in the panel, with a short description.
 pub fn launch_commands() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("Control the open editor", "BeamWright mcp --live"),
-        ("Own document, no window", "BeamWright mcp"),
+        ("Control the open editor", "BeamBurin mcp --live"),
+        ("Own document, no window", "BeamBurin mcp"),
         (
             "Confined and read-only",
-            "BeamWright mcp --workspace ~/laser-jobs --read-only",
+            "BeamBurin mcp --workspace ~/laser-jobs --read-only",
         ),
         (
             "HTTP for a remote agent",
-            "BeamWright mcp-http --token <token>",
+            "BeamBurin mcp-http --token <token>",
         ),
     ]
 }
@@ -92,8 +92,8 @@ pub fn launch_commands() -> Vec<(&'static str, &'static str)> {
 pub fn client_config() -> String {
     serde_json::json!({
         "mcpServers": {
-            "beamwright": {
-                "command": "BeamWright",
+            "beamburin": {
+                "command": "BeamBurin",
                 "args": ["mcp", "--live"]
             }
         }
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn the_client_config_names_the_executable() {
         let config: serde_json::Value = serde_json::from_str(&client_config()).unwrap();
-        assert_eq!(config["mcpServers"]["beamwright"]["command"], "BeamWright");
-        assert_eq!(config["mcpServers"]["beamwright"]["args"][0], "mcp");
+        assert_eq!(config["mcpServers"]["beamburin"]["command"], "BeamBurin");
+        assert_eq!(config["mcpServers"]["beamburin"]["args"][0], "mcp");
     }
 }

@@ -20,7 +20,7 @@ pub fn export_eps(document: &Document) -> Result<String> {
     let height = (document.height_mm / MM_PER_POINT).ceil().max(1.0) as i64;
     let mut out = String::new();
     out.push_str("%!PS-Adobe-3.0 EPSF-3.0\n");
-    out.push_str("%%Creator: BeamWright\n");
+    out.push_str("%%Creator: BeamBurin\n");
     let _ = writeln!(out, "%%BoundingBox: 0 0 {width} {height}");
     out.push_str("%%Pages: 1\n%%EndComments\n");
 

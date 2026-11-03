@@ -1,4 +1,4 @@
-(BeamWright job)
+(BeamBurin job)
 G21
 G90
 G17

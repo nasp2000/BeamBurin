@@ -15,25 +15,25 @@ const MAX_ARGUMENT: usize = 2000;
 pub fn resources() -> Vec<Value> {
     vec![
         json!({
-            "uri": "beamwright://guide/workflow",
+            "uri": "beamburin://guide/workflow",
             "name": "Workflow",
             "description": "How to inspect, change, check and export a project safely.",
             "mimeType": "text/markdown",
         }),
         json!({
-            "uri": "beamwright://guide/coordinates",
+            "uri": "beamburin://guide/coordinates",
             "name": "Coordinates and units",
             "description": "Page origin, millimetres and how bounds are reported.",
             "mimeType": "text/markdown",
         }),
         json!({
-            "uri": "beamwright://document/summary",
+            "uri": "beamburin://document/summary",
             "name": "Current document",
             "description": "Live structure of the open project as JSON.",
             "mimeType": "application/json",
         }),
         json!({
-            "uri": "beamwright://document/parameters",
+            "uri": "beamburin://document/parameters",
             "name": "Parameters",
             "description": "Named values and the expressions that use them, as JSON.",
             "mimeType": "application/json",
@@ -42,9 +42,9 @@ pub fn resources() -> Vec<Value> {
 }
 
 const WORKFLOW: &str = "\
-# Working on a BeamWright project
+# Working on a BeamBurin project
 
-BeamWright prepares files. It never connects to, configures or drives a machine.
+BeamBurin prepares files. It never connects to, configures or drives a machine.
 
 1. Call `inspect` to see the layers, objects, operations and parameters. Add
    `ids` when you only care about part of the drawing.
@@ -83,13 +83,13 @@ const COORDINATES: &str = "\
 /// Read one resource for the current document.
 pub fn read(uri: &str, document: &Document) -> Result<Value, String> {
     let (mime, text) = match uri {
-        "beamwright://guide/workflow" => ("text/markdown", WORKFLOW.to_string()),
-        "beamwright://guide/coordinates" => ("text/markdown", COORDINATES.to_string()),
-        "beamwright://document/summary" => (
+        "beamburin://guide/workflow" => ("text/markdown", WORKFLOW.to_string()),
+        "beamburin://guide/coordinates" => ("text/markdown", COORDINATES.to_string()),
+        "beamburin://document/summary" => (
             "application/json",
             json!(crate::inspection::inspect(document, None)).to_string(),
         ),
-        "beamwright://document/parameters" => (
+        "beamburin://document/parameters" => (
             "application/json",
             json!({
                 "parameters": crate::parameters::resolved(&document.parameters)
@@ -241,18 +241,18 @@ mod tests {
             assert_eq!(content["uri"], *uri);
             assert_ne!(content["text"].as_str().unwrap(), "");
         }
-        assert!(read("beamwright://missing", &document).is_err());
+        assert!(read("beamburin://missing", &document).is_err());
     }
 
     #[test]
     fn the_document_resource_reflects_the_project() {
         let mut document = Document::new("Lamp", 200.0, 100.0);
         document.parameters = vec![crate::parameters::Parameter::new("feed", "900")];
-        let summary = read("beamwright://document/summary", &document).unwrap();
+        let summary = read("beamburin://document/summary", &document).unwrap();
         let summary: serde_json::Value =
             serde_json::from_str(summary["text"].as_str().unwrap()).unwrap();
         assert_eq!(summary["project"]["name"], "Lamp");
-        let parameters = read("beamwright://document/parameters", &document).unwrap();
+        let parameters = read("beamburin://document/parameters", &document).unwrap();
         let parameters: serde_json::Value =
             serde_json::from_str(parameters["text"].as_str().unwrap()).unwrap();
         assert_eq!(parameters["parameters"][0]["value"], 900.0);

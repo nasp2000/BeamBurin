@@ -375,7 +375,7 @@ mod tests {
         let mut object = Object::new(
             layer_id,
             Shape::Image(crate::objects::ImageObject::new(
-                "/tmp/beamwright_no_such_image.png",
+                "/tmp/beamburin_no_such_image.png",
                 2,
                 2,
                 96.0,

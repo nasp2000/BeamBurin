@@ -303,7 +303,7 @@ mod tests {
         let object = Object::new(
             layer_id,
             Shape::Image(crate::objects::ImageObject::new(
-                "/tmp/beamwright_missing_preflight.png",
+                "/tmp/beamburin_missing_preflight.png",
                 10,
                 10,
                 96.0,

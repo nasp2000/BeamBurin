@@ -1199,12 +1199,12 @@ fn distance_to_segment(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32) -> f3
 
 /// Texture for `icon`, created on first use and cached on the egui context.
 fn texture(ctx: &Context, icon: Icon) -> TextureHandle {
-    let id = egui::Id::new(("beamwright_menu_icon", icon));
+    let id = egui::Id::new(("beamburin_menu_icon", icon));
     if let Some(handle) = ctx.data(|data| data.get_temp::<TextureHandle>(id)) {
         return handle;
     }
     let handle = ctx.load_texture(
-        format!("beamwright_icon_{icon:?}"),
+        format!("beamburin_icon_{icon:?}"),
         icon.raster(),
         TextureOptions::LINEAR,
     );
@@ -1243,7 +1243,7 @@ pub fn tooltip(label: &str) -> Option<&'static str> {
         "Collect images..." => "Copy referenced images into the project folder",
         "Recover project..." => "Open the backup of a project",
         "Machine profiles..." => "Create and apply saved work areas",
-        "Exit" => "Close BeamWright",
+        "Exit" => "Close BeamBurin",
         "Select all" => "Select every visible, unlocked object (Ctrl+A)",
         "Cut" => "Cut the selection to the internal clipboard (Ctrl+X)",
         "Copy" => "Copy the selection to the internal clipboard (Ctrl+C)",
@@ -1336,7 +1336,7 @@ pub fn tooltip(label: &str) -> Option<&'static str> {
         "Dark mode" => "Switch between dark and light themes",
         "Layers panel (F9)" => "Show or hide the layers panel",
         "Properties panel (F10)" => "Show or hide the properties panel",
-        "About BeamWright" => "Version, scope and licence",
+        "About BeamBurin" => "Version, scope and licence",
         "Cuts / Layers..." => "Edit cuts, speeds, power and output",
         "Exact size" => "Draw with an exact width and height",
         "Grid" => "Snap or show the grid",

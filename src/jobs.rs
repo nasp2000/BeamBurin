@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn an_export_runs_in_the_background_and_writes_the_file() {
         let path =
-            std::env::temp_dir().join(format!("beamwright_job_export_{}.nc", std::process::id()));
+            std::env::temp_dir().join(format!("beamburin_job_export_{}.nc", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut jobs = Jobs::new();
         let id = jobs
@@ -283,7 +283,7 @@ mod tests {
     fn svg_and_dxf_exports_are_supported() {
         for (tool, extension) in [("export_svg", "svg"), ("export_dxf", "dxf")] {
             let path = std::env::temp_dir().join(format!(
-                "beamwright_job_{tool}_{}.{extension}",
+                "beamburin_job_{tool}_{}.{extension}",
                 std::process::id()
             ));
             let _ = std::fs::remove_file(&path);
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn unsupported_tools_are_rejected() {
         let mut jobs = Jobs::new();
-        let path = std::env::temp_dir().join("beamwright_job_none.bin");
+        let path = std::env::temp_dir().join("beamburin_job_none.bin");
         assert!(
             jobs.start_export("export_pdf", &rectangle_document(), &path)
                 .is_err()

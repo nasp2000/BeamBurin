@@ -1,6 +1,6 @@
-# BeamWright
+# BeamBurin
 
-Vector drawing and preparation of laser engraving and cutting jobs. BeamWright
+Vector drawing and preparation of laser engraving and cutting jobs. BeamBurin
 turns drawings and images into a job file that you load into the sender of your
 choice. It is portable, works offline and **never controls a machine**.
 
@@ -47,7 +47,7 @@ Windows/Linux-aarch64 builds. There is no release workflow.
 
 ## Licences
 
-BeamWright is licensed under the **MIT License or the Apache License 2.0**, at
+BeamBurin is licensed under the **MIT License or the Apache License 2.0**, at
 your option. See `LICENSE-MIT` and `LICENSE-APACHE`.
 
 The binary embeds fonts and Rust crates under their own licences. The complete
@@ -55,7 +55,7 @@ list and licence texts are in `THIRD_PARTY_NOTICES.md`, inside the application
 under **Help → Licenses**, and in the output of:
 
 ```sh
-BeamWright --licenses
+BeamBurin --licenses
 ```
 
 ## Name and affiliation

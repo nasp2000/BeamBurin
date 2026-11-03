@@ -9,7 +9,7 @@ use crate::import::format::open_document;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "BeamWright",
+    name = "BeamBurin",
     version,
     about = "Vector drawing and laser job preparation"
 )]

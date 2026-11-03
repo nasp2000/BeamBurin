@@ -1,25 +1,25 @@
 use std::path::PathBuf;
 
-/// Directory where `BeamWright` stores user data (profiles, preferences).
+/// Directory where `BeamBurin` stores user data (profiles, preferences).
 ///
-/// Resolution order: `BEAMWRIGHT_DATA_DIR`, then the platform convention from
+/// Resolution order: `BEAMBURIN_DATA_DIR`, then the platform convention from
 /// environment variables. No OS-specific API is used, so the binary stays
 /// portable.
 pub fn data_dir() -> PathBuf {
-    if let Some(value) = std::env::var_os("BEAMWRIGHT_DATA_DIR") {
+    if let Some(value) = std::env::var_os("BEAMBURIN_DATA_DIR") {
         return PathBuf::from(value);
     }
     if let Some(value) = std::env::var_os("XDG_DATA_HOME") {
-        return PathBuf::from(value).join("beamwright");
+        return PathBuf::from(value).join("beamburin");
     }
     if cfg!(windows) {
         if let Some(value) = std::env::var_os("APPDATA") {
-            return PathBuf::from(value).join("BeamWright");
+            return PathBuf::from(value).join("BeamBurin");
         }
     } else if let Some(value) = std::env::var_os("HOME") {
-        return PathBuf::from(value).join(".local/share/beamwright");
+        return PathBuf::from(value).join(".local/share/beamburin");
     }
-    PathBuf::from(".beamwright")
+    PathBuf::from(".beamburin")
 }
 
 /// Draft file written while there is unsaved work, used after a crash.
@@ -36,7 +36,7 @@ mod tests {
         // The variable is process-global; read it back rather than mutating it
         // in a test that other tests could run concurrently with.
         let resolved = data_dir();
-        if let Some(value) = std::env::var_os("BEAMWRIGHT_DATA_DIR") {
+        if let Some(value) = std::env::var_os("BEAMBURIN_DATA_DIR") {
             assert_eq!(resolved, PathBuf::from(value));
         }
     }
