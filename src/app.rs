@@ -13703,7 +13703,7 @@ mod tests {
         harness.run();
         harness
             .get_all_by_label("Open")
-            .last()
+            .find(|node| node.rect().min.y > 90.0)
             .expect("the dialog Open button is missing")
             .click();
         harness.run();

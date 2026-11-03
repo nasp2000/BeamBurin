@@ -202,7 +202,7 @@ pub enum DialogResult {
 impl FileDialog {
     pub fn new(mode: FileMode, start: Option<&Path>, suggested_name: &str) -> Self {
         let (directory, file_name) = match start {
-            Some(path) if path.is_dir() => (path.to_path_buf(), String::new()),
+            Some(path) if path.is_dir() => (path.to_path_buf(), suggested_name.to_string()),
             Some(path) => (
                 path.parent()
                     .map_or_else(|| PathBuf::from("."), Path::to_path_buf),
@@ -525,6 +525,14 @@ mod tests {
             assert!(hint.contains(extension), "{hint} misses {extension}");
         }
         assert!(FileMode::OpenProject.filter_hint().contains(".bwp"));
+    }
+
+    #[test]
+    fn a_start_folder_keeps_the_suggested_name() {
+        let folder = std::env::temp_dir();
+        let dialog = FileDialog::new(FileMode::ExportGcode, Some(&folder), "job.nc");
+        assert_eq!(dialog.directory, folder);
+        assert_eq!(dialog.file_name, "job.nc");
     }
 
     #[test]
