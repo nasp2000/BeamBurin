@@ -141,7 +141,7 @@ impl BeamBurinApp {
         self.preview_open = open;
     }
 
-    fn show_report(&mut self, report: FileReport) {
+    pub(super) fn show_report(&mut self, report: FileReport) {
         self.file_report = Some(report);
         self.report_open = true;
     }
@@ -197,7 +197,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn report_duplicates(&mut self) {
+    pub(super) fn report_duplicates(&mut self) {
         let groups = self.editor.duplicate_groups();
         let mut report = FileReport::new("Duplicate geometry", "current document")
             .with_summary("Groups", groups.len().to_string());
@@ -224,7 +224,7 @@ impl BeamBurinApp {
         self.show_report(report);
     }
 
-    fn report_intersections(&mut self) {
+    pub(super) fn report_intersections(&mut self) {
         let hits = self.editor.intersections();
         let mut report = FileReport::new("Path intersections", "current document")
             .with_summary("Intersections", hits.len().to_string());
@@ -261,7 +261,7 @@ impl BeamBurinApp {
         self.show_report(report);
     }
 
-    fn finish_pen(&mut self, closed: bool) {
+    pub(super) fn finish_pen(&mut self, closed: bool) {
         if self.pen_nodes.len() >= 2
             && self
                 .editor
@@ -278,7 +278,7 @@ impl BeamBurinApp {
         self.pen_drag_start = None;
     }
 
-    fn apply_text_on_path(&mut self) {
+    pub(super) fn apply_text_on_path(&mut self) {
         let ids = self.editor.selection.ids().to_vec();
         let text = ids.iter().find(|id| {
             self.editor
@@ -303,7 +303,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn apply_text_outlines(&mut self) {
+    pub(super) fn apply_text_outlines(&mut self) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
             return;
         };
@@ -320,7 +320,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn text_font_of(&self, id: &str) -> String {
+    pub(super) fn text_font_of(&self, id: &str) -> String {
         self.editor
             .document
             .objects
@@ -333,42 +333,42 @@ impl BeamBurinApp {
             .unwrap_or_else(|| crate::textfont::BUNDLED_NAME.to_string())
     }
 
-    fn apply_trim(&mut self) {
+    pub(super) fn apply_trim(&mut self) {
         match self.editor.trim_selection() {
             Ok(count) => self.status = format!("Trimmed {count} object(s)"),
             Err(error) => self.status = format!("Trim failed: {error}"),
         }
     }
 
-    fn apply_delete_overlaps(&mut self) {
+    pub(super) fn apply_delete_overlaps(&mut self) {
         match self.editor.delete_overlapping_segments() {
             Ok(count) => self.status = format!("Removed overlaps in {count} object(s)"),
             Err(error) => self.status = format!("Overlap removal failed: {error}"),
         }
     }
 
-    fn apply_outline_stroke(&mut self) {
+    pub(super) fn apply_outline_stroke(&mut self) {
         match self.editor.outline_selection() {
             Ok(count) => self.status = format!("Created {count} outline contour(s)"),
             Err(error) => self.status = format!("Outline failed: {error}"),
         }
     }
 
-    fn apply_join_paths(&mut self) {
+    pub(super) fn apply_join_paths(&mut self) {
         match self.editor.join_paths() {
             Ok(_) => self.status = "Paths joined".to_string(),
             Err(error) => self.status = format!("Join failed: {error}"),
         }
     }
 
-    fn apply_close_paths(&mut self) {
+    pub(super) fn apply_close_paths(&mut self) {
         match self.editor.close_paths() {
             Ok(count) => self.status = format!("Closed {count} path(s)"),
             Err(error) => self.status = format!("Close failed: {error}"),
         }
     }
 
-    fn apply_boolean(&mut self, op: crate::geometry::BooleanOp) {
+    pub(super) fn apply_boolean(&mut self, op: crate::geometry::BooleanOp) {
         match self.editor.boolean_selection(op) {
             Ok(count) => {
                 self.status = if count == 1 {
