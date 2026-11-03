@@ -13666,7 +13666,7 @@ mod tests {
         harness.get_by_label("Export").click();
         harness.step();
         wait_for_task(&mut harness);
-        let path = directory.join("Untitled.nc");
+        let path = directory.join("untitled.nc");
         assert!(
             path.is_file(),
             "the export did not write {}",
