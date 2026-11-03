@@ -1906,3 +1906,30 @@ fn the_material_test_and_registration_windows_open() {
         );
     }
 }
+
+#[test]
+fn the_drawing_colour_strip_colours_the_selected_layer() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .editor
+            .document
+            .layer(&layer)
+            .expect("the layer is missing")
+            .color,
+        "#e53935",
+        "the palette did not colour the selected layer"
+    );
+}
