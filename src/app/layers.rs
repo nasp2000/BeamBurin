@@ -304,9 +304,11 @@ impl BeamBurinApp {
                                             ui.spacing_mut().item_spacing.x = 1.0;
                                             if ui
                                                 .add(
-                                                    egui::Button::new("\u{25b2}")
-                                                        .small()
-                                                        .min_size(egui::vec2(15.0, 16.0)),
+                                                    egui::Button::new(
+                                                        egui::RichText::new("\u{25b2}").monospace(),
+                                                    )
+                                                    .small()
+                                                    .min_size(egui::vec2(15.0, 16.0)),
                                                 )
                                                 .on_hover_text("Cut this layer earlier")
                                                 .clicked()
@@ -315,9 +317,11 @@ impl BeamBurinApp {
                                             }
                                             if ui
                                                 .add(
-                                                    egui::Button::new("\u{25bc}")
-                                                        .small()
-                                                        .min_size(egui::vec2(15.0, 16.0)),
+                                                    egui::Button::new(
+                                                        egui::RichText::new("\u{25bc}").monospace(),
+                                                    )
+                                                    .small()
+                                                    .min_size(egui::vec2(15.0, 16.0)),
                                                 )
                                                 .on_hover_text("Cut this layer later")
                                                 .clicked()
