@@ -115,23 +115,23 @@ impl BeamBurinApp {
                         egui::Grid::new("layers_grid")
                             .num_columns(7)
                             .striped(true)
-                            .spacing([4.0, 2.0])
+                            .spacing([3.0, 2.0])
                             .show(ui, |ui| {
                                 ui.add_sized(
-                                    [26.0, 18.0],
+                                    [24.0, 18.0],
                                     egui::Label::new(egui::RichText::new("#").strong()),
                                 );
                                 ui.horizontal(|ui| {
-                                    ui.add_space(20.0);
+                                    ui.add_space(18.0);
                                     ui.label(egui::RichText::new("Layer").strong());
                                 });
                                 for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
                                     let width = if header == "Mode" {
-                                        104.0
+                                        96.0
                                     } else if header == "Spd/Pwr" {
-                                        52.0
+                                        48.0
                                     } else {
-                                        26.0
+                                        22.0
                                     };
                                     ui.add_sized(
                                         [width, 18.0],
@@ -148,11 +148,11 @@ impl BeamBurinApp {
                                     });
                                     let mut name_hit: Option<egui::Response> = None;
                                     ui.add_sized(
-                                        [26.0, 18.0],
+                                        [24.0, 18.0],
                                         egui::Label::new(format!("L{:02}", index + 1)),
                                     );
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(120.0, 18.0),
+                                        egui::vec2(110.0, 18.0),
                                         egui::Layout::left_to_right(egui::Align::Center),
                                         |ui| {
                                             let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
@@ -163,7 +163,7 @@ impl BeamBurinApp {
                                             }
                                             let name_button = ui
                                                 .add_sized(
-                                                    [82.0, 18.0],
+                                                    [80.0, 18.0],
                                                     egui::Button::selectable(
                                                         selected,
                                                         name.as_str(),
@@ -191,7 +191,7 @@ impl BeamBurinApp {
                                     };
                                     let mut chosen = mode.clone();
                                     egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(100.0)
+                                        .width(92.0)
                                         .selected_text(current)
                                         .show_ui(ui, |ui| {
                                             if ui.selectable_value(&mut chosen, None, "—").clicked()
@@ -218,12 +218,12 @@ impl BeamBurinApp {
                                         || "—".to_string(),
                                         |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                     );
-                                    ui.add_sized([52.0, 18.0], egui::Label::new(speeds));
+                                    ui.add_sized([48.0, 18.0], egui::Label::new(speeds));
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
                                             ui.add_sized(
-                                                [26.0, 18.0],
+                                                [22.0, 18.0],
                                                 egui::Checkbox::without_text(&mut output),
                                             )
                                         })
@@ -247,7 +247,7 @@ impl BeamBurinApp {
                                     let show_response = ui
                                         .push_id(("layer_show", id), |ui| {
                                             ui.add_sized(
-                                                [26.0, 18.0],
+                                                [22.0, 18.0],
                                                 egui::Checkbox::without_text(&mut shown),
                                             )
                                         })
@@ -272,7 +272,7 @@ impl BeamBurinApp {
                                     let air_response = ui
                                         .push_id(("layer_air", id), |ui| {
                                             ui.add_sized(
-                                                [26.0, 18.0],
+                                                [22.0, 18.0],
                                                 egui::Checkbox::without_text(&mut air),
                                             )
                                         })
