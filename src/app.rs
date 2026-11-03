@@ -13829,7 +13829,9 @@ mod tests {
             .active_operation
             .clone()
             .expect("the new operation is not active");
-        harness.get_by_label("Assign to selection").click();
+        harness
+            .get_by_label("Assign to selection")
+            .click_accesskit();
         harness.run();
         assert_eq!(
             harness.state().editor.document.objects[0]
@@ -13842,7 +13844,7 @@ mod tests {
             .get_all_by_label("Duplicate")
             .next()
             .expect("the duplicate button is missing")
-            .click();
+            .click_accesskit();
         harness.run();
         assert_eq!(
             harness.state().editor.document.operations.len(),
@@ -13859,7 +13861,7 @@ mod tests {
             .get_all_by_label("Up")
             .last()
             .expect("the second Up button is missing")
-            .click();
+            .click_accesskit();
         harness.run();
         assert_eq!(
             harness.state().editor.document.operations[0].id,
@@ -13882,7 +13884,7 @@ mod tests {
             .get_all_by_label("+")
             .next()
             .expect("the first plus control is missing")
-            .click();
+            .click_accesskit();
         harness.run();
         let after = harness.state().editor.document.objects[0].transform.tx;
         assert!(
@@ -13933,7 +13935,7 @@ mod tests {
         );
         harness
             .get_by_label("Confirm before discarding unsaved changes")
-            .click();
+            .click_accesskit();
         harness.run();
         assert!(
             !harness.state().preferences.general.confirm_destructive,
