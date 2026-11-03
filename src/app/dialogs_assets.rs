@@ -367,7 +367,10 @@ impl BeamBurinApp {
         self.external_gcode_open = open;
     }
 
-    fn apply_export_preset(&mut self, preset: &crate::config::preferences::ExportPreset) {
+    pub(super) fn apply_export_preset(
+        &mut self,
+        preset: &crate::config::preferences::ExportPreset,
+    ) {
         if let Some(dialect) = crate::gcode::Dialect::from_id(&preset.dialect) {
             self.gcode_dialect = dialect;
         }
@@ -604,7 +607,7 @@ impl BeamBurinApp {
         self.regmarks_open = open;
     }
 
-    fn handle_live_request(&mut self, request: &str) -> String {
+    pub(super) fn handle_live_request(&mut self, request: &str) -> String {
         let request: serde_json::Value = match serde_json::from_str(request) {
             Ok(value) => value,
             Err(error) => {

@@ -261,7 +261,7 @@ impl BeamBurinApp {
         self.machines_open = open;
     }
 
-    fn apply_machine_work_area(&mut self) {
+    pub(super) fn apply_machine_work_area(&mut self) {
         self.editor.record_action("Machine work area");
         self.editor.document.width_mm = self.machine_editor.work_width_mm;
         self.editor.document.height_mm = self.machine_editor.work_height_mm;
@@ -272,7 +272,7 @@ impl BeamBurinApp {
         );
     }
 
-    fn vectorize_selected_image(&mut self) {
+    pub(super) fn vectorize_selected_image(&mut self) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
             return;
         };
@@ -361,7 +361,7 @@ impl BeamBurinApp {
         );
     }
 
-    fn centerline_selected_image(&mut self) {
+    pub(super) fn centerline_selected_image(&mut self) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
             return;
         };
@@ -421,7 +421,7 @@ impl BeamBurinApp {
         self.status = format!("Traced {} centerline(s)", created.len());
     }
 
-    fn import_materials_csv(&mut self, path: &Path) {
+    pub(super) fn import_materials_csv(&mut self, path: &Path) {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(error) => {
@@ -440,7 +440,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn export_materials_csv(&mut self, path: &Path) {
+    pub(super) fn export_materials_csv(&mut self, path: &Path) {
         let csv = crate::profiles::csv::export_materials_csv(&self.profiles);
         match std::fs::write(path, csv) {
             Ok(()) => self.status = format!("Exported materials to {}", path.display()),
@@ -448,7 +448,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn preview_external_gcode(&mut self, path: &Path) {
+    pub(super) fn preview_external_gcode(&mut self, path: &Path) {
         match crate::gcode::external::parse_file(path) {
             Ok(program) => {
                 self.status = format!(
@@ -463,7 +463,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn burn_preview_texture(
+    pub(super) fn burn_preview_texture(
         &mut self,
         ctx: &egui::Context,
         id: &str,
@@ -494,7 +494,7 @@ impl BeamBurinApp {
             .map(|preview| preview.texture.clone())
     }
 
-    fn open_image_adjust(&mut self) {
+    pub(super) fn open_image_adjust(&mut self) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
             return;
         };
@@ -517,7 +517,7 @@ impl BeamBurinApp {
     }
 
     #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-    fn original_image_texture(
+    pub(super) fn original_image_texture(
         &mut self,
         ctx: &egui::Context,
         image: &crate::objects::ImageObject,
