@@ -14239,7 +14239,9 @@ mod tests {
         harness.get_by_label("Help").click();
         harness.run();
         harness.get_by_label("Licenses...").click();
-        harness.run();
+        // The notices are a large text block; a fixed number of steps avoids
+        // waiting for a canvas repaint that the modal window keeps requesting.
+        harness.run_steps(3);
         assert!(
             harness.state().licenses_open,
             "the licenses window did not open"
