@@ -14436,4 +14436,122 @@ mod tests {
             "the draft was not loaded"
         );
     }
+
+    #[test]
+    fn exporting_svg_from_the_dialog_writes_the_file() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("svg_export_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        app.editor
+            .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Export SVG...").click();
+        harness.run();
+        harness.get_by_label("Export").click();
+        harness.step();
+        wait_for_task(&mut harness);
+        let path = directory.join("untitled.svg");
+        assert!(path.is_file(), "the SVG export did not write the file");
+        let text = std::fs::read_to_string(&path).expect("cannot read the SVG");
+        assert!(text.contains("<svg"), "the export is not an SVG");
+    }
+
+    #[test]
+    fn exporting_dxf_from_the_dialog_writes_the_file() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("dxf_export_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        app.editor
+            .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Export DXF...").click();
+        harness.run();
+        harness.get_by_label("Export").click();
+        harness.step();
+        wait_for_task(&mut harness);
+        let path = directory.join("untitled.dxf");
+        assert!(path.is_file(), "the DXF export did not write the file");
+        let text = std::fs::read_to_string(&path).expect("cannot read the DXF");
+        assert!(text.contains("SECTION"), "the export is not a DXF");
+        assert!(text.contains("ENTITIES"), "the DXF has no entities");
+    }
+
+    #[test]
+    fn the_dialog_can_show_unsupported_files() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("show_all_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        std::fs::write(directory.join("notes.txt"), "not a drawing")
+            .expect("cannot write the unsupported file");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Import SVG or DXF...").click();
+        harness.run();
+        assert!(
+            harness.query_by_label("notes.txt").is_none(),
+            "an unsupported file was listed before Show all files"
+        );
+        harness.get_by_label("Show all files").click_accesskit();
+        harness.run();
+        assert!(
+            harness.query_by_label("notes.txt").is_some(),
+            "Show all files did not list the text file"
+        );
+    }
+
+    #[test]
+    fn importing_a_png_creates_an_image_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("image_import_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let path = directory.join("drawing.png");
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([220, 40, 40, 255]))
+            .save(&path)
+            .expect("cannot write the PNG fixture");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Import SVG or DXF...").click();
+        harness.run();
+        harness
+            .state_mut()
+            .dialog
+            .as_mut()
+            .expect("the import dialog did not open")
+            .file_name = "drawing.png".to_string();
+        harness
+            .get_all_by_label("Open")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Open button is missing")
+            .click_accesskit();
+        harness.step();
+        wait_for_task(&mut harness);
+        let document = &harness.state().editor.document;
+        assert_eq!(document.objects.len(), 1, "the image was not imported");
+        assert!(
+            matches!(document.objects[0].shape, crate::document::Shape::Image(_)),
+            "the imported object is not an image"
+        );
+    }
 }
