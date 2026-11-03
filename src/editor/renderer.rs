@@ -571,6 +571,7 @@ fn paint_objects(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn paint_object(
     painter: &Painter,
     rect: Rect,

@@ -159,7 +159,7 @@ impl BeamBurinApp {
                                             let mut srgb = [rgb.0, rgb.1, rgb.2];
                                             if ui.color_edit_button_srgb(&mut srgb).changed() {
                                                 let colour = to_hex(srgb[0], srgb[1], srgb[2]);
-                                                self.set_layer_colour(id, colour);
+                                                self.set_layer_colour(id, &colour);
                                             }
                                             let name_button = ui
                                                 .add_sized(
@@ -220,10 +220,14 @@ impl BeamBurinApp {
                                     );
                                     ui.add_sized([52.0, 18.0], egui::Label::new(speeds));
                                     let mut output = operation.is_some_and(|entry| entry.4);
-                                    let output_response = ui.add_sized(
-                                        [26.0, 18.0],
-                                        egui::Checkbox::without_text(&mut output),
-                                    );
+                                    let output_response = ui
+                                        .push_id(("layer_output", id), |ui| {
+                                            ui.add_sized(
+                                                [26.0, 18.0],
+                                                egui::Checkbox::without_text(&mut output),
+                                            )
+                                        })
+                                        .inner;
                                     output_response.widget_info(|| {
                                         egui::WidgetInfo::selected(
                                             egui::WidgetType::Checkbox,
@@ -240,10 +244,14 @@ impl BeamBurinApp {
                                     }
                                     output_response.on_hover_text("Include this mode in the job");
                                     let mut shown = *visible;
-                                    let show_response = ui.add_sized(
-                                        [26.0, 18.0],
-                                        egui::Checkbox::without_text(&mut shown),
-                                    );
+                                    let show_response = ui
+                                        .push_id(("layer_show", id), |ui| {
+                                            ui.add_sized(
+                                                [26.0, 18.0],
+                                                egui::Checkbox::without_text(&mut shown),
+                                            )
+                                        })
+                                        .inner;
                                     show_response.widget_info(|| {
                                         egui::WidgetInfo::selected(
                                             egui::WidgetType::Checkbox,
@@ -261,10 +269,14 @@ impl BeamBurinApp {
                                         }
                                     }
                                     let mut air = operation.is_some_and(|entry| entry.5);
-                                    let air_response = ui.add_sized(
-                                        [26.0, 18.0],
-                                        egui::Checkbox::without_text(&mut air),
-                                    );
+                                    let air_response = ui
+                                        .push_id(("layer_air", id), |ui| {
+                                            ui.add_sized(
+                                                [26.0, 18.0],
+                                                egui::Checkbox::without_text(&mut air),
+                                            )
+                                        })
+                                        .inner;
                                     air_response.widget_info(|| {
                                         egui::WidgetInfo::selected(
                                             egui::WidgetType::Checkbox,
@@ -320,7 +332,7 @@ impl BeamBurinApp {
                             let rgb = parse_hex_color(&layer.color).unwrap_or((0, 0, 0));
                             let mut srgb = [rgb.0, rgb.1, rgb.2];
                             if ui.color_edit_button_srgb(&mut srgb).changed() {
-                                self.set_layer_colour(&active, to_hex(srgb[0], srgb[1], srgb[2]));
+                                self.set_layer_colour(&active, &to_hex(srgb[0], srgb[1], srgb[2]));
                             }
                             ui.end_row();
                             ui.label("Name");
@@ -670,7 +682,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn set_layer_colour(&mut self, layer_id: &str, colour: String) {
+    fn set_layer_colour(&mut self, layer_id: &str, colour: &str) {
         let ids: Vec<String> = self
             .editor
             .document
@@ -679,11 +691,11 @@ impl BeamBurinApp {
             .map(|object| object.id.clone())
             .collect();
         if let Some(layer) = self.editor.document.layer_mut(layer_id) {
-            layer.color.clone_from(&colour);
+            layer.color = colour.to_string();
         }
         for id in ids {
             if let Some(object) = self.editor.document.object_mut(&id) {
-                object.color = Some(colour.clone());
+                object.color = Some(colour.to_string());
             }
         }
     }
