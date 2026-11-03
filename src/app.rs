@@ -13675,7 +13675,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).expect("cannot read the exported file");
         assert!(text.contains("G21"), "the export is missing G21");
         assert!(
-            harness.state().status.contains("Exported"),
+            harness.state().status.contains("Export G-code"),
             "the export was not reported: {}",
             harness.state().status
         );
