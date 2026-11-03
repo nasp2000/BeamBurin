@@ -13776,4 +13776,38 @@ mod tests {
             "the palette did not run the grid command"
         );
     }
+
+    #[test]
+    fn a_broken_svg_is_rejected_without_touching_the_document() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("bad_import_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        std::fs::write(directory.join("drawing.svg"), "<svg><g>")
+            .expect("cannot write the broken fixture");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Import SVG or DXF...").click();
+        harness.run();
+        harness
+            .get_all_by_label("Open")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Open button is missing")
+            .click();
+        harness.step();
+        wait_for_task(&mut harness);
+        assert!(
+            harness.state().editor.document.objects.is_empty(),
+            "the broken SVG added objects"
+        );
+        assert!(
+            harness.state().status.contains("Import failed"),
+            "the failure was not reported: {}",
+            harness.state().status
+        );
+    }
 }
