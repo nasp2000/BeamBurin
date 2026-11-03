@@ -14339,4 +14339,101 @@ mod tests {
             "the saved preferences kept the old theme"
         );
     }
+
+    #[test]
+    fn save_as_adds_the_project_extension() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("extension_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Save as...").click();
+        harness.run();
+        harness
+            .state_mut()
+            .dialog
+            .as_mut()
+            .expect("the save dialog did not open")
+            .file_name = "plan".to_string();
+        harness
+            .get_all_by_label("Save")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Save button is missing")
+            .click_accesskit();
+        harness.step();
+        wait_for_task(&mut harness);
+        assert!(
+            directory.join("plan.bwp").is_file(),
+            "the save dialog did not append .bwp"
+        );
+    }
+
+    #[test]
+    fn the_import_dialog_rejects_an_unknown_extension() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("reject_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Import SVG or DXF...").click();
+        harness.run();
+        harness
+            .state_mut()
+            .dialog
+            .as_mut()
+            .expect("the import dialog did not open")
+            .file_name = "notes.txt".to_string();
+        harness
+            .get_all_by_label("Open")
+            .find(|node| node.rect().min.y > 90.0)
+            .expect("the dialog Open button is missing")
+            .click_accesskit();
+        harness.run();
+        let dialog = harness
+            .state()
+            .dialog
+            .as_ref()
+            .expect("the import dialog closed on an invalid name");
+        assert!(
+            dialog.error.is_some(),
+            "the import dialog did not report the extension"
+        );
+    }
+
+    #[test]
+    fn the_recovery_prompt_loads_the_autosaved_draft() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let document = crate::document::Document {
+            name: "Recovered draft".to_string(),
+            ..Default::default()
+        };
+        crate::document::serialization::save_recovery(&document, &app.recovery_path)
+            .expect("cannot write the recovery fixture");
+        app.recovery_prompt_open = true;
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("Open draft").click();
+        harness.run();
+        assert!(
+            !harness.state().recovery_prompt_open,
+            "the prompt stayed open"
+        );
+        assert_eq!(
+            harness.state().editor.document.name,
+            "Recovered draft",
+            "the draft was not loaded"
+        );
+    }
 }
