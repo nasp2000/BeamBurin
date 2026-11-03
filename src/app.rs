@@ -3678,6 +3678,7 @@ impl BeamWrightApp {
                                 let operation = mode.as_deref().and_then(|mode| {
                                     operations.iter().find(|entry| entry.0 == mode)
                                 });
+                                let mut name_hit: Option<egui::Response> = None;
                                 let response = ui
                                     .horizontal(|ui| {
                                         ui.add_sized(
@@ -3692,17 +3693,17 @@ impl BeamWrightApp {
                                                 layer.color = to_hex(srgb[0], srgb[1], srgb[2]);
                                             }
                                         }
-                                        if ui
+                                        let name_button = ui
                                             .add_sized(
                                                 [82.0, 18.0],
                                                 egui::Button::selectable(selected, name.as_str())
                                                     .frame(false),
                                             )
-                                            .on_hover_text(format!("{count} object(s)"))
-                                            .clicked()
-                                        {
+                                            .on_hover_text(format!("{count} object(s)"));
+                                        if name_button.clicked() {
                                             self.editor.active_layer_id.clone_from(id);
                                         }
+                                        name_hit = Some(name_button);
                                         let current = if *mixed {
                                             "Mixed".to_string()
                                         } else {
@@ -3815,6 +3816,11 @@ impl BeamWrightApp {
                                     // The row itself must sense clicks for the
                                     // secondary button to open its menu.
                                     .interact(egui::Sense::click());
+                                if let Some(name_button) = name_hit {
+                                    name_button.context_menu(|ui| {
+                                        self.layer_context_menu(ui, id, mode.as_deref());
+                                    });
+                                }
                                 response.context_menu(|ui| {
                                     self.layer_context_menu(ui, id, mode.as_deref());
                                 });
@@ -14029,7 +14035,7 @@ mod tests {
             .assign_operation_to_layer(&layer, Some(operation.as_str()));
         let mut harness = ui_harness(app);
         harness.run();
-        harness.get_by_label("1000 / 20").click_secondary();
+        harness.get_by_label("Layer 1").click_secondary();
         harness.run();
         assert!(
             harness.query_by_label("Duplicate layer").is_some(),
