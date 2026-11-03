@@ -1411,26 +1411,6 @@ impl BeamBurinApp {
             });
     }
 
-    /// The operation shared by every object of a layer, and whether the
-    /// objects disagree. A layer has no operation of its own: this keeps the
-    /// existing per-object assignment and presents it as one mode row.
-    pub(super) fn layer_mode(&self, layer_id: &str) -> (Option<String>, bool) {
-        let mut ids: Vec<&str> = self
-            .editor
-            .document
-            .objects_on_layer(layer_id)
-            .iter()
-            .filter_map(|object| object.operation_id.as_deref())
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        match ids.len() {
-            1 => (Some(ids[0].to_string()), false),
-            0 => (None, false),
-            _ => (None, true),
-        }
-    }
-
     pub(super) fn status_bar(&mut self, ui: &mut Ui) {
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
