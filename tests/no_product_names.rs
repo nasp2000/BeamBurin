@@ -58,7 +58,7 @@ fn walk(dir: &Path, hits: &mut Vec<String>) {
             };
             let lower = String::from_utf8_lossy(&content).to_ascii_lowercase();
             for needle in DENY {
-                let needle = String::from_utf8_lossy(*needle);
+                let needle = String::from_utf8_lossy(needle);
                 if lower.contains(needle.as_ref()) {
                     hits.push(format!("{}: {}", path.display(), needle));
                 }
