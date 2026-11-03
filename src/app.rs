@@ -13842,8 +13842,8 @@ mod tests {
         );
         harness
             .get_all_by_label("Duplicate")
-            .next()
-            .expect("the duplicate button is missing")
+            .find(|node| node.rect().min.x < 450.0 && node.rect().min.y > 100.0)
+            .expect("the operation duplicate button is missing")
             .click_accesskit();
         harness.run();
         assert_eq!(
@@ -13882,8 +13882,8 @@ mod tests {
         let before = harness.state().editor.document.objects[0].transform.tx;
         harness
             .get_all_by_label("+")
-            .next()
-            .expect("the first plus control is missing")
+            .find(|node| node.rect().min.x > 700.0)
+            .expect("the first property plus control is missing")
             .click_accesskit();
         harness.run();
         let after = harness.state().editor.document.objects[0].transform.tx;
