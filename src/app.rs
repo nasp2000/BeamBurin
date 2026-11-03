@@ -3811,7 +3811,10 @@ impl BeamWrightApp {
                                         }
                                         air_response.on_hover_text("Air assist (M8/M9)");
                                     })
-                                    .response;
+                                    .response
+                                    // The row itself must sense clicks for the
+                                    // secondary button to open its menu.
+                                    .interact(egui::Sense::click());
                                 response.context_menu(|ui| {
                                     self.layer_context_menu(ui, id, mode.as_deref());
                                 });
