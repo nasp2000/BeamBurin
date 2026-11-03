@@ -1717,6 +1717,29 @@ mod tests {
     }
 
     #[test]
+    fn icon_colours_follow_the_theme_and_form_groups() {
+        use std::collections::BTreeSet;
+
+        let dark: BTreeSet<[u8; 4]> = Icon::ALL
+            .iter()
+            .map(|icon| icon.color(true).to_array())
+            .collect();
+        let light: BTreeSet<[u8; 4]> = Icon::ALL
+            .iter()
+            .map(|icon| icon.color(false).to_array())
+            .collect();
+        assert!(dark.len() >= 6, "the palette has too few groups");
+        assert!(light.len() >= 6, "the light palette has too few groups");
+        for icon in Icon::ALL {
+            assert_ne!(
+                icon.color(true),
+                icon.color(false),
+                "{icon:?} has the same colour in both themes"
+            );
+        }
+    }
+
+    #[test]
     fn every_icon_draws_something() {
         for icon in Icon::ALL {
             let image = icon.raster();
