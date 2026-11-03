@@ -13941,5 +13941,108 @@ mod tests {
             !harness.state().preferences.general.confirm_destructive,
             "the checkbox did not change the preference"
         );
+        let path = harness.state().preferences_path.clone();
+        assert!(path.is_file(), "the preferences were not written to disk");
+        let saved = crate::config::preferences::AppPreferences::load_or_default(&path)
+            .expect("cannot read the saved preferences");
+        assert!(
+            !saved.general.confirm_destructive,
+            "the saved preferences kept the old value"
+        );
+    }
+
+    #[test]
+    fn the_cuts_window_lists_the_output_options() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Cuts / Layers...").click();
+        harness.run();
+        assert!(harness.state().cuts_open, "the cuts window did not open");
+        for label in [
+            "G-code dialect",
+            "Decimals",
+            "Arcs (G2/G3)",
+            "CRLF line endings",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "the cuts window is missing {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_width_plus_resizes_the_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        let before = harness
+            .state()
+            .editor
+            .selected_bounds()
+            .expect("the object is not selected");
+        let before_width = before.1.x - before.0.x;
+        harness
+            .get_all_by_label("+")
+            .filter(|node| node.rect().min.x > 700.0)
+            .nth(2)
+            .expect("the width plus control is missing")
+            .click_accesskit();
+        harness.run();
+        let after = harness
+            .state()
+            .editor
+            .selected_bounds()
+            .expect("the object is not selected");
+        let after_width = after.1.x - after.0.x;
+        assert!(
+            (after_width - before_width - 1.0).abs() < 0.01,
+            "the width plus changed the width by {}",
+            after_width - before_width
+        );
+    }
+
+    #[test]
+    fn the_layer_menu_duplicates_a_layer_with_its_objects() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let layer = app.editor.active_layer_id.clone();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let operation = app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.editor
+            .assign_operation_to_layer(&layer, Some(operation.as_str()));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("1000 / 80").click_secondary();
+        harness.run();
+        assert!(
+            harness.query_by_label("Duplicate layer").is_some(),
+            "the row menu did not open"
+        );
+        harness.get_by_label("Duplicate layer").click_accesskit();
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.layers.len(),
+            2,
+            "Duplicate layer did not add a layer"
+        );
+        assert_eq!(
+            harness.state().editor.document.objects.len(),
+            2,
+            "the copied layer did not copy its objects"
+        );
     }
 }
