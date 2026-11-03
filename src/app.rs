@@ -14554,4 +14554,73 @@ mod tests {
             "the imported object is not an image"
         );
     }
+
+    #[test]
+    fn exporting_an_image_from_the_dialog_writes_a_png() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let directory = ui_temp_path("png_export_dir");
+        std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+        let mut app = ui_test_app();
+        app.preferences.general.default_directory = directory.display().to_string();
+        app.editor
+            .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("File").click();
+        harness.run();
+        harness.get_by_label("Export image...").click();
+        harness.run();
+        harness.get_by_label("Export").click();
+        harness.step();
+        wait_for_task(&mut harness);
+        let path = directory.join("untitled.png");
+        assert!(path.is_file(), "the image export did not write the file");
+        let bytes = std::fs::read(&path).expect("cannot read the PNG");
+        assert!(
+            bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "the file is not a PNG"
+        );
+    }
+
+    #[test]
+    fn the_command_palette_filters_by_query() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Command palette...").click();
+        harness.run();
+        harness
+            .get_all_by_role(egui::accesskit::Role::TextInput)
+            .last()
+            .expect("the palette entry field is missing")
+            .type_text("grid");
+        harness.run();
+        assert!(
+            harness.query_by_label_contains("Toggle grid").is_some(),
+            "the palette did not keep the grid command"
+        );
+    }
+
+    #[test]
+    fn a_focused_text_field_blocks_tool_shortcuts() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Command palette...").click();
+        harness.run();
+        harness.key_press(egui::Key::R);
+        harness.run();
+        assert_eq!(
+            harness.state().editor.tool,
+            crate::editor::Tool::Select,
+            "a shortcut fired while the palette field had focus"
+        );
+    }
 }
