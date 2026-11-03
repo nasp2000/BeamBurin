@@ -13716,12 +13716,10 @@ mod tests {
 
     #[test]
     fn single_key_tool_shortcuts_change_the_tool() {
-        use egui_kittest::kittest::Queryable as _;
-
         let mut harness = ui_harness(ui_test_app());
         harness.run();
         for (key, tool) in [
-            (egui::Key::R, crate::editor::Tool::Rectangle),
+            (egui::Key::R, crate::editor::Tool::Rect),
             (egui::Key::E, crate::editor::Tool::Ellipse),
             (egui::Key::L, crate::editor::Tool::Line),
             (egui::Key::V, crate::editor::Tool::Select),
@@ -13738,8 +13736,6 @@ mod tests {
 
     #[test]
     fn delete_removes_the_selected_object() {
-        use egui_kittest::kittest::Queryable as _;
-
         let mut app = ui_test_app();
         app.editor
             .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
