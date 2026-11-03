@@ -1411,7 +1411,7 @@ impl BeamBurinApp {
     /// The operation shared by every object of a layer, and whether the
     /// objects disagree. A layer has no operation of its own: this keeps the
     /// existing per-object assignment and presents it as one mode row.
-    fn layer_mode(&self, layer_id: &str) -> (Option<String>, bool) {
+    pub(super) fn layer_mode(&self, layer_id: &str) -> (Option<String>, bool) {
         let mut ids: Vec<&str> = self
             .editor
             .document
