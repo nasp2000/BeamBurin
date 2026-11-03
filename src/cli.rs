@@ -21,8 +21,17 @@ pub struct Cli {
     #[arg(long)]
     pub smoke_test: bool,
 
+    /// Print the licence notices and exit.
+    #[arg(long)]
+    pub licenses: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+/// Print the notices embedded in the binary.
+pub fn print_licenses() {
+    print!("{}", crate::licenses::NOTICES);
 }
 
 #[derive(Subcommand, Debug)]

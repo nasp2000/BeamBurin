@@ -11,6 +11,13 @@ fn cli_help_parses() {
 }
 
 #[test]
+fn cli_licenses_flag_parses() {
+    let cli = Cli::try_parse_from(["BeamWright", "--licenses"]).unwrap();
+    assert!(cli.licenses);
+    assert!(cli.command.is_none());
+}
+
+#[test]
 fn cli_no_subcommand() {
     let cli = Cli::try_parse_from(["BeamWright"]).unwrap();
     assert!(cli.command.is_none());

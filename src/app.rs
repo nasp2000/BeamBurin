@@ -361,6 +361,7 @@ pub struct BeamWrightApp {
     dialog: Option<FileDialog>,
     confirm: Option<PendingAction>,
     about_open: bool,
+    licenses_open: bool,
     drag: Option<DragState>,
     cursor_doc: Option<Point2>,
     needs_fit: bool,
@@ -999,6 +1000,7 @@ impl BeamWrightApp {
             dialog: None,
             confirm: None,
             about_open: false,
+            licenses_open: false,
             drag: None,
             cursor_doc: None,
             needs_fit: true,
@@ -2124,6 +2126,7 @@ impl BeamWrightApp {
             || self.export_presets_open
             || self.history_open
             || self.tour_open
+            || self.licenses_open
         {
             return;
         }
@@ -3068,6 +3071,10 @@ impl BeamWrightApp {
                     }
                     if icons::button(ui, Icon::Info, "Assistant for agents...").clicked() {
                         self.assistant_open = true;
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::Info, "Licenses...").clicked() {
+                        self.licenses_open = true;
                         ui.close();
                     }
                     if icons::button(ui, Icon::Info, "About BeamWright").clicked() {
@@ -5269,6 +5276,7 @@ impl BeamWrightApp {
                 let modal = self.dialog.is_some()
                     || self.confirm.is_some()
                     || self.about_open
+                    || self.licenses_open
                     || self.task.is_some()
                     || self.machines_open
                     || self.machine_wizard_open
@@ -12596,9 +12604,35 @@ impl BeamWrightApp {
                     ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
                     ui.label("Vector drawing and laser job preparation.");
                     ui.label("This build prepares jobs only; it does not control machines.");
-                    ui.label("MIT licensed.");
+                    ui.label("MIT or Apache-2.0 licensed.");
+                    if ui.button("Third-party licences").clicked() {
+                        self.licenses_open = true;
+                    }
                 });
             self.about_open = open;
+        }
+        if self.licenses_open {
+            let mut open = true;
+            egui::Window::new("Licenses")
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
+                .collapsible(false)
+                .resizable(true)
+                .default_size([760.0, 560.0])
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("licenses_scroll")
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(crate::licenses::NOTICES).monospace(),
+                                )
+                                .wrap(),
+                            );
+                        });
+                });
+            self.licenses_open = open;
         }
     }
 }
@@ -14193,6 +14227,32 @@ mod tests {
             std::fs::read_to_string(&target).expect("the file disappeared"),
             "keep me",
             "Cancel overwrote the existing file"
+        );
+    }
+
+    #[test]
+    fn the_licenses_window_shows_the_notices() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("Help").click();
+        harness.run();
+        harness.get_by_label("Licenses...").click();
+        harness.run();
+        assert!(
+            harness.state().licenses_open,
+            "the licenses window did not open"
+        );
+        assert!(
+            harness
+                .query_by_label_contains("Third-party notices")
+                .is_some(),
+            "the notices are not shown"
+        );
+        assert!(
+            harness.query_by_label_contains("DejaVu Sans").is_some(),
+            "the bundled font licence is missing"
         );
     }
 }

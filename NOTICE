@@ -1,0 +1,11 @@
+BeamWright
+Copyright 2026 BeamWright contributors
+
+This product is licensed under the MIT License or the Apache License 2.0, at
+your option. See LICENSE-MIT and LICENSE-APACHE.
+
+It embeds fonts and Rust crates under their own licences. See
+THIRD_PARTY_NOTICES.md for the complete list and the licence texts.
+
+The application icon (assets/icons/beamwright.png and .ico) was created for
+BeamWright and is distributed under the same terms.

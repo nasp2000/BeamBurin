@@ -60,6 +60,10 @@ fn native_options() -> eframe::NativeOptions {
 fn main() -> eframe::Result<()> {
     tracing::info!("starting BeamWright");
     let cli = beamwright::cli::Cli::parse();
+    if cli.licenses {
+        beamwright::cli::print_licenses();
+        return Ok(());
+    }
     if cli.command.is_some() {
         if let Err(e) = beamwright::cli::run(cli) {
             eprintln!("error: {e}");
