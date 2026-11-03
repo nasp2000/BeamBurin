@@ -427,7 +427,10 @@ impl BeamBurinApp {
         self.workspaces_open = open;
     }
 
-    fn apply_interface_preset(&mut self, preset: &crate::config::preferences::InterfacePreset) {
+    pub(super) fn apply_interface_preset(
+        &mut self,
+        preset: &crate::config::preferences::InterfacePreset,
+    ) {
         self.preferences.general.theme.clone_from(&preset.theme);
         self.dark_mode = preset.theme == "dark";
         self.preferences.shortcuts = preset.shortcuts.clone();
@@ -711,7 +714,7 @@ impl BeamBurinApp {
     }
 
     /// Copy the stored preferences into the live editor state.
-    fn apply_preferences(&mut self) {
+    pub(super) fn apply_preferences(&mut self) {
         self.editor.canvas.grid_spacing_mm = self.preferences.drawing.grid_spacing_mm;
         self.editor.snap_step_mm = self.preferences.drawing.snap_step_mm;
         self.editor.snap_enabled = self.preferences.drawing.snap_enabled;
@@ -739,7 +742,7 @@ impl BeamBurinApp {
     }
 
     /// Draw the controls of the selected preferences category.
-    fn preferences_section_ui(&mut self, ui: &mut egui::Ui) -> bool {
+    pub(super) fn preferences_section_ui(&mut self, ui: &mut egui::Ui) -> bool {
         use crate::config::preferences::Section;
         let mut changed = false;
         match self.preferences_section {

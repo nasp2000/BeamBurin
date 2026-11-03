@@ -144,12 +144,12 @@ impl BeamBurinApp {
         }
     }
 
-    fn open_nest(&mut self) {
+    pub(super) fn open_nest(&mut self) {
         self.nest_open = true;
         self.refresh_nest();
     }
 
-    fn refresh_nest(&mut self) {
+    pub(super) fn refresh_nest(&mut self) {
         match self
             .editor
             .nest_selection(self.nest_spacing, self.nest_margin, self.nest_rotation)
@@ -444,7 +444,7 @@ impl BeamBurinApp {
         self.grid_array_open = open && self.grid_array_open;
     }
 
-    fn current_workspace(&self, name: &str) -> crate::config::preferences::Workspace {
+    pub(super) fn current_workspace(&self, name: &str) -> crate::config::preferences::Workspace {
         crate::config::preferences::Workspace {
             name: name.trim().to_string(),
             layers_panel: self.show_layers_panel,
@@ -457,7 +457,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn apply_workspace(&mut self, workspace: &crate::config::preferences::Workspace) {
+    pub(super) fn apply_workspace(&mut self, workspace: &crate::config::preferences::Workspace) {
         self.show_layers_panel = workspace.layers_panel;
         self.show_properties_panel = workspace.properties_panel;
         self.editor.show_rulers = workspace.rulers;
@@ -469,7 +469,7 @@ impl BeamBurinApp {
         self.preferences.drawing.guides_visible = workspace.guides;
     }
 
-    fn run_palette_action(&mut self, action: PaletteAction) {
+    pub(super) fn run_palette_action(&mut self, action: PaletteAction) {
         use crate::commands::CommandId as Action;
         self.palette_query.clear();
         match action {
