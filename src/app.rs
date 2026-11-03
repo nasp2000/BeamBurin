@@ -6878,10 +6878,27 @@ impl BeamBurinApp {
                                 );
                                 ui.end_row();
                                 ui.label("Bi-directional fill");
-                                ui.checkbox(&mut operation.params.fill_alternate, "");
+                                let alternate =
+                                    ui.checkbox(&mut operation.params.fill_alternate, "");
+                                alternate.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.params.fill_alternate,
+                                        "Bi-directional fill",
+                                    )
+                                });
                                 ui.end_row();
                                 ui.label("Cross-hatch");
-                                ui.checkbox(&mut operation.params.cross_hatch, "");
+                                let cross = ui.checkbox(&mut operation.params.cross_hatch, "");
+                                cross.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.params.cross_hatch,
+                                        "Cross-hatch",
+                                    )
+                                });
                                 ui.end_row();
                                 ui.label("Overscan (mm)");
                                 ui.add(
@@ -6949,7 +6966,16 @@ impl BeamBurinApp {
                                 );
                                 ui.end_row();
                                 ui.label("Constant power mode");
-                                ui.checkbox(&mut operation.params.constant_power, "");
+                                let constant =
+                                    ui.checkbox(&mut operation.params.constant_power, "");
+                                constant.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.params.constant_power,
+                                        "Constant power",
+                                    )
+                                });
                                 ui.end_row();
                             });
                         ui.add_space(4.0);
@@ -14622,5 +14648,61 @@ mod tests {
             crate::editor::Tool::Select,
             "a shortcut fired while the palette field had focus"
         );
+    }
+
+    #[test]
+    fn the_cut_settings_toggle_fill_and_power_options() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        let operation = app
+            .editor
+            .add_operation("Cut".to_string(), crate::operations::OperationType::Fill);
+        app.active_operation = Some(operation.clone());
+        let mut harness = ui_harness(app);
+        harness.run();
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Cuts / Layers...").click();
+        harness.run();
+        assert!(
+            harness
+                .state()
+                .editor
+                .document
+                .operations
+                .iter()
+                .find(|entry| entry.id == operation)
+                .expect("the operation is missing")
+                .params
+                .fill_alternate
+        );
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Bi-directional fill")
+            .click_accesskit();
+        harness.run();
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Cross-hatch")
+            .click_accesskit();
+        harness.run();
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Constant power")
+            .click_accesskit();
+        harness.run();
+        let params = &harness
+            .state()
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|entry| entry.id == operation)
+            .expect("the operation is missing")
+            .params;
+        assert!(
+            !params.fill_alternate,
+            "Bi-directional fill did not turn off"
+        );
+        assert!(params.cross_hatch, "Cross-hatch did not turn on");
+        assert!(params.constant_power, "Constant power did not turn on");
     }
 }
