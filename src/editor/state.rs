@@ -2865,6 +2865,17 @@ impl EditorState {
     }
 
     /// Rewrite `order` so it follows the current layer sequence.
+    /// Drawing colour of an object, falling back to its layer colour.
+    fn object_colour(&self, id: &str) -> Option<String> {
+        let object = self.document.object(id)?;
+        let layer = self.document.layer(&object.layer_id)?;
+        object
+            .color
+            .clone()
+            .or_else(|| crate::color::normalize_hex_color(&layer.color))
+            .or_else(|| Some(layer.color.clone()))
+    }
+
     fn renumber_layers(&mut self) {
         for (index, layer) in self.document.layers.iter_mut().enumerate() {
             layer.order = u32::try_from(index).unwrap_or(u32::MAX);
@@ -2877,20 +2888,24 @@ impl EditorState {
     /// selecting any member moves the whole colour set. Returns
     /// `(groups, objects)`.
     pub fn group_by_colour(&mut self) -> (usize, usize) {
+        let wanted: Vec<String> = self
+            .selection
+            .ids()
+            .iter()
+            .filter_map(|id| self.object_colour(id))
+            .collect();
         let mut buckets: std::collections::BTreeMap<String, Vec<String>> =
             std::collections::BTreeMap::new();
         for object in &self.document.objects {
             if !object.visible {
                 continue;
             }
-            let Some(layer) = self.document.layer(&object.layer_id) else {
+            let Some(colour) = self.object_colour(&object.id) else {
                 continue;
             };
-            let colour = object
-                .color
-                .clone()
-                .or_else(|| crate::color::normalize_hex_color(&layer.color))
-                .unwrap_or_else(|| layer.color.clone());
+            if !wanted.is_empty() && !wanted.contains(&colour) {
+                continue;
+            }
             buckets.entry(colour).or_default().push(object.id.clone());
         }
         let groups: Vec<Vec<String>> = buckets.into_values().filter(|ids| ids.len() >= 2).collect();
@@ -3712,12 +3727,27 @@ mod tests {
         for (id, colour) in [(&a, "#ff0000"), (&b, "#ff0000"), (&c, "#00ff00")] {
             editor.document.object_mut(id).unwrap().color = Some(colour.to_string());
         }
+        editor.selection.clear();
         assert_eq!(editor.group_by_colour(), (1, 2));
         let first = editor.document.object(&a).unwrap().group_id.clone();
         assert_eq!(editor.document.object(&b).unwrap().group_id, first);
         assert!(editor.document.object(&c).unwrap().group_id.is_none());
         assert!(editor.undo().is_some());
         assert!(editor.document.object(&a).unwrap().group_id.is_none());
+        editor.selection.add(a.clone());
+        assert_eq!(
+            editor.group_by_colour(),
+            (1, 2),
+            "the selected colour groups"
+        );
+        assert!(editor.undo().is_some());
+        editor.selection.clear();
+        editor.selection.add(c.clone());
+        assert_eq!(
+            editor.group_by_colour(),
+            (0, 0),
+            "a lone colour is not a group"
+        );
     }
 
     #[test]
