@@ -730,8 +730,6 @@ fn the_operations_section_adds_and_removes_an_operation() {
 
     let mut harness = ui_harness(ui_test_app());
     harness.run();
-    harness.get_by_label("All operations").click();
-    harness.run();
     let start = harness.state().editor.document.operations.len();
     harness.get_by_label("+ Operation").click();
     harness.run();
@@ -952,8 +950,6 @@ fn operation_actions_assign_duplicate_and_reorder() {
     app.editor
         .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
     let mut harness = ui_harness(app);
-    harness.run();
-    harness.get_by_label("All operations").click();
     harness.run();
     harness.get_by_label("+ Operation").click();
     harness.run();

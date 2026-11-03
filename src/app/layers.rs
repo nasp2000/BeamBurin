@@ -118,20 +118,20 @@ impl BeamBurinApp {
                             .spacing([3.0, 2.0])
                             .show(ui, |ui| {
                                 ui.add_sized(
-                                    [24.0, 18.0],
+                                    [22.0, 18.0],
                                     egui::Label::new(egui::RichText::new("#").strong()),
                                 );
-                                ui.horizontal(|ui| {
-                                    ui.add_space(18.0);
-                                    ui.label(egui::RichText::new("Layer").strong());
-                                });
+                                ui.add_sized(
+                                    [96.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Layer").strong()),
+                                );
                                 for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
                                     let width = if header == "Mode" {
-                                        96.0
+                                        84.0
                                     } else if header == "Spd/Pwr" {
-                                        48.0
+                                        44.0
                                     } else {
-                                        22.0
+                                        20.0
                                     };
                                     ui.add_sized(
                                         [width, 18.0],
@@ -139,7 +139,7 @@ impl BeamBurinApp {
                                     );
                                 }
                                 ui.add_sized(
-                                    [44.0, 18.0],
+                                    [36.0, 18.0],
                                     egui::Label::new(egui::RichText::new("Order").strong()),
                                 );
                                 ui.end_row();
@@ -152,11 +152,11 @@ impl BeamBurinApp {
                                     });
                                     let mut name_hit: Option<egui::Response> = None;
                                     ui.add_sized(
-                                        [24.0, 18.0],
+                                        [22.0, 18.0],
                                         egui::Label::new(format!("L{:02}", index + 1)),
                                     );
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(110.0, 18.0),
+                                        egui::vec2(96.0, 18.0),
                                         egui::Layout::left_to_right(egui::Align::Center),
                                         |ui| {
                                             let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
@@ -167,7 +167,7 @@ impl BeamBurinApp {
                                             }
                                             let name_button = ui
                                                 .add_sized(
-                                                    [80.0, 18.0],
+                                                    [70.0, 18.0],
                                                     egui::Button::selectable(
                                                         selected,
                                                         name.as_str(),
@@ -195,7 +195,7 @@ impl BeamBurinApp {
                                     };
                                     let mut chosen = mode.clone();
                                     egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(92.0)
+                                        .width(78.0)
                                         .selected_text(current)
                                         .show_ui(ui, |ui| {
                                             if ui.selectable_value(&mut chosen, None, "—").clicked()
@@ -222,7 +222,7 @@ impl BeamBurinApp {
                                         || "—".to_string(),
                                         |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                     );
-                                    ui.add_sized([48.0, 18.0], egui::Label::new(speeds));
+                                    ui.add_sized([44.0, 18.0], egui::Label::new(speeds));
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
@@ -297,19 +297,27 @@ impl BeamBurinApp {
                                     }
                                     air_response.on_hover_text("Air assist (M8/M9)");
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(44.0, 18.0),
+                                        egui::vec2(36.0, 18.0),
                                         egui::Layout::left_to_right(egui::Align::Center),
                                         |ui| {
                                             ui.spacing_mut().item_spacing.x = 1.0;
                                             if ui
-                                                .add(egui::Button::new("\u{25b2}").small())
+                                                .add(
+                                                    egui::Button::new("\u{25b2}")
+                                                        .small()
+                                                        .min_size(egui::vec2(15.0, 16.0)),
+                                                )
                                                 .on_hover_text("Cut this layer earlier")
                                                 .clicked()
                                             {
                                                 self.editor.move_layer(id, -1);
                                             }
                                             if ui
-                                                .add(egui::Button::new("\u{25bc}").small())
+                                                .add(
+                                                    egui::Button::new("\u{25bc}")
+                                                        .small()
+                                                        .min_size(egui::vec2(15.0, 16.0)),
+                                                )
                                                 .on_hover_text("Cut this layer later")
                                                 .clicked()
                                             {
@@ -819,7 +827,6 @@ impl BeamBurinApp {
     pub(super) fn operations_section(&mut self, ui: &mut Ui) {
         use crate::operations::OperationType;
 
-        ui.heading("Operations");
         let before = self.editor.document.clone();
         let operations: Vec<_> = self
             .editor
@@ -867,7 +874,9 @@ impl BeamBurinApp {
                         ui.strong(header);
                     }
                     ui.end_row();
-                    for (id, name, op_type, enabled, speed, power) in &operations {
+                    for (index, (id, name, op_type, enabled, speed, power)) in
+                        operations.iter().enumerate()
+                    {
                         let mut is_enabled = *enabled;
                         if ui
                             .push_id(("operation_enabled", id), |ui| {
@@ -909,7 +918,8 @@ impl BeamBurinApp {
                             self.set_operation_colour(id, &colour);
                         }
                         let selected = self.active_operation.as_deref() == Some(id.as_str());
-                        if ui.selectable_label(selected, name).clicked() {
+                        let label = format!("{}  {name}", index + 1);
+                        if ui.selectable_label(selected, label).clicked() {
                             self.active_operation = Some(id.clone());
                         }
                         ui.label(op_type.label());
