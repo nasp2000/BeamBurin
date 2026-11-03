@@ -31,7 +31,8 @@ impl BeamBurinApp {
 
     pub(super) fn layers_panel(&mut self, ui: &mut Ui) {
         egui::Panel::left("layers_panel")
-            .default_size(420.0)
+            .default_size(480.0)
+            .min_size(380.0)
             .resizable(true)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
@@ -131,7 +132,7 @@ impl BeamBurinApp {
                                     } else if header == "Spd/Pwr" {
                                         44.0
                                     } else {
-                                        20.0
+                                        22.0
                                     };
                                     ui.add_sized(
                                         [width, 18.0],
@@ -195,7 +196,7 @@ impl BeamBurinApp {
                                     };
                                     let mut chosen = mode.clone();
                                     egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(78.0)
+                                        .width(76.0)
                                         .selected_text(current)
                                         .show_ui(ui, |ui| {
                                             if ui.selectable_value(&mut chosen, None, "—").clicked()
