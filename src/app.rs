@@ -14745,7 +14745,7 @@ mod tests {
             "Negative image",
         ] {
             assert!(
-                harness.query_by_label(label).is_some(),
+                harness.query_all_by_label(label).next().is_some(),
                 "the image window is missing {label}"
             );
         }
