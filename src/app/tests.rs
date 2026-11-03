@@ -563,6 +563,37 @@ fn a_layer_mode_assignment_reaches_every_object() {
 }
 
 #[test]
+fn the_layer_order_arrows_move_a_layer_in_the_cut_table() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let first = app.editor.active_layer_id.clone();
+    let second = app.editor.document.add_layer("Layer 2").id.clone();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .query_all_by_label("\u{25bc}")
+        .next()
+        .expect("the first row has no down arrow")
+        .click();
+    harness.run();
+    let layers: Vec<String> = harness
+        .state()
+        .editor
+        .document
+        .layers
+        .iter()
+        .map(|layer| layer.id.clone())
+        .collect();
+    assert_eq!(layers, vec![second, first]);
+    assert_eq!(
+        harness.state().editor.document.layers[0].order,
+        0,
+        "the stored cut order did not follow the table"
+    );
+}
+
+#[test]
 fn the_layer_switches_change_the_layer_and_the_mode() {
     use egui_kittest::kittest::Queryable as _;
 

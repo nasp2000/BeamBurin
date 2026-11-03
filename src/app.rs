@@ -166,6 +166,7 @@ enum ContextAction {
     ToFront,
     ToBack,
     Group,
+    GroupByColour,
     Ungroup,
     Lock,
     Unlock,
@@ -199,6 +200,7 @@ impl ContextAction {
             ContextAction::ToFront => "Bring to front",
             ContextAction::ToBack => "Send to back",
             ContextAction::Group => "Group",
+            ContextAction::GroupByColour => "Group by colour",
             ContextAction::Ungroup => "Ungroup",
             ContextAction::Lock => "Lock",
             ContextAction::Unlock => "Unlock",
@@ -231,7 +233,7 @@ impl ContextAction {
             ContextAction::Delete => Icon::Delete,
             ContextAction::ToFront => Icon::ToFront,
             ContextAction::ToBack => Icon::ToBack,
-            ContextAction::Group => Icon::Group,
+            ContextAction::Group | ContextAction::GroupByColour => Icon::Group,
             ContextAction::Ungroup => Icon::Ungroup,
             ContextAction::Lock => Icon::Lock,
             ContextAction::Unlock => Icon::Unlock,
@@ -273,6 +275,7 @@ fn object_context_actions(
     if count >= 2 {
         actions.push(ContextAction::Group);
     }
+    actions.push(ContextAction::GroupByColour);
     actions.push(ContextAction::Ungroup);
     actions.push(ContextAction::Lock);
     actions.push(ContextAction::Unlock);
@@ -297,7 +300,11 @@ fn object_context_actions(
 
 /// Entries of the context menu over empty work area.
 fn canvas_context_actions() -> Vec<ContextAction> {
-    let mut actions = vec![ContextAction::Paste, ContextAction::SelectAll];
+    let mut actions = vec![
+        ContextAction::Paste,
+        ContextAction::SelectAll,
+        ContextAction::GroupByColour,
+    ];
     actions.extend([
         ContextAction::ZoomIn,
         ContextAction::ZoomOut,

@@ -423,6 +423,7 @@ impl BeamBurinApp {
                 | ContextAction::ExportDxf
                 | ContextAction::ExportGcode => has_selection,
                 ContextAction::Group => count >= 2,
+                ContextAction::GroupByColour => self.editor.document.objects.len() >= 2,
                 ContextAction::EditNodes => count == 1,
                 ContextAction::TextToOutlines => text_selected,
                 ContextAction::AdjustImage
@@ -514,6 +515,14 @@ impl BeamBurinApp {
             }
             ContextAction::Group => {
                 self.editor.group_selection();
+            }
+            ContextAction::GroupByColour => {
+                let (groups, objects) = self.editor.group_by_colour();
+                self.status = if groups == 0 {
+                    "No colour has two or more objects".to_string()
+                } else {
+                    format!("Grouped {objects} object(s) into {groups} colour group(s)")
+                };
             }
             ContextAction::Ungroup => {
                 self.editor.ungroup_selection();

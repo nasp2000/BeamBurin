@@ -113,7 +113,7 @@ impl BeamBurinApp {
                     .id_salt("layers_table_scroll")
                     .show(ui, |ui| {
                         egui::Grid::new("layers_grid")
-                            .num_columns(7)
+                            .num_columns(8)
                             .striped(true)
                             .spacing([3.0, 2.0])
                             .show(ui, |ui| {
@@ -138,6 +138,10 @@ impl BeamBurinApp {
                                         egui::Label::new(egui::RichText::new(header).strong()),
                                     );
                                 }
+                                ui.add_sized(
+                                    [44.0, 18.0],
+                                    egui::Label::new(egui::RichText::new("Order").strong()),
+                                );
                                 ui.end_row();
                                 for (index, row) in rows.iter().enumerate() {
                                     let (id, name, color, visible, _locked, mode, mixed, count) =
@@ -292,6 +296,27 @@ impl BeamBurinApp {
                                         }
                                     }
                                     air_response.on_hover_text("Air assist (M8/M9)");
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(44.0, 18.0),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.spacing_mut().item_spacing.x = 1.0;
+                                            if ui
+                                                .add(egui::Button::new("\u{25b2}").small())
+                                                .on_hover_text("Cut this layer earlier")
+                                                .clicked()
+                                            {
+                                                self.editor.move_layer(id, -1);
+                                            }
+                                            if ui
+                                                .add(egui::Button::new("\u{25bc}").small())
+                                                .on_hover_text("Cut this layer later")
+                                                .clicked()
+                                            {
+                                                self.editor.move_layer(id, 1);
+                                            }
+                                        },
+                                    );
                                     ui.end_row();
                                     if let Some(name_button) = name_hit {
                                         name_button.context_menu(|ui| {
@@ -471,8 +496,8 @@ impl BeamBurinApp {
                     }
                 }
                 ui.separator();
-                egui::CollapsingHeader::new("All operations")
-                    .default_open(false)
+                egui::CollapsingHeader::new("Cut order")
+                    .default_open(true)
                     .show(ui, |ui| self.operations_section(ui));
             });
     }
@@ -516,6 +541,15 @@ impl BeamBurinApp {
         if ui.button("Group objects").clicked() {
             let count = self.editor.group_layer_objects(id);
             self.status = format!("Grouped {count} object(s)");
+            ui.close();
+        }
+        if ui.button("Group by colour").clicked() {
+            let (groups, objects) = self.editor.group_by_colour();
+            self.status = if groups == 0 {
+                "No colour has two or more objects".to_string()
+            } else {
+                format!("Grouped {objects} object(s) into {groups} colour group(s)")
+            };
             ui.close();
         }
         let (visible, locked) = self
@@ -617,10 +651,25 @@ impl BeamBurinApp {
     fn apply_drawing_colour(&mut self, colour: &str) {
         let before = self.editor.document.clone();
         let selected = self.editor.selection.ids().to_vec();
+        let matching = self.operation_for_colour(colour);
         if selected.is_empty() {
             let active = self.editor.active_layer_id.clone();
             if let Some(layer) = self.editor.document.layer_mut(&active) {
                 layer.color = colour.to_string();
+            }
+            if let Some(operation) = &matching {
+                let ids: Vec<String> = self
+                    .editor
+                    .document
+                    .objects_on_layer(&active)
+                    .iter()
+                    .map(|object| object.id.clone())
+                    .collect();
+                for id in ids {
+                    if let Some(object) = self.editor.document.object_mut(&id) {
+                        object.operation_id = Some(operation.clone());
+                    }
+                }
             }
             if let Some(operation) = self.layer_mode(&active).0.and_then(|id| {
                 self.editor
@@ -636,6 +685,9 @@ impl BeamBurinApp {
             for id in &selected {
                 if let Some(object) = self.editor.document.object_mut(id) {
                     object.color = Some(colour.to_string());
+                    if let Some(operation) = &matching {
+                        object.operation_id = Some(operation.clone());
+                    }
                 }
             }
             let mut layers: Vec<String> = selected
@@ -682,6 +734,49 @@ impl BeamBurinApp {
         }
     }
 
+    /// Operation whose cut colour matches `colour`, if any.
+    fn operation_for_colour(&self, colour: &str) -> Option<String> {
+        let wanted = crate::color::normalize_hex_color(colour)?;
+        self.editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| {
+                crate::color::normalize_hex_color(&operation.params.color).as_deref()
+                    == Some(wanted.as_str())
+            })
+            .map(|operation| operation.id.clone())
+    }
+
+    /// Give an operation a colour and carry it to the layers that use it, so
+    /// the table, the canvas and the cut order stay consistent.
+    fn set_operation_colour(&mut self, operation_id: &str, colour: &str) {
+        let before = self.editor.document.clone();
+        if let Some(operation) = self
+            .editor
+            .document
+            .operations
+            .iter_mut()
+            .find(|operation| operation.id == operation_id)
+        {
+            operation.params.color = colour.to_string();
+        }
+        let layers: Vec<String> = self
+            .editor
+            .document
+            .layers
+            .iter()
+            .map(|layer| layer.id.clone())
+            .filter(|layer_id| self.layer_mode(layer_id).0.as_deref() == Some(operation_id))
+            .collect();
+        for layer_id in layers {
+            self.set_layer_colour(&layer_id, colour);
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Colour");
+        }
+    }
+
     fn set_layer_colour(&mut self, layer_id: &str, colour: &str) {
         let ids: Vec<String> = self
             .editor
@@ -693,9 +788,13 @@ impl BeamBurinApp {
         if let Some(layer) = self.editor.document.layer_mut(layer_id) {
             layer.color = colour.to_string();
         }
+        let matching = self.operation_for_colour(colour);
         for id in ids {
             if let Some(object) = self.editor.document.object_mut(&id) {
                 object.color = Some(colour.to_string());
+                if let Some(operation) = &matching {
+                    object.operation_id = Some(operation.clone());
+                }
             }
         }
     }
@@ -760,17 +859,23 @@ impl BeamBurinApp {
         });
         egui::ScrollArea::horizontal().show(ui, |ui| {
             egui::Grid::new("operations_table")
-                .num_columns(6)
+                .num_columns(7)
                 .striped(true)
                 .spacing([8.0, 4.0])
                 .show(ui, |ui| {
-                    for header in ["On", "Operation", "Type", "Spd/Pwr", "Used", ""] {
+                    for header in ["On", "Colour", "Operation", "Type", "Spd/Pwr", "Used", ""] {
                         ui.strong(header);
                     }
                     ui.end_row();
                     for (id, name, op_type, enabled, speed, power) in &operations {
                         let mut is_enabled = *enabled;
-                        if ui.checkbox(&mut is_enabled, "").changed() {
+                        if ui
+                            .push_id(("operation_enabled", id), |ui| {
+                                ui.checkbox(&mut is_enabled, "")
+                            })
+                            .inner
+                            .changed()
+                        {
                             if let Some(operation) = self
                                 .editor
                                 .document
@@ -780,6 +885,28 @@ impl BeamBurinApp {
                             {
                                 operation.enabled = is_enabled;
                             }
+                        }
+                        let colour = self
+                            .editor
+                            .document
+                            .operations
+                            .iter()
+                            .find(|operation| operation.id == *id)
+                            .map_or_else(
+                                || "#000000".to_string(),
+                                |operation| operation.params.color.clone(),
+                            );
+                        let rgb = parse_hex_color(&colour).unwrap_or((0, 0, 0));
+                        let mut srgb = [rgb.0, rgb.1, rgb.2];
+                        if ui
+                            .push_id(("operation_colour", id), |ui| {
+                                ui.color_edit_button_srgb(&mut srgb)
+                            })
+                            .inner
+                            .changed()
+                        {
+                            let colour = to_hex(srgb[0], srgb[1], srgb[2]);
+                            self.set_operation_colour(id, &colour);
                         }
                         let selected = self.active_operation.as_deref() == Some(id.as_str());
                         if ui.selectable_label(selected, name).clicked() {

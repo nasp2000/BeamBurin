@@ -907,9 +907,19 @@ impl EditorState {
             return None;
         }
         let layer_color = layer.color.clone();
+        let matching_operation = self
+            .document
+            .operations
+            .iter()
+            .find(|operation| {
+                crate::color::normalize_hex_color(&operation.params.color)
+                    == crate::color::normalize_hex_color(&layer_color)
+            })
+            .map(|operation| operation.id.clone());
         self.record_action(&format!("Draw {}", shape.kind_name()));
         let mut object = Object::new(self.active_layer_id.clone(), shape).with_transform(transform);
         object.color = Some(layer_color);
+        object.operation_id = matching_operation;
         let id = object.id.clone();
         self.document.add_object(object);
         self.selection.clear();
@@ -2834,6 +2844,73 @@ impl EditorState {
         true
     }
 
+    /// Move a layer earlier or later in the cut order.
+    ///
+    /// The vector order and each layer's stored `order` are kept in step, so
+    /// the table, the toolpaths and the saved project agree.
+    pub fn move_layer(&mut self, id: &str, delta: isize) -> bool {
+        let Some(index) = self.document.layers.iter().position(|layer| layer.id == id) else {
+            return false;
+        };
+        let Some(target) = index.checked_add_signed(delta) else {
+            return false;
+        };
+        if target >= self.document.layers.len() || target == index {
+            return false;
+        }
+        self.record_action("Reorder layer");
+        self.document.layers.swap(index, target);
+        self.renumber_layers();
+        true
+    }
+
+    /// Rewrite `order` so it follows the current layer sequence.
+    fn renumber_layers(&mut self) {
+        for (index, layer) in self.document.layers.iter_mut().enumerate() {
+            layer.order = u32::try_from(index).unwrap_or(u32::MAX);
+        }
+    }
+
+    /// Group the page objects by drawing colour.
+    ///
+    /// Each colour that has at least two visible objects becomes one group, so
+    /// selecting any member moves the whole colour set. Returns
+    /// `(groups, objects)`.
+    pub fn group_by_colour(&mut self) -> (usize, usize) {
+        let mut buckets: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for object in &self.document.objects {
+            if !object.visible {
+                continue;
+            }
+            let Some(layer) = self.document.layer(&object.layer_id) else {
+                continue;
+            };
+            let colour = object
+                .color
+                .clone()
+                .or_else(|| crate::color::normalize_hex_color(&layer.color))
+                .unwrap_or_else(|| layer.color.clone());
+            buckets.entry(colour).or_default().push(object.id.clone());
+        }
+        let groups: Vec<Vec<String>> = buckets.into_values().filter(|ids| ids.len() >= 2).collect();
+        if groups.is_empty() {
+            return (0, 0);
+        }
+        self.record_action("Group by colour");
+        let mut objects = 0;
+        for ids in &groups {
+            let group = uuid::Uuid::new_v4().to_string();
+            for id in ids {
+                if let Some(object) = self.document.object_mut(id) {
+                    object.group_id = Some(group.clone());
+                }
+            }
+            objects += ids.len();
+        }
+        (groups.len(), objects)
+    }
+
     /// Assign an operation (or clear it) on every object of a layer.
     ///
     /// This is the layer-level form of the per-object association: the result is
@@ -3586,6 +3663,61 @@ mod tests {
         assert!(editor.undo().is_some());
         assert_eq!(editor.document.objects.len(), 1);
         assert!(editor.duplicate_layer("missing").is_none());
+    }
+
+    #[test]
+    fn layers_can_be_reordered_for_the_cut_order() {
+        let mut editor = editor();
+        let first = editor.document.layers[0].id.clone();
+        let second = editor.document.add_layer("Second").id.clone();
+        let third = editor.document.add_layer("Third").id.clone();
+        assert!(editor.move_layer(&third, -1));
+        let ids: Vec<&str> = editor
+            .document
+            .layers
+            .iter()
+            .map(|layer| layer.id.as_str())
+            .collect();
+        assert_eq!(ids, vec![first.as_str(), third.as_str(), second.as_str()]);
+        let orders: Vec<u32> = editor
+            .document
+            .layers
+            .iter()
+            .map(|layer| layer.order)
+            .collect();
+        assert_eq!(
+            orders,
+            vec![0, 1, 2],
+            "order must follow the layer sequence"
+        );
+        assert!(!editor.move_layer(&third, -5));
+        assert!(!editor.move_layer("missing", 1));
+        assert!(editor.undo().is_some());
+        assert_eq!(editor.document.layers[0].id, first);
+        assert_eq!(editor.document.layers[2].id, third);
+    }
+
+    #[test]
+    fn objects_are_grouped_by_their_drawing_colour() {
+        let mut editor = editor();
+        let a = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(4.0, 4.0))
+            .unwrap();
+        let b = editor
+            .add_rectangle(Point2::new(10.0, 0.0), Point2::new(14.0, 4.0))
+            .unwrap();
+        let c = editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(24.0, 4.0))
+            .unwrap();
+        for (id, colour) in [(&a, "#ff0000"), (&b, "#ff0000"), (&c, "#00ff00")] {
+            editor.document.object_mut(id).unwrap().color = Some(colour.to_string());
+        }
+        assert_eq!(editor.group_by_colour(), (1, 2));
+        let first = editor.document.object(&a).unwrap().group_id.clone();
+        assert_eq!(editor.document.object(&b).unwrap().group_id, first);
+        assert!(editor.document.object(&c).unwrap().group_id.is_none());
+        assert!(editor.undo().is_some());
+        assert!(editor.document.object(&a).unwrap().group_id.is_none());
     }
 
     #[test]
