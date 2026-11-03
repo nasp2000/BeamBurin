@@ -8,24 +8,35 @@ impl BeamBurinApp {
             .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(
-                            self.side_panel_tab == SidePanelTab::Properties,
-                            "Properties",
-                        )
-                        .clicked()
-                    {
-                        self.side_panel_tab = SidePanelTab::Properties;
-                    }
-                    if ui
-                        .selectable_label(self.side_panel_tab == SidePanelTab::Tool, "Tool")
-                        .clicked()
-                    {
-                        self.side_panel_tab = SidePanelTab::Tool;
-                    }
-                });
+                egui::TopBottomPanel::bottom("side_tabs")
+                    .exact_height(28.0)
+                    .show_inside(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            if icons::selectable(
+                                ui,
+                                self.side_panel_tab == SidePanelTab::Properties,
+                                Icon::Preferences,
+                                "Properties",
+                            )
+                            .clicked()
+                            {
+                                self.side_panel_tab = SidePanelTab::Properties;
+                            }
+                            if icons::selectable(
+                                ui,
+                                self.side_panel_tab == SidePanelTab::Tool,
+                                Icon::Pencil,
+                                "Tool",
+                            )
+                            .clicked()
+                            {
+                                self.side_panel_tab = SidePanelTab::Tool;
+                            }
+                        });
+                    });
                 ui.separator();
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 3.0);
                 match self.side_panel_tab {
                     SidePanelTab::Properties => self.properties_contents(ui),
                     SidePanelTab::Tool => self.tool_contents(ui),

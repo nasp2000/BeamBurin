@@ -1324,6 +1324,7 @@ impl BeamBurinApp {
     /// The fixed tool panel: options, live readout and the pending path.
     /// The fixed tool panel: options, live readout and the pending path.
     pub(super) fn tool_contents(&mut self, ui: &mut Ui) {
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 3.0);
         ui.label(tool_help(self.editor.tool));
         ui.separator();
         egui::ScrollArea::vertical()
