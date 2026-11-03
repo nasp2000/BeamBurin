@@ -13842,7 +13842,7 @@ mod tests {
         );
         harness
             .get_all_by_label("Duplicate")
-            .find(|node| node.rect().min.x < 450.0 && node.rect().min.y > 100.0)
+            .last()
             .expect("the operation duplicate button is missing")
             .click_accesskit();
         harness.run();
