@@ -13713,4 +13713,71 @@ mod tests {
             "the import produced no objects"
         );
     }
+
+    #[test]
+    fn single_key_tool_shortcuts_change_the_tool() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        for (key, tool) in [
+            (egui::Key::R, crate::editor::Tool::Rectangle),
+            (egui::Key::E, crate::editor::Tool::Ellipse),
+            (egui::Key::L, crate::editor::Tool::Line),
+            (egui::Key::V, crate::editor::Tool::Select),
+        ] {
+            harness.key_press(key);
+            harness.run();
+            assert_eq!(
+                harness.state().editor.tool,
+                tool,
+                "{key:?} did not select {tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_removes_the_selected_object() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+        let mut harness = ui_harness(app);
+        harness.run();
+        assert_eq!(harness.state().editor.document.objects.len(), 1);
+        harness.key_press(egui::Key::Delete);
+        harness.run();
+        assert_eq!(
+            harness.state().editor.document.objects.len(),
+            0,
+            "Delete did not remove the selection"
+        );
+    }
+
+    #[test]
+    fn the_command_palette_runs_the_first_match() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = ui_harness(ui_test_app());
+        harness.run();
+        harness.get_by_label("View").click();
+        harness.run();
+        harness.get_by_label("Command palette...").click();
+        harness.run();
+        let before = harness.state().editor.canvas.grid_visible;
+        harness
+            .get_all_by_role(egui::accesskit::Role::TextInput)
+            .last()
+            .expect("the palette entry field is missing")
+            .type_text("toggle grid");
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        assert_ne!(
+            harness.state().editor.canvas.grid_visible,
+            before,
+            "the palette did not run the grid command"
+        );
+    }
 }
