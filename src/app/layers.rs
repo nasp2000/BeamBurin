@@ -1,6 +1,4 @@
-use super::{
-    BeamBurinApp, Color32, FileMode, LayerRow, OperationType, Ui, parse_hex_color, to_hex,
-};
+use super::{BeamBurinApp, Color32, FileMode, LayerRow, Ui, parse_hex_color, to_hex};
 
 impl BeamBurinApp {
     /// The operation shared by every object of a layer, and whether the
