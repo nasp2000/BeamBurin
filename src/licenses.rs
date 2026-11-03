@@ -1,4 +1,4 @@
-//! Licence texts shipped with every BeamWright binary.
+//! Licence texts shipped with every `BeamWright` binary.
 
 /// The generated third-party notices, embedded so a single executable still
 /// carries the notices its licences require.
