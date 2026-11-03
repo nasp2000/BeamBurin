@@ -8,8 +8,8 @@ impl BeamBurinApp {
             .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
-                egui::TopBottomPanel::bottom("side_tabs")
-                    .exact_height(28.0)
+                egui::Panel::bottom("side_tabs")
+                    .exact_size(28.0)
                     .show_inside(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
