@@ -1,5 +1,13 @@
 use super::{BeamBurinApp, Color32, FileMode, LayerRow, Ui, parse_hex_color, to_hex};
 
+/// Drawing colours offered at the bottom of the window. They are also the
+/// colours a layer can use for its cut configuration.
+const DRAWING_COLOURS: [&str; 20] = [
+    "#000000", "#1e88e5", "#e53935", "#43a047", "#fdd835", "#8e24aa", "#00acc1", "#fb8c00",
+    "#6d4c41", "#546e7a", "#d81b60", "#7cb342", "#3949ab", "#00897b", "#f4511e", "#c0ca33",
+    "#5e35b1", "#039be5", "#ffb300", "#757575",
+];
+
 impl BeamBurinApp {
     /// The operation shared by every object of a layer, and whether the
     /// objects disagree. A layer has no operation of its own: this keeps the
@@ -26,43 +34,8 @@ impl BeamBurinApp {
             .default_size(420.0)
             .resizable(true)
             .show(ui, |ui| {
-                ui.heading("Search");
-                ui.text_edit_singleline(&mut self.search_query);
-                let mut hits = crate::editor::search::search_document(
-                    &self.editor.document,
-                    &self.search_query,
-                );
-                hits.extend(crate::editor::search::search_profiles(
-                    &self.profiles,
-                    &self.search_query,
-                ));
-                if !hits.is_empty() {
-                    egui::ScrollArea::vertical()
-                        .max_height(100.0)
-                        .show(ui, |ui| {
-                            for hit in &hits {
-                                if ui.button(&hit.label).clicked() {
-                                    match hit.kind {
-                                        crate::editor::search::SearchKind::Object => {
-                                            self.editor.selection.clear();
-                                            self.editor.selection.add(hit.id.clone());
-                                        }
-                                        crate::editor::search::SearchKind::Layer => {
-                                            self.editor.active_layer_id.clone_from(&hit.id);
-                                        }
-                                        crate::editor::search::SearchKind::Operation => {
-                                            self.active_operation = Some(hit.id.clone());
-                                        }
-                                        crate::editor::search::SearchKind::Profile => {
-                                            self.select_profile(&hit.id);
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                }
-                ui.separator();
-                ui.heading("Layers");
+                ui.spacing_mut().item_spacing.y = 4.0;
+                ui.label(egui::RichText::new("Cuts / Layers").strong());
                 let before = self.editor.document.clone();
                 let mut message: Option<String> = None;
                 ui.horizontal(|ui| {
@@ -597,6 +570,95 @@ impl BeamBurinApp {
         if name.is_empty() {
             ui.weak("Missing layer");
         }
+    }
+
+    /// Compact colour strip: applies the colour to the selection, or makes it
+    /// the colour of the active layer so the next shapes use it.
+    pub(super) fn color_palette(&mut self, ui: &mut Ui) {
+        egui::Panel::bottom("color_palette").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Colour");
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let active = self
+                    .editor
+                    .document
+                    .layer(&self.editor.active_layer_id)
+                    .map(|layer| layer.color.to_ascii_lowercase());
+                for colour in DRAWING_COLOURS {
+                    let (r, g, b) = parse_hex_color(colour).unwrap_or((0, 0, 0));
+                    let selected = active.as_deref() == Some(colour);
+                    let response = ui.add(
+                        egui::Button::new("")
+                            .fill(Color32::from_rgb(r, g, b))
+                            .min_size(egui::vec2(18.0, 18.0))
+                            .stroke(if selected {
+                                egui::Stroke::new(2.0, Color32::WHITE)
+                            } else {
+                                egui::Stroke::NONE
+                            }),
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            true,
+                            format!("Drawing colour {colour}"),
+                        )
+                    });
+                    if response.on_hover_text(format!("Use {colour}")).clicked() {
+                        self.apply_drawing_colour(colour);
+                    }
+                }
+            });
+        });
+    }
+
+    fn apply_drawing_colour(&mut self, colour: &str) {
+        let before = self.editor.document.clone();
+        let mut layers: Vec<String> = if self.editor.selection.is_empty() {
+            vec![self.editor.active_layer_id.clone()]
+        } else {
+            self.editor
+                .selection
+                .ids()
+                .iter()
+                .filter_map(|id| {
+                    self.editor
+                        .document
+                        .object(id)
+                        .map(|object| object.layer_id.clone())
+                })
+                .collect()
+        };
+        layers.sort_unstable();
+        layers.dedup();
+        layers.retain(|id| self.editor.document.layer(id).is_some());
+        if layers.is_empty() {
+            return;
+        }
+        let operations: Vec<String> = layers
+            .iter()
+            .filter_map(|id| self.layer_mode(id).0)
+            .collect();
+        for id in &layers {
+            if let Some(layer) = self.editor.document.layer_mut(id) {
+                layer.color = colour.to_string();
+            }
+        }
+        for id in operations {
+            if let Some(operation) = self
+                .editor
+                .document
+                .operations
+                .iter_mut()
+                .find(|operation| operation.id == id)
+            {
+                operation.params.color = colour.to_string();
+            }
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Colour");
+        }
+        self.status = format!("Colour {colour} applied to {} layer(s)", layers.len());
     }
 
     pub(super) fn operations_section(&mut self, ui: &mut Ui) {

@@ -234,6 +234,7 @@ impl FileDialog {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn show(&mut self, ctx: &egui::Context) -> DialogResult {
         let mut result = DialogResult::Pending;
         let mut open = true;
@@ -483,11 +484,10 @@ impl FileDialog {
                     let kind = file
                         .extension()
                         .and_then(|value| value.to_str())
-                        .map_or_else(|| "File".to_string(), |value| value.to_ascii_uppercase());
+                        .map_or_else(|| "File".to_string(), str::to_ascii_uppercase);
                     ui.label(kind);
                     let size = std::fs::metadata(&file)
-                        .map(|metadata| format_size(metadata.len()))
-                        .unwrap_or_else(|_| "—".to_string());
+                        .map_or_else(|_| "—".to_string(), |metadata| format_size(metadata.len()));
                     ui.weak(size);
                     ui.end_row();
                 }
@@ -585,6 +585,7 @@ fn places() -> Vec<(&'static str, PathBuf)> {
     places
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn format_size(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = KIB * 1024;
