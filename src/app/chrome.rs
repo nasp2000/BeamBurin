@@ -13,6 +13,7 @@ impl BeamBurinApp {
             || self.machine_wizard_open
             || self.machines_open
             || self.cuts_open
+            || self.row_settings.is_some()
             || self.image_adjust.is_some()
             || self.help_shortcuts_open
             || self.assistant_open
