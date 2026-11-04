@@ -527,6 +527,7 @@ impl BeamBurinApp {
             ContextAction::Ungroup => {
                 self.editor.ungroup_selection();
             }
+            ContextAction::CutSettings => self.open_cut_settings_for_selection(),
             ContextAction::Lock => {
                 let count = self.editor.lock_selection();
                 self.status = format!("Locked {count} object(s)");

@@ -200,6 +200,7 @@ fn object_context_menu_matches_the_selection() {
 
     let pair = object_context_actions(2, false, false);
     assert!(pair.contains(&ContextAction::Group));
+    assert!(pair.contains(&ContextAction::CutSettings));
     assert!(!pair.contains(&ContextAction::EditNodes));
 
     let text = object_context_actions(1, true, false);
@@ -210,6 +211,37 @@ fn object_context_menu_matches_the_selection() {
     let image = object_context_actions(1, false, true);
     assert!(image.contains(&ContextAction::AdjustImage));
     assert!(!image.contains(&ContextAction::TextToOutlines));
+}
+
+#[test]
+fn the_object_menu_opens_the_cut_settings_of_its_layer() {
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    app.run_context_action(ContextAction::CutSettings);
+    assert!(app.cuts_open, "the cut settings did not open");
+    let operation = app
+        .active_operation
+        .clone()
+        .expect("no cut entry became active");
+    let document = &app.editor.document;
+    let entry = document
+        .operations
+        .iter()
+        .find(|entry| entry.id == operation)
+        .expect("the cut entry is missing");
+    assert_eq!(entry.params.color, "#000000");
+    assert_eq!(
+        document.layer(&layer).unwrap().operation_id.as_deref(),
+        Some(operation.as_str()),
+        "the layer was not bound to the cut entry"
+    );
+    assert_eq!(
+        document.objects[0].operation_id.as_deref(),
+        Some(operation.as_str()),
+        "the object was not bound to the cut entry"
+    );
 }
 
 #[test]

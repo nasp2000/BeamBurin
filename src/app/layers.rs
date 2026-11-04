@@ -499,6 +499,52 @@ impl BeamBurinApp {
         self.status = format!("{} set to {}", name, kind.label());
     }
 
+    /// Open the full cut window on the cut entry of the selected object's
+    /// layer, creating one for its colour when the layer has none.
+    pub(super) fn open_cut_settings_for_selection(&mut self) {
+        let Some(object_id) = self.editor.selection.ids().first().cloned() else {
+            return;
+        };
+        let Some((layer_id, colour, object_operation)) =
+            self.editor.document.object(&object_id).map(|object| {
+                let colour = object.color.clone().unwrap_or_else(|| {
+                    self.editor
+                        .document
+                        .layer(&object.layer_id)
+                        .map_or_else(|| "#000000".to_string(), |layer| layer.color.clone())
+                });
+                (object.layer_id.clone(), colour, object.operation_id.clone())
+            })
+        else {
+            return;
+        };
+        let before = self.editor.document.clone();
+        let operation = object_operation
+            .or_else(|| {
+                self.editor
+                    .document
+                    .layer(&layer_id)
+                    .and_then(|layer| layer.operation_id.clone())
+            })
+            .or_else(|| self.editor.operation_for_colour(&colour))
+            .unwrap_or_else(|| self.editor.ensure_operation_for_colour(&colour));
+        if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
+            layer.operation_id.get_or_insert_with(|| operation.clone());
+        }
+        for id in self.editor.selection.ids().to_vec() {
+            if let Some(object) = self.editor.document.object_mut(&id) {
+                if object.layer_id == layer_id && object.operation_id.is_none() {
+                    object.operation_id = Some(operation.clone());
+                }
+            }
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Cut entry");
+        }
+        self.active_operation = Some(operation);
+        self.open_cuts();
+    }
+
     #[allow(clippy::too_many_lines)]
     pub(super) fn layer_context_menu(&mut self, ui: &mut Ui, id: &str) {
         use crate::operations::OperationType;
