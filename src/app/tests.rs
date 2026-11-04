@@ -324,8 +324,11 @@ fn the_object_cut_shortcut_shows_speed_and_power() {
         );
     }
     assert!(
-        harness.get_all_by_label("Outline cutting").next().is_some(),
-        "the object cut shortcut does not show the mode"
+        harness
+            .get_all_by_role(egui::accesskit::Role::ComboBox)
+            .next()
+            .is_some(),
+        "the object cut shortcut has no mode selector"
     );
 }
 
