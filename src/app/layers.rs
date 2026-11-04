@@ -58,8 +58,31 @@ impl BeamBurinApp {
                 ui.horizontal(|ui| {
                     if ui.button("+ Layer").clicked() {
                         let name = format!("Layer {}", self.editor.document.layers.len() + 1);
+                        let used: Vec<String> = self
+                            .editor
+                            .document
+                            .layers
+                            .iter()
+                            .map(|layer| layer.color.to_ascii_lowercase())
+                            .collect();
+                        let colour = DRAWING_COLOURS
+                            .iter()
+                            .find(|colour| !used.contains(&colour.to_ascii_lowercase()))
+                            .copied()
+                            .unwrap_or_else(|| {
+                                DRAWING_COLOURS[self.editor.document.layers.len()
+                                    % DRAWING_COLOURS.len()]
+                            });
                         let layer = self.editor.document.add_layer(name);
-                        self.editor.active_layer_id.clone_from(&layer.id);
+                        let id = layer.id.clone();
+                        if let Some(layer) = self.editor.document.layer_mut(&id) {
+                            layer.color = colour.to_string();
+                        }
+                        let operation = self.editor.ensure_operation_for_colour(colour);
+                        if let Some(layer) = self.editor.document.layer_mut(&id) {
+                            layer.operation_id = Some(operation);
+                        }
+                        self.editor.active_layer_id = id;
                     }
                     if ui.button("- Layer").clicked() {
                         let id = self.editor.active_layer_id.clone();
@@ -249,7 +272,13 @@ impl BeamBurinApp {
                                         || "—".to_string(),
                                         |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                     );
-                                    ui.add_sized([40.0, 18.0], egui::Label::new(speeds));
+                                    let speeds_response = ui.add_sized(
+                                        [40.0, 18.0],
+                                        egui::Label::new(speeds).sense(egui::Sense::click()),
+                                    );
+                                    speeds_response.context_menu(|ui| {
+                                        self.layer_context_menu(ui, id);
+                                    });
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {

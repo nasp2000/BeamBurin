@@ -701,6 +701,59 @@ fn save_as_suggests_the_project_extension_and_can_be_cancelled() {
 }
 
 #[test]
+fn a_new_layer_gets_a_colour_and_a_cut_entry() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("+ Layer").click();
+    harness.run();
+    let document = &harness.state().editor.document;
+    assert_eq!(document.layers.len(), 2, "+ Layer did not add a layer");
+    let added = &document.layers[1];
+    assert_eq!(
+        added.color, "#1e88e5",
+        "the new layer reused another colour"
+    );
+    let operation = document
+        .operations
+        .iter()
+        .find(|operation| operation.params.color == "#1e88e5")
+        .expect("the new layer has no cut entry");
+    assert_eq!(
+        added.operation_id.as_deref(),
+        Some(operation.id.as_str()),
+        "the new layer is not bound to its cut entry"
+    );
+    assert_eq!(operation.name, "C00");
+}
+
+#[test]
+fn the_row_menu_opens_from_the_speeds_cell() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+    harness
+        .get_all_by_label("1000 / 20")
+        .next()
+        .expect("the speeds cell is missing")
+        .click_secondary();
+    harness.run();
+    assert!(
+        harness.query_by_label("Cut settings").is_some(),
+        "the row menu did not open from the speeds cell"
+    );
+}
+
+#[test]
 fn the_row_menu_adds_and_edits_the_cut_entry() {
     use egui_kittest::kittest::Queryable as _;
 
