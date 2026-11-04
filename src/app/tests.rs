@@ -201,6 +201,7 @@ fn object_context_menu_matches_the_selection() {
     let pair = object_context_actions(2, false, false);
     assert!(pair.contains(&ContextAction::Group));
     assert!(pair.contains(&ContextAction::CutSettings));
+    assert!(pair.contains(&ContextAction::SelectSameColour));
     assert!(!pair.contains(&ContextAction::EditNodes));
 
     let text = object_context_actions(1, true, false);
@@ -242,6 +243,30 @@ fn the_object_menu_opens_the_cut_settings_of_its_layer() {
         Some(operation.as_str()),
         "the object was not bound to the cut entry"
     );
+}
+
+#[test]
+fn the_object_menu_selects_the_same_colour_across_layers() {
+    let mut app = ui_test_app();
+    let first = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0))
+        .expect("the first rectangle was not added");
+    let second_layer = app.editor.document.add_layer("Layer 2").id.clone();
+    app.editor.active_layer_id = second_layer;
+    let second = app
+        .editor
+        .add_rectangle(Point2::new(30.0, 10.0), Point2::new(40.0, 20.0))
+        .expect("the second rectangle was not added");
+    for id in [&first, &second] {
+        app.editor.document.object_mut(id).unwrap().color = Some("#e53935".to_string());
+    }
+    app.editor.selection.clear();
+    app.editor.selection.add(first.clone());
+    app.run_context_action(ContextAction::SelectSameColour);
+    assert_eq!(app.editor.selection.len(), 2, "the other layer was missed");
+    assert!(app.editor.selection.contains(&second));
+    assert!(app.status.contains("#e53935"), "{}", app.status);
 }
 
 #[test]

@@ -530,6 +530,12 @@ impl BeamBurinApp {
                 self.editor.ungroup_selection();
             }
             ContextAction::CutSettings => self.open_cut_settings_for_selection(),
+            ContextAction::SelectSameColour => {
+                if let Some((_, colour, _)) = self.selection_cut_context() {
+                    let count = self.editor.select_by_color(&colour);
+                    self.status = format!("Selected {count} object(s) of {colour}");
+                }
+            }
             ContextAction::Lock => {
                 let count = self.editor.lock_selection();
                 self.status = format!("Locked {count} object(s)");

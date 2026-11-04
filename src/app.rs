@@ -168,6 +168,7 @@ enum ContextAction {
     Group,
     GroupByColour,
     CutSettings,
+    SelectSameColour,
     Ungroup,
     Lock,
     Unlock,
@@ -203,6 +204,7 @@ impl ContextAction {
             ContextAction::Group => "Group",
             ContextAction::GroupByColour => "Group by colour",
             ContextAction::CutSettings => "Cut settings...",
+            ContextAction::SelectSameColour => "Select same colour",
             ContextAction::Ungroup => "Ungroup",
             ContextAction::Lock => "Lock",
             ContextAction::Unlock => "Unlock",
@@ -237,6 +239,7 @@ impl ContextAction {
             ContextAction::ToBack => Icon::ToBack,
             ContextAction::Group | ContextAction::GroupByColour => Icon::Group,
             ContextAction::CutSettings => Icon::Gear,
+            ContextAction::SelectSameColour => Icon::SelectAll,
             ContextAction::Ungroup => Icon::Ungroup,
             ContextAction::Lock => Icon::Lock,
             ContextAction::Unlock => Icon::Unlock,
@@ -281,6 +284,7 @@ fn object_context_actions(
     actions.push(ContextAction::GroupByColour);
     actions.push(ContextAction::Ungroup);
     actions.push(ContextAction::CutSettings);
+    actions.push(ContextAction::SelectSameColour);
     actions.push(ContextAction::Lock);
     actions.push(ContextAction::Unlock);
     if count == 1 {
