@@ -239,7 +239,6 @@ impl ContextAction {
             ContextAction::ToBack => Icon::ToBack,
             ContextAction::Group | ContextAction::GroupByColour => Icon::Group,
             ContextAction::CutSettings => Icon::Gear,
-            ContextAction::SelectSameColour => Icon::SelectAll,
             ContextAction::Ungroup => Icon::Ungroup,
             ContextAction::Lock => Icon::Lock,
             ContextAction::Unlock => Icon::Unlock,
@@ -251,7 +250,7 @@ impl ContextAction {
             ContextAction::ExportSvg | ContextAction::ExportDxf | ContextAction::ExportGcode => {
                 Icon::Export
             }
-            ContextAction::SelectAll => Icon::SelectAll,
+            ContextAction::SelectAll | ContextAction::SelectSameColour => Icon::SelectAll,
             ContextAction::ZoomIn => Icon::ZoomIn,
             ContextAction::ZoomOut => Icon::ZoomOut,
             ContextAction::FitPage => Icon::ZoomFit,
