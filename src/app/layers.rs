@@ -783,7 +783,7 @@ impl BeamBurinApp {
                     }
                 });
             if open_all {
-                self.active_operation = Some(cut_id);
+                self.active_operation = Some(cut_id.clone());
                 self.cuts_open = true;
                 ui.close();
             }
