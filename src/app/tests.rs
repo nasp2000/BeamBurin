@@ -317,12 +317,94 @@ fn the_object_cut_shortcut_shows_speed_and_power() {
     let mut harness =
         egui_kittest::Harness::new_ui_state(|ui, app| app.object_cut_quick_ui(ui), app);
     harness.run();
-    for label in ["Cut: C00", "Outline cutting", "Speed (mm/min)", "Power (%)"] {
+    for label in ["Cut: C00", "Speed (mm/min)", "Power (%)"] {
         assert!(
             harness.query_by_label(label).is_some(),
             "the object cut shortcut is missing {label}"
         );
     }
+    assert!(
+        harness.get_all_by_label("Outline cutting").next().is_some(),
+        "the object cut shortcut does not show the mode"
+    );
+}
+
+#[test]
+fn the_object_quick_mode_can_be_changed() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    app.run_context_action(ContextAction::CutSettings);
+    let operation = app
+        .active_operation
+        .clone()
+        .expect("no cut entry became active");
+    let mut harness =
+        egui_kittest::Harness::new_ui_state(|ui, app| app.object_cut_quick_ui(ui), app);
+    harness.run();
+    harness
+        .get_all_by_role(egui::accesskit::Role::ComboBox)
+        .next()
+        .expect("the quick mode combo is missing")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Fill")
+        .click();
+    harness.run();
+    let entry = harness
+        .state()
+        .editor
+        .document
+        .operations
+        .iter()
+        .find(|entry| entry.id == operation)
+        .expect("the cut entry is missing");
+    assert_eq!(
+        entry.op_type,
+        crate::operations::OperationType::Fill,
+        "the quick mode did not reach the cut entry"
+    );
+    assert!(
+        harness.state_mut().editor.undo().is_some(),
+        "the mode change is not undoable"
+    );
+}
+
+#[test]
+fn the_row_menu_deletes_the_cut_entry() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(harness.state().editor.document.operations.len(), 1);
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness.get_by_label("Delete cut entry").click_accesskit();
+    harness.run();
+    let document = &harness.state().editor.document;
+    assert!(
+        document.operations.is_empty(),
+        "the cut entry was not deleted"
+    );
+    assert!(
+        document.layer(&layer).unwrap().operation_id.is_none(),
+        "the layer kept the deleted cut entry"
+    );
+    assert!(
+        document.objects[0].operation_id.is_none(),
+        "the object kept the deleted cut entry"
+    );
 }
 
 #[test]
