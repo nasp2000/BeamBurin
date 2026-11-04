@@ -436,8 +436,6 @@ impl BeamBurinApp {
                 ui.close();
             }
         }
-        ui.separator();
-        self.object_cut_quick_ui(ui);
     }
 
     pub(super) fn canvas_context_menu(&mut self, ui: &mut Ui) {
