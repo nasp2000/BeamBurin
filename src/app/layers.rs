@@ -560,6 +560,8 @@ impl BeamBurinApp {
     /// Compact speed and power fields for the selected object's cut entry,
     /// shown inside the object context menu.
     pub(super) fn object_cut_quick_ui(&mut self, ui: &mut Ui) {
+        use crate::operations::OperationType;
+
         let Some((_, _, Some(operation_id))) = self.selection_cut_context() else {
             ui.weak("No cut entry for this layer");
             return;
@@ -574,8 +576,6 @@ impl BeamBurinApp {
             ui.weak("No cut entry for this layer");
             return;
         };
-        use crate::operations::OperationType;
-
         let name = entry.name.clone();
         let current_mode = entry.op_type;
         let mut mode = current_mode;
