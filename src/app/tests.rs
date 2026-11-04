@@ -545,7 +545,9 @@ fn a_layer_mode_assignment_reaches_every_object() {
         .expect("the layer mode combo is missing");
     combo.click();
     harness.run();
-    harness.get_by_label("Fill").click();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Fill")
+        .click();
     harness.run();
     let document = &harness.state().editor.document;
     let operation = document

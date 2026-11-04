@@ -88,6 +88,7 @@ impl Object {
         self.transform = Transform2::translate(dx, dy).compose(&self.transform);
     }
 
+    /// Material area and keep-out zones must stay on the page.
     pub fn validate(&self) -> Result<(), String> {
         if self.id.trim().is_empty() {
             return Err("object id must not be empty".to_string());
@@ -372,6 +373,23 @@ impl Document {
         Ok(())
     }
 
+    fn validate_layer_operations(
+        &self,
+        operation_ids: &std::collections::HashSet<&str>,
+    ) -> Result<(), String> {
+        for layer in &self.layers {
+            if let Some(operation_id) = &layer.operation_id {
+                if !operation_ids.contains(operation_id.as_str()) {
+                    return Err(format!(
+                        "layer {} uses missing operation {operation_id}",
+                        layer.id
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("project name must not be empty".to_string());
@@ -409,16 +427,7 @@ impl Document {
             }
         }
 
-        for layer in &self.layers {
-            if let Some(operation_id) = &layer.operation_id {
-                if !operation_ids.contains(operation_id.as_str()) {
-                    return Err(format!(
-                        "layer {} uses missing operation {operation_id}",
-                        layer.id
-                    ));
-                }
-            }
-        }
+        self.validate_layer_operations(&operation_ids)?;
 
         for operation in &self.operations {
             for dependency in &operation.depends_on {
