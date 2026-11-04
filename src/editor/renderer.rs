@@ -915,12 +915,13 @@ mod tests {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
             ..egui::RawInput::default()
         };
-        let output = egui::Context::default().run_ui(input, |ui| {
+        let mut output = egui::Context::default().run_ui(input, |ui| {
             let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
             let theme = Theme { dark: true };
             paint_objects(ui.painter(), rect, &editor, theme, &images);
             paint_selection(ui.painter(), rect, &editor, theme);
         });
+        output.textures_delta.clear();
 
         let mut red = 0;
         let mut selection_segments = 0;
