@@ -458,8 +458,6 @@ pub struct BeamBurinApp {
     assistant_open: bool,
     multi_props_recorded: bool,
     smart_guides: Vec<(bool, f64)>,
-    cuts_drag: Option<usize>,
-    cuts_drag_target: Option<usize>,
     row_settings: Option<String>,
     row_settings_snapshot: Option<Document>,
     row_settings_done: bool,

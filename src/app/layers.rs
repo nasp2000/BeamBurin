@@ -47,7 +47,7 @@ impl BeamBurinApp {
         use crate::operations::OperationType;
 
         egui::Panel::left("layers_panel")
-            .default_size(420.0)
+            .default_size(330.0)
             .resizable(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
@@ -69,8 +69,8 @@ impl BeamBurinApp {
                             .find(|colour| !used.contains(&colour.to_ascii_lowercase()))
                             .copied()
                             .unwrap_or_else(|| {
-                                DRAWING_COLOURS[self.editor.document.layers.len()
-                                    % DRAWING_COLOURS.len()]
+                                DRAWING_COLOURS
+                                    [self.editor.document.layers.len() % DRAWING_COLOURS.len()]
                             });
                         let layer = self.editor.document.add_layer(name);
                         let id = layer.id.clone();
@@ -157,7 +157,7 @@ impl BeamBurinApp {
                             egui::vec2(126.0, 18.0),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
-                                ui.label(egui::RichText::new("Layer").strong());
+                                ui.label(egui::RichText::new("Colour").strong());
                             },
                         );
                         for (header, width) in [
@@ -183,217 +183,214 @@ impl BeamBurinApp {
                             let operation = mode
                                 .as_deref()
                                 .and_then(|mode| operations.iter().find(|entry| entry.0 == mode));
-                            let mut name_hit: Option<egui::Response> = None;
                             ui.allocate_ui_with_layout(
-                                egui::vec2(126.0, 18.0),
+                                egui::vec2(28.0, 18.0),
                                 egui::Layout::left_to_right(egui::Align::Center),
                                 |ui| {
                                     let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
                                     let mut srgb = [rgb.0, rgb.1, rgb.2];
                                     let swatch = ui.color_edit_button_srgb(&mut srgb);
-                                    if swatch.secondary_clicked() {
-                                        self.open_row_settings(id);
+                                    swatch.widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::WidgetType::Button,
+                                            true,
+                                            name.clone(),
+                                        )
+                                    });
+                                    if selected {
+                                        ui.painter().rect_stroke(
+                                            swatch.rect.expand(1.0),
+                                            2.0,
+                                            egui::Stroke::new(1.5, Color32::WHITE),
+                                            egui::StrokeKind::Outside,
+                                        );
                                     }
                                     if swatch.changed() {
                                         let colour = to_hex(srgb[0], srgb[1], srgb[2]);
                                         self.set_layer_colour(id, &colour);
                                     }
-                                    let name_button = ui
-                                        .add_sized(
-                                            [94.0, 18.0],
-                                            egui::Button::selectable(selected, name.as_str())
-                                                .frame(false),
-                                        )
-                                        .on_hover_text(format!(
-                                            "{count} object(s) — right-click for cut settings, double-click to open"
-                                        ));
-                                    if name_button.clicked() {
+                                    if swatch.clicked() {
                                         self.editor.active_layer_id.clone_from(id);
                                     }
-                                    if name_button.double_clicked() {
-                                        self.open_cut_settings_for_layer(id);
-                                    }
-                                    name_hit = Some(name_button);
-                                },
-                            );
-                                    let current_type = if *mixed {
-                                        None
-                                    } else {
-                                        mode.as_deref().and_then(|mode| {
-                                            operation_types
-                                                .iter()
-                                                .find(|entry| entry.0 == mode)
-                                                .map(|entry| entry.1)
-                                        })
-                                    };
-                                    let mut chosen = current_type;
-                                    let text = if *mixed {
-                                        "Mixed".to_string()
-                                    } else {
-                                        current_type
-                                            .map_or_else(|| "—".to_string(), |kind| {
-                                                kind.short_label().to_string()
-                                            })
-                                    };
-                                    let mode_combo =
-                                        egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                            .width(90.0)
-                                            .selected_text(text)
-                                            .show_ui(ui, |ui| {
-                                                for candidate in OperationType::all() {
-                                                    if ui
-                                                        .selectable_value(
-                                                            &mut chosen,
-                                                            Some(candidate),
-                                                            candidate.label(),
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        ui.close();
-                                                    }
-                                                }
-                                            });
-                                    if let Some(entry) = operation {
-                                        mode_combo.response.on_hover_text(format!(
-                                            "{} · {:.0} mm/min · {:.0}%",
-                                            entry.1, entry.2, entry.3
-                                        ));
-                                    }
-                                    if chosen != current_type {
-                                        if let Some(kind) = chosen {
-                                            mode_choice = Some((id.clone(), kind));
-                                        }
-                                    }
-                                    let speeds = operation.map_or_else(
-                                        || "—".to_string(),
-                                        |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
-                                    );
-                                    let speeds_response = ui.add_sized(
-                                        [52.0, 18.0],
-                                        egui::Label::new(speeds).sense(egui::Sense::click()),
-                                    );
-                                    if speeds_response.secondary_clicked() {
+                                    if swatch.secondary_clicked() {
                                         self.open_row_settings(id);
                                     }
-                                    let mut output = operation.is_some_and(|entry| entry.4);
-                                    let output_response = ui
-                                        .push_id(("layer_output", id), |ui| {
-                                            ui.add_enabled_ui(operation.is_some(), |ui| {
-                                                ui.add_sized(
-                                                    [22.0, 18.0],
-                                                    egui::Checkbox::without_text(&mut output),
-                                                )
-                                            })
-                                            .inner
-                                        })
-                                        .inner;
-                                    output_response.widget_info(|| {
-                                        egui::WidgetInfo::selected(
-                                            egui::WidgetType::Checkbox,
-                                            true,
-                                            output,
-                                            "Output",
-                                        )
-                                    });
-                                    if output_response.changed() {
-                                        if let Some(entry) = operation {
-                                            toggle_operation =
-                                                Some((entry.0.clone(), output, entry.5));
-                                        }
-                                    }
-                                    output_response.on_hover_text("Include this mode in the job");
-                                    let mut shown = *visible;
-                                    let show_response = ui
-                                        .push_id(("layer_show", id), |ui| {
-                                            ui.add_sized(
-                                                [22.0, 18.0],
-                                                egui::Checkbox::without_text(&mut shown),
-                                            )
-                                        })
-                                        .inner;
-                                    show_response.widget_info(|| {
-                                        egui::WidgetInfo::selected(
-                                            egui::WidgetType::Checkbox,
-                                            true,
-                                            shown,
-                                            "Show",
-                                        )
-                                    });
-                                    if show_response
-                                        .on_hover_text("Show this layer on the canvas")
-                                        .changed()
-                                    {
-                                        if let Some(layer) = self.editor.document.layer_mut(id) {
-                                            layer.visible = shown;
-                                        }
-                                    }
-                                    let mut air = operation.is_some_and(|entry| entry.5);
-                                    let air_response = ui
-                                        .push_id(("layer_air", id), |ui| {
-                                            ui.add_enabled_ui(operation.is_some(), |ui| {
-                                                ui.add_sized(
-                                                    [22.0, 18.0],
-                                                    egui::Checkbox::without_text(&mut air),
-                                                )
-                                            })
-                                            .inner
-                                        })
-                                        .inner;
-                                    air_response.widget_info(|| {
-                                        egui::WidgetInfo::selected(
-                                            egui::WidgetType::Checkbox,
-                                            true,
-                                            air,
-                                            "Air",
-                                        )
-                                    });
-                                    if air_response.changed() {
-                                        if let Some(entry) = operation {
-                                            toggle_operation =
-                                                Some((entry.0.clone(), entry.4, air));
-                                        }
-                                    }
-                                    air_response.on_hover_text("Air assist (M8/M9)");
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(34.0, 18.0),
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            ui.spacing_mut().item_spacing.x = 1.0;
+                                    swatch.on_hover_text(format!(
+                                        "{name} — {count} object(s); right-click for cut settings"
+                                    ));
+                                },
+                            );
+                            let current_type = if *mixed {
+                                None
+                            } else {
+                                mode.as_deref().and_then(|mode| {
+                                    operation_types
+                                        .iter()
+                                        .find(|entry| entry.0 == mode)
+                                        .map(|entry| entry.1)
+                                })
+                            };
+                            let mut chosen = current_type;
+                            let text = if *mixed {
+                                "Mixed".to_string()
+                            } else {
+                                current_type.map_or_else(
+                                    || "—".to_string(),
+                                    |kind| kind.short_label().to_string(),
+                                )
+                            };
+                            let mode_combo =
+                                egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
+                                    .width(90.0)
+                                    .selected_text(text)
+                                    .show_ui(ui, |ui| {
+                                        for candidate in OperationType::all() {
                                             if ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        egui::RichText::new("\u{25b2}").monospace(),
-                                                    )
-                                                    .small()
-                                                    .min_size(egui::vec2(14.0, 16.0)),
+                                                .selectable_value(
+                                                    &mut chosen,
+                                                    Some(candidate),
+                                                    candidate.label(),
                                                 )
-                                                .on_hover_text("Cut this layer earlier")
                                                 .clicked()
                                             {
-                                                self.editor.move_layer(id, -1);
+                                                ui.close();
                                             }
-                                            if ui
-                                                .add(
-                                                    egui::Button::new(
-                                                        egui::RichText::new("\u{25bc}").monospace(),
-                                                    )
-                                                    .small()
-                                                    .min_size(egui::vec2(14.0, 16.0)),
-                                                )
-                                                .on_hover_text("Cut this layer later")
-                                                .clicked()
-                                            {
-                                                self.editor.move_layer(id, 1);
-                                            }
-                                        },
-                                    );
-                                    ui.end_row();
-                                    if let Some(name_button) = name_hit {
-                                        if name_button.secondary_clicked() {
-                                            self.open_row_settings(id);
                                         }
-                                    }
+                                    });
+                            if let Some(entry) = operation {
+                                mode_combo.response.on_hover_text(format!(
+                                    "{} · {:.0} mm/min · {:.0}%",
+                                    entry.1, entry.2, entry.3
+                                ));
+                            }
+                            if chosen != current_type {
+                                if let Some(kind) = chosen {
+                                    mode_choice = Some((id.clone(), kind));
                                 }
+                            }
+                            let speeds = operation.map_or_else(
+                                || "—".to_string(),
+                                |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
+                            );
+                            let speeds_response = ui.add_sized(
+                                [52.0, 18.0],
+                                egui::Label::new(speeds).sense(egui::Sense::click()),
+                            );
+                            if speeds_response.secondary_clicked() {
+                                self.open_row_settings(id);
+                            }
+                            let mut output = operation.is_some_and(|entry| entry.4);
+                            let output_response = ui
+                                .push_id(("layer_output", id), |ui| {
+                                    ui.add_enabled_ui(operation.is_some(), |ui| {
+                                        ui.add_sized(
+                                            [22.0, 18.0],
+                                            egui::Checkbox::without_text(&mut output),
+                                        )
+                                    })
+                                    .inner
+                                })
+                                .inner;
+                            output_response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Checkbox,
+                                    true,
+                                    output,
+                                    "Output",
+                                )
+                            });
+                            if output_response.changed() {
+                                if let Some(entry) = operation {
+                                    toggle_operation = Some((entry.0.clone(), output, entry.5));
+                                }
+                            }
+                            output_response.on_hover_text("Include this mode in the job");
+                            let mut shown = *visible;
+                            let show_response = ui
+                                .push_id(("layer_show", id), |ui| {
+                                    ui.add_sized(
+                                        [22.0, 18.0],
+                                        egui::Checkbox::without_text(&mut shown),
+                                    )
+                                })
+                                .inner;
+                            show_response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Checkbox,
+                                    true,
+                                    shown,
+                                    "Show",
+                                )
+                            });
+                            if show_response
+                                .on_hover_text("Show this layer on the canvas")
+                                .changed()
+                            {
+                                if let Some(layer) = self.editor.document.layer_mut(id) {
+                                    layer.visible = shown;
+                                }
+                            }
+                            let mut air = operation.is_some_and(|entry| entry.5);
+                            let air_response = ui
+                                .push_id(("layer_air", id), |ui| {
+                                    ui.add_enabled_ui(operation.is_some(), |ui| {
+                                        ui.add_sized(
+                                            [22.0, 18.0],
+                                            egui::Checkbox::without_text(&mut air),
+                                        )
+                                    })
+                                    .inner
+                                })
+                                .inner;
+                            air_response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Checkbox,
+                                    true,
+                                    air,
+                                    "Air",
+                                )
+                            });
+                            if air_response.changed() {
+                                if let Some(entry) = operation {
+                                    toggle_operation = Some((entry.0.clone(), entry.4, air));
+                                }
+                            }
+                            air_response.on_hover_text("Air assist (M8/M9)");
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(34.0, 18.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.x = 1.0;
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new("\u{25b2}").monospace(),
+                                            )
+                                            .small()
+                                            .min_size(egui::vec2(14.0, 16.0)),
+                                        )
+                                        .on_hover_text("Cut this layer earlier")
+                                        .clicked()
+                                    {
+                                        self.editor.move_layer(id, -1);
+                                    }
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new("\u{25bc}").monospace(),
+                                            )
+                                            .small()
+                                            .min_size(egui::vec2(14.0, 16.0)),
+                                        )
+                                        .on_hover_text("Cut this layer later")
+                                        .clicked()
+                                    {
+                                        self.editor.move_layer(id, 1);
+                                    }
+                                },
+                            );
+                            ui.end_row();
+                        }
                     });
                 if let Some((id, kind)) = mode_choice {
                     self.set_layer_mode(&id, kind);

@@ -35,10 +35,10 @@ impl BeamBurinApp {
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
-        .default_size([760.0, 560.0])
-        .max_height(640.0)
+        .default_size([560.0, 620.0])
+        .max_height(700.0)
         .show(ctx, |ui| {
-            ui.label("One row per cut. Output controls the job, Show controls the preview, Air emits M8/M9.");
+            ui.label("The active cut entry. Output controls the job, Show controls the preview, Air emits M8/M9.");
             ui.horizontal(|ui| {
                 ui.label("G-code dialect");
                 let mut dialect = self.gcode_dialect;
@@ -83,94 +83,46 @@ impl BeamBurinApp {
                 }
             });
             ui.separator();
-            let mut row_centers: Vec<(usize, f32)> = Vec::new();
-            egui::ScrollArea::vertical()
-                .max_height(240.0)
-                .show(ui, |ui| {
-                    egui::Grid::new("cuts_table")
-                        .num_columns(7)
-                        .striped(true)
-                        .spacing([12.0, 6.0])
-                        .show(ui, |ui| {
-                            for header in ["#", "Layer", "Mode", "Spd/Pwr", "Output", "Show", "Air"] {
-                                ui.strong(header);
+            ui.horizontal(|ui| {
+                ui.label("Cut entry");
+                let current = self.active_operation.clone();
+                let text = current
+                    .as_ref()
+                    .and_then(|id| operations.iter().find(|operation| operation.id == *id))
+                    .map_or_else(
+                        || "None".to_string(),
+                        |operation| {
+                            format!(
+                                "{} · {}",
+                                operation.name,
+                                operation.op_type.short_label()
+                            )
+                        },
+                    );
+                egui::ComboBox::from_id_salt("cuts_entry_selector")
+                    .width(200.0)
+                    .selected_text(text)
+                    .show_ui(ui, |ui| {
+                        for operation in &operations {
+                            let label = format!(
+                                "{} · {}",
+                                operation.name,
+                                operation.op_type.short_label()
+                            );
+                            let selected =
+                                current.as_deref() == Some(operation.id.as_str());
+                            if ui.selectable_label(selected, label).clicked() {
+                                self.active_operation = Some(operation.id.clone());
+                                ui.close();
                             }
-                            ui.end_row();
-                            for (index, operation) in operations.iter_mut().enumerate() {
-                                let number = ui.add(
-                                    egui::Label::new(format!("{:02}", index + 1))
-                                        .sense(egui::Sense::drag()),
-                                );
-                                row_centers.push((index, number.rect.center().y));
-                                if number.drag_started() {
-                                    self.cuts_drag = Some(index);
-                                }
-                                ui.horizontal(|ui| {
-                                    let rgb = parse_hex_color(&operation.params.color)
-                                        .unwrap_or((0, 0, 0));
-                                    let mut srgb = [rgb.0, rgb.1, rgb.2];
-                                    if ui.color_edit_button_srgb(&mut srgb).changed() {
-                                        operation.params.color =
-                                            to_hex(srgb[0], srgb[1], srgb[2]);
-                                    }
-                                    let selected = self.active_operation.as_deref()
-                                        == Some(operation.id.as_str());
-                                    if ui
-                                        .selectable_label(selected, &operation.name)
-                                        .clicked()
-                                    {
-                                        self.active_operation =
-                                            Some(operation.id.clone());
-                                    }
-                                });
-                                let mut op_type = operation.op_type;
-                                egui::ComboBox::from_id_salt(("cut_mode", index))
-                                    .selected_text(op_type.label())
-                                    .show_ui(ui, |ui| {
-                                        for candidate in OperationType::all() {
-                                            ui.selectable_value(
-                                                &mut op_type,
-                                                candidate,
-                                                candidate.label(),
-                                            );
-                                        }
-                                    });
-                                operation.op_type = op_type;
-                                ui.label(format!(
-                                    "{:.0} / {:.0}",
-                                    operation.params.speed, operation.params.power
-                                ));
-                                ui.checkbox(&mut operation.enabled, "");
-                                ui.checkbox(&mut operation.params.show_in_preview, "");
-                                ui.checkbox(&mut operation.params.air_assist, "");
-                                ui.end_row();
-                            }
-                        });
-                });
-            if self.cuts_drag.is_some() {
-                if let Some(pos) =
-                    ui.ctx().input(|input| input.pointer.interact_pos())
-                {
-                    self.cuts_drag_target = row_centers
-                        .iter()
-                        .min_by(|left, right| {
-                            (left.1 - pos.y).abs().total_cmp(&(right.1 - pos.y).abs())
-                        })
-                        .map(|(index, _)| *index);
-                }
-            }
-            if ui.ctx().input(|input| input.pointer.any_released()) {
-                if let (Some(from), Some(to)) =
-                    (self.cuts_drag.take(), self.cuts_drag_target.take())
-                {
-                    if from != to {
-                        let operation = operations.remove(from);
-                        let target = to.min(operations.len());
-                        operations.insert(target, operation);
-                    }
-                }
-            }
+                        }
+                    });
+                ui.weak(format!("{} entries", operations.len()));
+            });
             ui.separator();
+            egui::ScrollArea::vertical()
+                .max_height(430.0)
+                .show(ui, |ui| {
             if let Some(id) = self.active_operation.clone() {
                 if let Some(index) = operations
                     .iter()
@@ -427,6 +379,7 @@ impl BeamBurinApp {
             } else {
                 ui.weak("No cut selected. Add one below.");
             }
+                });
             ui.separator();
             ui.horizontal(|ui| {
                 if ui.button("+ Cut").clicked() {

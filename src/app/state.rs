@@ -147,8 +147,6 @@ impl BeamBurinApp {
             assistant_open: false,
             multi_props_recorded: false,
             smart_guides: Vec::new(),
-            cuts_drag: None,
-            cuts_drag_target: None,
             row_settings: None,
             row_settings_snapshot: None,
             row_settings_done: false,
