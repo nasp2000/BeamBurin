@@ -876,12 +876,15 @@ mod tests {
     use crate::document::Document;
     use crate::geometry::Transform2;
 
-    fn stroke_of(shape: &egui::Shape) -> Option<Stroke> {
+    fn colour_of(shape: &egui::Shape) -> Option<Color32> {
         match shape {
-            egui::Shape::Path(path) => Some(path.stroke),
-            egui::Shape::LineSegment { stroke, .. } => Some(*stroke),
-            egui::Shape::Rect(rect) => Some(rect.stroke),
-            egui::Shape::Circle(circle) => Some(circle.stroke),
+            egui::Shape::Path(path) => match path.stroke.color {
+                egui::epaint::ColorMode::Solid(color) => Some(color),
+                egui::epaint::ColorMode::UV(_) => None,
+            },
+            egui::Shape::LineSegment { stroke, .. } => Some(stroke.color),
+            egui::Shape::Rect(rect) => Some(rect.stroke.color),
+            egui::Shape::Circle(circle) => Some(circle.stroke.color),
             _ => None,
         }
     }
@@ -912,23 +915,21 @@ mod tests {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
             ..egui::RawInput::default()
         };
-        let output = egui::Context::default().run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
-                let theme = Theme { dark: true };
-                paint_objects(ui.painter(), rect, &editor, theme, &images);
-                paint_selection(ui.painter(), rect, &editor, theme);
-            });
+        let output = egui::Context::default().run_ui(input, |ui| {
+            let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+            let theme = Theme { dark: true };
+            paint_objects(ui.painter(), rect, &editor, theme, &images);
+            paint_selection(ui.painter(), rect, &editor, theme);
         });
 
         let mut red = 0;
         let mut selection_segments = 0;
         let mut selection_paths = 0;
         for clipped in &output.shapes {
-            let Some(stroke) = stroke_of(&clipped.shape) else {
+            let Some(color) = colour_of(&clipped.shape) else {
                 continue;
             };
-            let rgb = (stroke.color.r(), stroke.color.g(), stroke.color.b());
+            let rgb = (color.r(), color.g(), color.b());
             if rgb == (229, 57, 53) {
                 red += 1;
             }
