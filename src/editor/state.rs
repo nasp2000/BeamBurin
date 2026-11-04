@@ -3349,8 +3349,9 @@ mod tests {
     fn assigning_unknown_operation_does_nothing() {
         let mut editor = editor();
         editor.add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+        let before = editor.document.objects[0].operation_id.clone();
         assert_eq!(editor.assign_operation(Some("missing")), 0);
-        assert!(editor.document.objects[0].operation_id.is_none());
+        assert_eq!(editor.document.objects[0].operation_id, before);
     }
 
     #[test]
@@ -4178,6 +4179,7 @@ mod tests {
             .unwrap();
         let operation = editor.add_operation("Cut", OperationType::OutlineCutting);
         let layer = editor.document.layers[0].id.clone();
+        let initial = editor.document.object(&first).unwrap().operation_id.clone();
         assert_eq!(
             editor.assign_operation_to_layer(&layer, Some(&operation)),
             2
@@ -4194,13 +4196,8 @@ mod tests {
         );
         assert!(editor.undo().is_some());
         assert_eq!(
-            editor
-                .document
-                .object(&first)
-                .unwrap()
-                .operation_id
-                .as_deref(),
-            None
+            editor.document.object(&first).unwrap().operation_id,
+            initial
         );
         assert_eq!(
             editor.assign_operation_to_layer(&layer, Some(&operation)),
