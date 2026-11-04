@@ -1036,67 +1036,64 @@ fn the_row_menu_adds_and_edits_the_cut_entry() {
 }
 
 #[test]
-fn the_row_settings_cancel_restores_the_layer() {
+fn the_row_settings_cancel_and_ok_control_the_edit() {
     use egui_kittest::kittest::Queryable as _;
 
-    let mut harness = ui_harness(ui_test_app());
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
     harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+
     harness.get_by_label("Layer 1").click_secondary();
     harness.run();
     harness
-        .get_all_by_role(egui::accesskit::Role::TextInput)
-        .next()
-        .expect("the layer name field is missing")
-        .type_text("X");
+        .get_all_by_role(egui::accesskit::Role::ComboBox)
+        .last()
+        .expect("the dialog mode combo is missing")
+        .click();
     harness.run();
-    assert_ne!(
-        harness.state().editor.document.layers[0].name,
-        "Layer 1",
-        "the name did not change while the dialog was open"
-    );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Fill")
+        .click();
+    harness.run();
     harness.get_by_label("Cancel").click_accesskit();
     harness.run();
     assert_eq!(
-        harness.state().editor.document.layers[0].name,
-        "Layer 1",
-        "Cancel did not restore the layer name"
+        harness.state().editor.document.operations[0].op_type,
+        crate::operations::OperationType::OutlineCutting,
+        "Cancel kept the edit"
     );
-}
 
-#[test]
-fn the_row_settings_ok_keeps_the_layer_changes() {
-    use egui_kittest::kittest::Queryable as _;
-
-    let mut harness = ui_harness(ui_test_app());
-    harness.run();
     harness.get_by_label("Layer 1").click_secondary();
     harness.run();
     harness
-        .get_all_by_role(egui::accesskit::Role::TextInput)
-        .next()
-        .expect("the layer name field is missing")
-        .focus();
+        .get_all_by_role(egui::accesskit::Role::ComboBox)
+        .last()
+        .expect("the dialog mode combo is missing")
+        .click();
     harness.run();
     harness
-        .get_all_by_role(egui::accesskit::Role::TextInput)
-        .next()
-        .expect("the layer name field is missing")
-        .type_text("X");
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Fill")
+        .click();
     harness.run();
-    let renamed = harness.state().editor.document.layers[0].name.clone();
-    assert_ne!(renamed, "Layer 1");
     harness.get_by_label("OK").click_accesskit();
     harness.run();
     assert_eq!(
-        harness.state().editor.document.layers[0].name,
-        renamed,
-        "OK dropped the layer name"
+        harness.state().editor.document.operations[0].op_type,
+        crate::operations::OperationType::Fill,
+        "OK dropped the edit"
     );
-    assert!(
-        harness.state_mut().editor.undo().is_some(),
+    assert!(harness.state_mut().editor.undo().is_some());
+    assert_eq!(
+        harness.state().editor.document.operations[0].op_type,
+        crate::operations::OperationType::OutlineCutting,
         "the dialog edit is not undoable"
     );
-    assert_eq!(harness.state().editor.document.layers[0].name, "Layer 1");
 }
 
 #[test]
