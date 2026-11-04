@@ -590,7 +590,7 @@ impl BeamBurinApp {
         }
     }
 
-    fn set_cut_speed_power(&mut self, operation_id: &str, speed: f64, power: f64) {
+    pub(super) fn set_cut_speed_power(&mut self, operation_id: &str, speed: f64, power: f64) {
         let before = self.editor.document.clone();
         if let Some(entry) = self
             .editor
