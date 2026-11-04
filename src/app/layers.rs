@@ -98,7 +98,7 @@ impl BeamBurinApp {
                             Err(error) => message = Some(error),
                         }
                     }
-                    ui.weak("Right-click a row for cut settings");
+                    ui.weak("Right-click a row for cut settings (OK / Cancel)");
                 });
 
                 // One row per layer, with the mode and the switches that matter
@@ -830,8 +830,12 @@ impl BeamBurinApp {
             self.row_settings_done = true;
         }
         if ui.button("Delete layer").clicked() {
+            let before = self.editor.document.clone();
             if let Err(error) = self.delete_layer(id) {
                 self.status = error;
+            }
+            if self.editor.document != before {
+                self.editor.history.record(&before, "Delete layer");
             }
             self.row_settings_done = true;
         }
@@ -844,7 +848,7 @@ impl BeamBurinApp {
             let colour = self.layer_display_colour(id);
             let count = self.editor.select_by_color(&colour);
             self.status = format!("Selected {count} object(s) of {colour}");
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui.button("Group objects").clicked() {
             let count = self.editor.group_layer_objects(id);
@@ -869,18 +873,26 @@ impl BeamBurinApp {
             .button(if visible { "Hide layer" } else { "Show layer" })
             .clicked()
         {
+            let before = self.editor.document.clone();
             if let Some(layer) = self.editor.document.layer_mut(id) {
                 layer.visible = !visible;
             }
+            self.editor
+                .history
+                .record(&before, if visible { "Hide layer" } else { "Show layer" });
             self.row_settings_done = true;
         }
         if ui
             .button(if locked { "Unlock layer" } else { "Lock layer" })
             .clicked()
         {
+            let before = self.editor.document.clone();
             if let Some(layer) = self.editor.document.layer_mut(id) {
                 layer.locked = !locked;
             }
+            self.editor
+                .history
+                .record(&before, if locked { "Unlock layer" } else { "Lock layer" });
             self.row_settings_done = true;
         }
         if name.is_empty() {
@@ -1033,7 +1045,7 @@ impl BeamBurinApp {
     fn set_layer_colour(&mut self, layer_id: &str, colour: &str) {
         let before = self.editor.document.clone();
         self.set_layer_colour_inner(layer_id, colour);
-        if self.editor.document != before {
+        if self.row_settings.is_none() && self.editor.document != before {
             self.editor.history.record(&before, "Colour");
         }
     }

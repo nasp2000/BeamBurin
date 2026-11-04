@@ -1097,6 +1097,36 @@ fn the_row_settings_cancel_and_ok_control_the_edit() {
 }
 
 #[test]
+fn the_row_settings_delete_layer_is_undoable() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor.document.add_layer("Layer 2");
+    let second = app.editor.document.layers[1].id.clone();
+    app.editor.active_layer_id = second;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Layer 2").click_secondary();
+    harness.run();
+    harness.get_by_label("Delete layer").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.document.layers.len(),
+        1,
+        "the layer was not deleted"
+    );
+    assert!(
+        harness.state_mut().editor.undo().is_some(),
+        "the dialog delete is not undoable"
+    );
+    assert_eq!(
+        harness.state().editor.document.layers.len(),
+        2,
+        "undo did not restore the layer"
+    );
+}
+
+#[test]
 fn the_row_menu_opens_the_full_cut_settings() {
     use egui_kittest::kittest::Queryable as _;
 
