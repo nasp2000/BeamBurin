@@ -308,11 +308,11 @@ fn the_row_menu_deletes_the_cut_entry() {
         .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
     let mut harness = ui_harness(app);
     harness.run();
-    harness
-        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
-        .click_accesskit();
-    harness.run();
-    assert_eq!(harness.state().editor.document.operations.len(), 1);
+    assert_eq!(
+        harness.state().editor.document.operations.len(),
+        1,
+        "drawing did not create the cut entry"
+    );
     harness.get_by_label("Layer 1").click_secondary();
     harness.run();
     harness.get_by_label("Delete cut entry").click_accesskit();
@@ -984,8 +984,6 @@ fn the_row_menu_adds_and_edits_the_cut_entry() {
 
     let mut app = ui_test_app();
     let layer = app.editor.active_layer_id.clone();
-    app.editor
-        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
     let mut harness = ui_harness(app);
     harness.run();
     harness.get_by_label("Layer 1").click_secondary();
@@ -1063,9 +1061,19 @@ fn the_row_settings_cancel_and_ok_control_the_edit() {
     harness.run();
     harness.get_by_label("Cancel").click_accesskit();
     harness.run();
+    let red = |harness: &egui_kittest::Harness<'static, BeamBurinApp>| {
+        harness
+            .state()
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|entry| entry.params.color == "#e53935")
+            .map(|entry| entry.op_type)
+    };
     assert_eq!(
-        harness.state().editor.document.operations[0].op_type,
-        crate::operations::OperationType::OutlineCutting,
+        red(&harness),
+        Some(crate::operations::OperationType::OutlineCutting),
         "Cancel kept the edit"
     );
 
@@ -1084,15 +1092,67 @@ fn the_row_settings_cancel_and_ok_control_the_edit() {
     harness.get_by_label("OK").click_accesskit();
     harness.run();
     assert_eq!(
-        harness.state().editor.document.operations[0].op_type,
-        crate::operations::OperationType::Fill,
+        red(&harness),
+        Some(crate::operations::OperationType::Fill),
         "OK dropped the edit"
     );
     assert!(harness.state_mut().editor.undo().is_some());
     assert_eq!(
-        harness.state().editor.document.operations[0].op_type,
-        crate::operations::OperationType::OutlineCutting,
+        red(&harness),
+        Some(crate::operations::OperationType::OutlineCutting),
         "the dialog edit is not undoable"
+    );
+}
+
+#[test]
+fn drawing_after_deleting_the_cut_entry_creates_it_again() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness.get_by_label("Delete cut entry").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().editor.document.operations.is_empty(),
+        "the cut entry was not deleted"
+    );
+
+    harness
+        .state_mut()
+        .editor
+        .add_rectangle(Point2::new(40.0, 10.0), Point2::new(60.0, 25.0));
+    harness.run();
+    let document = &harness.state().editor.document;
+    assert_eq!(
+        document.operations.len(),
+        1,
+        "drawing did not create the cut entry"
+    );
+    let entry = &document.operations[0];
+    assert_eq!(
+        entry.op_type,
+        crate::operations::OperationType::OutlineCutting,
+        "the new entry does not use the default mode"
+    );
+    assert_eq!(entry.params.speed, 1000.0);
+    assert_eq!(entry.params.power, 20.0);
+    assert_eq!(
+        document.layer(&layer).unwrap().operation_id.as_deref(),
+        Some(entry.id.as_str()),
+        "the layer was not bound to the new entry"
+    );
+    assert!(
+        document
+            .objects
+            .iter()
+            .all(|object| object.operation_id.as_deref() == Some(entry.id.as_str())),
+        "an object was left without a cut entry"
     );
 }
 
@@ -2340,6 +2400,8 @@ fn the_palette_reuses_an_existing_cut_entry() {
     {
         entry.params.color = "#e53935".to_string();
     }
+    let layer = app.editor.active_layer_id.clone();
+    app.editor.document.layer_mut(&layer).unwrap().color = "#e53935".to_string();
     app.editor
         .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
     let mut harness = ui_harness(app);

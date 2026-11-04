@@ -913,25 +913,41 @@ impl EditorState {
         if self.active_layer_id.is_empty() {
             self.active_layer_id = self.document.layers.first()?.id.clone();
         }
-        let layer = self.document.layer(&self.active_layer_id)?;
+        let active = self.active_layer_id.clone();
+        let layer = self.document.layer(&active)?;
         if layer.locked || !layer.visible {
             return None;
         }
         let layer_color = layer.color.clone();
-        let layer_operation = layer.operation_id.clone();
-        let matching_operation = self
-            .document
-            .operations
-            .iter()
-            .find(|operation| {
-                crate::color::normalize_hex_color(&operation.params.color)
-                    == crate::color::normalize_hex_color(&layer_color)
-            })
-            .map(|operation| operation.id.clone());
+        let layer_operation = layer
+            .operation_id
+            .clone()
+            .filter(|id| self.document.operations.iter().any(|entry| entry.id == *id));
+        let matching_operation = self.operation_for_colour(&layer_color);
         self.record_action(&format!("Draw {}", shape.kind_name()));
-        let mut object = Object::new(self.active_layer_id.clone(), shape).with_transform(transform);
+        // Every object needs a cut entry: reuse the layer's, the colour's, or
+        // create the entry for the colour and bind it to the layer.
+        let operation = layer_operation
+            .or(matching_operation)
+            .unwrap_or_else(|| self.ensure_operation_for_colour(&layer_color));
+        if let Some(layer) = self.document.layer_mut(&active) {
+            layer.operation_id = Some(operation.clone());
+        }
+        let unbound: Vec<String> = self
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.layer_id == active && object.operation_id.is_none())
+            .map(|object| object.id.clone())
+            .collect();
+        for id in unbound {
+            if let Some(object) = self.document.object_mut(&id) {
+                object.operation_id = Some(operation.clone());
+            }
+        }
+        let mut object = Object::new(active, shape).with_transform(transform);
         object.color = Some(layer_color);
-        object.operation_id = layer_operation.or(matching_operation);
+        object.operation_id = Some(operation);
         let id = object.id.clone();
         self.document.add_object(object);
         self.selection.clear();
@@ -3346,7 +3362,14 @@ mod tests {
         let operation = editor.add_operation("Cut", OperationType::OutlineCutting);
         editor.assign_operation(Some(&operation));
         assert!(editor.remove_operation(&operation));
-        assert!(editor.document.operations.is_empty());
+        assert!(
+            editor
+                .document
+                .operations
+                .iter()
+                .all(|entry| entry.id != operation),
+            "the removed entry is still present"
+        );
         assert!(editor.document.objects[0].operation_id.is_none());
         assert!(editor.document.validate().is_ok());
         assert!(!editor.remove_operation("missing"));
@@ -3383,9 +3406,13 @@ mod tests {
         profile.params.speed = 2500.0;
         profile.params.power = 15.0;
         assert_eq!(editor.apply_operation_profile(&profile), 1);
-        assert_eq!(editor.document.operations.len(), 1);
-        let operation = &editor.document.operations[0];
-        assert_eq!(operation.name, "Engrave");
+        let operation = editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| operation.name == "Engrave")
+            .expect("the profile operation was not created");
+        assert_eq!(editor.document.operations.len(), 2);
         assert_eq!(operation.params.speed, 2500.0);
         assert_eq!(
             editor
