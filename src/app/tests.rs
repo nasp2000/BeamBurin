@@ -982,7 +982,7 @@ fn the_row_menu_selects_every_object_of_its_colour() {
 fn the_row_menu_adds_and_edits_the_cut_entry() {
     use egui_kittest::kittest::Queryable as _;
 
-    let mut app = ui_test_app();
+    let app = ui_test_app();
     let layer = app.editor.active_layer_id.clone();
     let mut harness = ui_harness(app);
     harness.run();
