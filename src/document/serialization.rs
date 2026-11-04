@@ -177,6 +177,23 @@ mod tests {
     }
 
     #[test]
+    fn object_colour_survives_round_trip() {
+        let mut doc = sample();
+        let layer_id = doc.layers[0].id.clone();
+        let mut object =
+            crate::document::model::Object::new(layer_id, Shape::Ellipse { rx: 2.0, ry: 2.0 });
+        object.color = Some("#e53935".to_string());
+        let id = object.id.clone();
+        doc.add_object(object);
+        let back = from_json(&to_json(&doc).unwrap()).unwrap();
+        assert_eq!(
+            back.object(&id).unwrap().color.as_deref(),
+            Some("#e53935"),
+            "the per-object drawing colour was not saved"
+        );
+    }
+
+    #[test]
     fn recovery_drafts_round_trip_without_a_backup() {
         let path = std::env::temp_dir().join("bw_recovery_draft.bwp");
         let backup = backup_path(&path);

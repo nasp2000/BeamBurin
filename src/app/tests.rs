@@ -217,6 +217,10 @@ fn canvas_context_menu_offers_work_area_commands() {
     let actions = canvas_context_actions();
     assert!(actions.contains(&ContextAction::Paste));
     assert!(actions.contains(&ContextAction::SelectAll));
+    assert!(
+        actions.contains(&ContextAction::GroupByColour),
+        "the work-area menu has no colour grouping"
+    );
     assert!(actions.contains(&ContextAction::ZoomIn));
     assert!(actions.contains(&ContextAction::FitPage));
     assert!(actions.contains(&ContextAction::DocumentProperties));
