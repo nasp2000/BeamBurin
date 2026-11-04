@@ -722,7 +722,18 @@ fn paint_selection(painter: &Painter, rect: Rect, editor: &EditorState, theme: T
         let p0 = screen_pos(rect, editor, Point2::new(min.x, max.y));
         let p1 = screen_pos(rect, editor, Point2::new(max.x, min.y));
         let bounds = Rect::from_two_pos(p0, p1).expand(2.0);
-        painter.rect_stroke(bounds, 0.0, stroke, egui::StrokeKind::Outside);
+        painter.extend(egui::Shape::dashed_line(
+            &[
+                bounds.left_top(),
+                bounds.right_top(),
+                bounds.right_bottom(),
+                bounds.left_bottom(),
+                bounds.left_top(),
+            ],
+            stroke,
+            6.0,
+            4.0,
+        ));
         let centre = bounds.center();
         for handle in [
             bounds.left_top(),
@@ -762,32 +773,8 @@ fn paint_selection(painter: &Painter, rect: Rect, editor: &EditorState, theme: T
             }
         }
     }
-    // Show every selected object's outline, not just the group bounds.
-    for id in editor.selection.ids() {
-        let Some(object) = editor.document.object(id) else {
-            continue;
-        };
-        if matches!(object.shape, Shape::Text(_) | Shape::Image(_)) {
-            if let Some((min, max)) = object.bounds() {
-                let p0 = screen_pos(rect, editor, Point2::new(min.x, max.y));
-                let p1 = screen_pos(rect, editor, Point2::new(max.x, min.y));
-                painter.rect_stroke(
-                    Rect::from_two_pos(p0, p1),
-                    0.0,
-                    Stroke::new(1.0, color),
-                    egui::StrokeKind::Outside,
-                );
-            }
-        } else {
-            paint_path(
-                painter,
-                rect,
-                editor,
-                &object.world_path(),
-                Stroke::new(1.0, color),
-            );
-        }
-    }
+    // Selected objects keep their drawing colour; the dashed bounds above are
+    // the only selection tint, so nothing is painted twice.
 }
 
 fn paint_smart_guides(painter: &Painter, rect: Rect, editor: &EditorState, guides: &[(bool, f64)]) {

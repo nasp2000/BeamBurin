@@ -43,6 +43,7 @@ impl BeamBurinApp {
         if self.export_presets_open {
             self.export_presets_window(ctx);
         }
+        self.row_settings_modal(ctx);
         if self.external_gcode_open {
             self.external_gcode_window(ctx);
         }

@@ -28,6 +28,20 @@ impl OperationType {
         }
     }
 
+    /// Compact label for the Cuts / Layers table.
+    pub fn short_label(self) -> &'static str {
+        match self {
+            OperationType::Line => "Line",
+            OperationType::LineEngraving => "Engrave",
+            OperationType::Fill => "Fill",
+            OperationType::FillWithOutline => "Fill+line",
+            OperationType::FillWithOffset => "Fill+offset",
+            OperationType::OutlineCutting => "Cut",
+            OperationType::ImageProcessing => "Image",
+            OperationType::Custom => "Custom",
+        }
+    }
+
     pub fn all() -> [OperationType; 8] {
         [
             OperationType::Line,

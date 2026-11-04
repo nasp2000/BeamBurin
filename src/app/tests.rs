@@ -1000,6 +1000,8 @@ fn the_row_menu_adds_and_edits_the_cut_entry() {
     );
     harness.get_by_label("Add cut entry").click_accesskit();
     harness.run();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
     assert_eq!(
         harness.state().editor.document.operations.len(),
         1,
@@ -1025,6 +1027,76 @@ fn the_row_menu_adds_and_edits_the_cut_entry() {
             "the row menu is missing {label}"
         );
     }
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(
+        harness.query_by_label("Speed (mm/min)").is_none(),
+        "Cancel did not close the row settings"
+    );
+}
+
+#[test]
+fn the_row_settings_cancel_restores_the_layer() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .next()
+        .expect("the layer name field is missing")
+        .type_text("X");
+    harness.run();
+    assert_ne!(
+        harness.state().editor.document.layers[0].name,
+        "Layer 1",
+        "the name did not change while the dialog was open"
+    );
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.document.layers[0].name,
+        "Layer 1",
+        "Cancel did not restore the layer name"
+    );
+}
+
+#[test]
+fn the_row_settings_ok_keeps_the_layer_changes() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .next()
+        .expect("the layer name field is missing")
+        .focus();
+    harness.run();
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .next()
+        .expect("the layer name field is missing")
+        .type_text("X");
+    harness.run();
+    let renamed = harness.state().editor.document.layers[0].name.clone();
+    assert_ne!(renamed, "Layer 1");
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.document.layers[0].name,
+        renamed,
+        "OK dropped the layer name"
+    );
+    assert!(
+        harness.state_mut().editor.undo().is_some(),
+        "the dialog edit is not undoable"
+    );
+    assert_eq!(harness.state().editor.document.layers[0].name, "Layer 1");
 }
 
 #[test]

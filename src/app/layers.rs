@@ -47,9 +47,8 @@ impl BeamBurinApp {
         use crate::operations::OperationType;
 
         egui::Panel::left("layers_panel")
-            .default_size(480.0)
-            .min_size(380.0)
-            .resizable(true)
+            .default_size(420.0)
+            .resizable(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 ui.label(egui::RichText::new("Cuts / Layers").strong());
@@ -149,91 +148,74 @@ impl BeamBurinApp {
 
                 let mut mode_choice: Option<(String, OperationType)> = None;
                 let mut toggle_operation: Option<(String, bool, bool)> = None;
-                egui::ScrollArea::horizontal()
-                    .id_salt("layers_table_scroll")
+                egui::Grid::new("layers_grid")
+                    .num_columns(7)
+                    .striped(true)
+                    .spacing([4.0, 2.0])
                     .show(ui, |ui| {
-                        egui::Grid::new("layers_grid")
-                            .num_columns(8)
-                            .striped(true)
-                            .spacing([3.0, 2.0])
-                            .show(ui, |ui| {
-                                ui.add_sized(
-                                    [20.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("#").strong()),
-                                );
-                                ui.add_sized(
-                                    [96.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Layer").strong()),
-                                );
-                                for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
-                                    let width = if header == "Mode" {
-                                        86.0
-                                    } else if header == "Spd/Pwr" {
-                                        40.0
-                                    } else {
-                                        21.0
-                                    };
-                                    ui.add_sized(
-                                        [width, 18.0],
-                                        egui::Label::new(egui::RichText::new(header).strong()),
-                                    );
-                                }
-                                ui.add_sized(
-                                    [36.0, 18.0],
-                                    egui::Label::new(egui::RichText::new("Order").strong()),
-                                );
-                                ui.end_row();
-                                for (index, row) in rows.iter().enumerate() {
-                                    let (id, name, color, visible, _locked, mode, mixed, count) =
-                                        row;
-                                    let selected = self.editor.active_layer_id == *id;
-                                    let operation = mode.as_deref().and_then(|mode| {
-                                        operations.iter().find(|entry| entry.0 == mode)
-                                    });
-                                    let number = ui.add_sized(
-                                        [20.0, 18.0],
-                                        egui::Label::new(format!("L{:02}", index + 1))
-                                            .sense(egui::Sense::click()),
-                                    );
-                                    number.context_menu(|ui| {
-                                        self.layer_context_menu(ui, id);
-                                    });
-                                    let mut name_hit: Option<egui::Response> = None;
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(96.0, 18.0),
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
-                                            let mut srgb = [rgb.0, rgb.1, rgb.2];
-                                            let swatch = ui.color_edit_button_srgb(&mut srgb);
-                                            swatch.context_menu(|ui| {
-                                                self.layer_context_menu(ui, id);
-                                            });
-                                            if swatch.changed() {
-                                                let colour = to_hex(srgb[0], srgb[1], srgb[2]);
-                                                self.set_layer_colour(id, &colour);
-                                            }
-                                            let name_button = ui
-                                                .add_sized(
-                                                    [70.0, 18.0],
-                                                    egui::Button::selectable(
-                                                        selected,
-                                                        name.as_str(),
-                                                    )
-                                                    .frame(false),
-                                                )
-                                                .on_hover_text(format!(
-                                                    "{count} object(s) — right-click for cut settings, double-click to open"
-                                                ));
-                                            if name_button.clicked() {
-                                                self.editor.active_layer_id.clone_from(id);
-                                            }
-                                            if name_button.double_clicked() {
-                                                self.open_cut_settings_for_layer(id);
-                                            }
-                                            name_hit = Some(name_button);
-                                        },
-                                    );
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(126.0, 18.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.label(egui::RichText::new("Layer").strong());
+                            },
+                        );
+                        for (header, width) in [
+                            ("Mode", 98.0),
+                            ("Spd/Pwr", 52.0),
+                            ("Out", 22.0),
+                            ("Show", 22.0),
+                            ("Air", 22.0),
+                            ("Order", 34.0),
+                        ] {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(width, 18.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.label(egui::RichText::new(header).strong());
+                                },
+                            );
+                        }
+                        ui.end_row();
+                        for row in &rows {
+                            let (id, name, color, visible, _locked, mode, mixed, count) = row;
+                            let selected = self.editor.active_layer_id == *id;
+                            let operation = mode
+                                .as_deref()
+                                .and_then(|mode| operations.iter().find(|entry| entry.0 == mode));
+                            let mut name_hit: Option<egui::Response> = None;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(126.0, 18.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
+                                    let mut srgb = [rgb.0, rgb.1, rgb.2];
+                                    let swatch = ui.color_edit_button_srgb(&mut srgb);
+                                    if swatch.secondary_clicked() {
+                                        self.open_row_settings(id);
+                                    }
+                                    if swatch.changed() {
+                                        let colour = to_hex(srgb[0], srgb[1], srgb[2]);
+                                        self.set_layer_colour(id, &colour);
+                                    }
+                                    let name_button = ui
+                                        .add_sized(
+                                            [94.0, 18.0],
+                                            egui::Button::selectable(selected, name.as_str())
+                                                .frame(false),
+                                        )
+                                        .on_hover_text(format!(
+                                            "{count} object(s) — right-click for cut settings, double-click to open"
+                                        ));
+                                    if name_button.clicked() {
+                                        self.editor.active_layer_id.clone_from(id);
+                                    }
+                                    if name_button.double_clicked() {
+                                        self.open_cut_settings_for_layer(id);
+                                    }
+                                    name_hit = Some(name_button);
+                                },
+                            );
                                     let current_type = if *mixed {
                                         None
                                     } else {
@@ -250,12 +232,12 @@ impl BeamBurinApp {
                                     } else {
                                         current_type
                                             .map_or_else(|| "—".to_string(), |kind| {
-                                                kind.label().to_string()
+                                                kind.short_label().to_string()
                                             })
                                     };
                                     let mode_combo =
                                         egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                            .width(80.0)
+                                            .width(90.0)
                                             .selected_text(text)
                                             .show_ui(ui, |ui| {
                                                 for candidate in OperationType::all() {
@@ -287,12 +269,12 @@ impl BeamBurinApp {
                                         |entry| format!("{:.0} / {:.0}", entry.2, entry.3),
                                     );
                                     let speeds_response = ui.add_sized(
-                                        [40.0, 18.0],
+                                        [52.0, 18.0],
                                         egui::Label::new(speeds).sense(egui::Sense::click()),
                                     );
-                                    speeds_response.context_menu(|ui| {
-                                        self.layer_context_menu(ui, id);
-                                    });
+                                    if speeds_response.secondary_clicked() {
+                                        self.open_row_settings(id);
+                                    }
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
@@ -407,12 +389,11 @@ impl BeamBurinApp {
                                     );
                                     ui.end_row();
                                     if let Some(name_button) = name_hit {
-                                        name_button.context_menu(|ui| {
-                                            self.layer_context_menu(ui, id);
-                                        });
+                                        if name_button.secondary_clicked() {
+                                            self.open_row_settings(id);
+                                        }
                                     }
                                 }
-                            });
                     });
                 if let Some((id, kind)) = mode_choice {
                     self.set_layer_mode(&id, kind);
@@ -432,7 +413,7 @@ impl BeamBurinApp {
                 if let Some(message) = message {
                     ui.colored_label(Color32::from_rgb(200, 60, 60), message);
                 }
-                if self.editor.document != before {
+                if self.row_settings.is_none() && self.editor.document != before {
                     self.editor.history.record(&before, "Edit layer");
                 }
                 ui.separator();
@@ -576,6 +557,76 @@ impl BeamBurinApp {
         self.open_cut_settings_for_layer(&layer_id);
     }
 
+    /// Open the focused row settings dialog for a layer.
+    pub(super) fn open_row_settings(&mut self, layer_id: &str) {
+        if self.row_settings.is_some() || self.editor.document.layer(layer_id).is_none() {
+            return;
+        }
+        self.row_settings = Some(layer_id.to_string());
+        self.row_settings_snapshot = Some(self.editor.document.clone());
+        self.row_settings_done = false;
+        self.editor.active_layer_id = layer_id.to_string();
+    }
+
+    fn close_row_settings(&mut self) {
+        self.row_settings = None;
+        self.row_settings_snapshot = None;
+        self.row_settings_done = false;
+    }
+
+    /// The row settings modal: it blocks the rest of the UI and stays open
+    /// until OK or Cancel. Cancel restores the document as it was when opened.
+    pub(super) fn row_settings_modal(&mut self, ctx: &egui::Context) {
+        let Some(id) = self.row_settings.clone() else {
+            return;
+        };
+        if self.editor.document.layer(&id).is_none() {
+            self.close_row_settings();
+            return;
+        }
+        let mut commit = false;
+        let mut cancel = false;
+        egui::containers::Modal::new(egui::Id::new("row_settings_modal")).show(ctx, |ui| {
+            ui.set_min_width(430.0);
+            self.row_settings_ui(ui, &id);
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("OK").clicked() {
+                    commit = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+            if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                cancel = true;
+            }
+            if self.row_settings_done {
+                commit = false;
+                cancel = false;
+            }
+        });
+        if self.row_settings_done {
+            self.close_row_settings();
+            return;
+        }
+        if cancel {
+            if let Some(snapshot) = self.row_settings_snapshot.take() {
+                self.editor.document = snapshot;
+            }
+            self.close_row_settings();
+            return;
+        }
+        if commit {
+            if let Some(snapshot) = self.row_settings_snapshot.take() {
+                if self.editor.document != snapshot {
+                    self.editor.history.record(&snapshot, "Edit layer");
+                }
+            }
+            self.close_row_settings();
+        }
+    }
+
     /// Open the full cut window on a layer, creating and binding its cut entry
     /// when the layer has none.
     pub(super) fn open_cut_settings_for_layer(&mut self, layer_id: &str) {
@@ -617,7 +668,7 @@ impl BeamBurinApp {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(super) fn layer_context_menu(&mut self, ui: &mut Ui, id: &str) {
+    pub(super) fn row_settings_ui(&mut self, ui: &mut Ui, id: &str) {
         use crate::operations::OperationType;
 
         let name = self
@@ -735,7 +786,7 @@ impl BeamBurinApp {
             if open_all {
                 self.active_operation = Some(cut_id.clone());
                 self.cuts_open = true;
-                ui.close();
+                self.row_settings_done = true;
             }
             if ui
                 .button("Delete cut entry")
@@ -743,7 +794,7 @@ impl BeamBurinApp {
                 .clicked()
             {
                 self.editor.remove_operation(&cut_id);
-                ui.close();
+                self.row_settings_done = true;
             }
         } else {
             ui.weak("This layer has no cut entry.");
@@ -769,7 +820,6 @@ impl BeamBurinApp {
                 if self.editor.document != before {
                     self.editor.history.record(&before, "Cut entry");
                 }
-                ui.close();
             }
         }
         ui.separator();
@@ -777,18 +827,18 @@ impl BeamBurinApp {
             if let Some(copy) = self.editor.duplicate_layer(id) {
                 self.editor.active_layer_id = copy;
             }
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui.button("Delete layer").clicked() {
             if let Err(error) = self.delete_layer(id) {
                 self.status = error;
             }
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui.button("Select objects").clicked() {
             let count = self.editor.select_layer_objects(id);
             self.status = format!("Selected {count} object(s)");
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui.button("Select this colour").clicked() {
             let colour = self.layer_display_colour(id);
@@ -799,7 +849,7 @@ impl BeamBurinApp {
         if ui.button("Group objects").clicked() {
             let count = self.editor.group_layer_objects(id);
             self.status = format!("Grouped {count} object(s)");
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui.button("Group by colour").clicked() {
             let (groups, objects) = self.editor.group_by_colour();
@@ -808,7 +858,7 @@ impl BeamBurinApp {
             } else {
                 format!("Grouped {objects} object(s) into {groups} colour group(s)")
             };
-            ui.close();
+            self.row_settings_done = true;
         }
         let (visible, locked) = self
             .editor
@@ -822,7 +872,7 @@ impl BeamBurinApp {
             if let Some(layer) = self.editor.document.layer_mut(id) {
                 layer.visible = !visible;
             }
-            ui.close();
+            self.row_settings_done = true;
         }
         if ui
             .button(if locked { "Unlock layer" } else { "Lock layer" })
@@ -831,7 +881,7 @@ impl BeamBurinApp {
             if let Some(layer) = self.editor.document.layer_mut(id) {
                 layer.locked = !locked;
             }
-            ui.close();
+            self.row_settings_done = true;
         }
         if name.is_empty() {
             ui.weak("Missing layer");
