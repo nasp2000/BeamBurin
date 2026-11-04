@@ -317,7 +317,7 @@ fn the_object_cut_shortcut_shows_speed_and_power() {
     let mut harness =
         egui_kittest::Harness::new_ui_state(|ui, app| app.object_cut_quick_ui(ui), app);
     harness.run();
-    for label in ["Cut: C00", "Speed (mm/min)", "Power (%)"] {
+    for label in ["Cut: C00", "Outline cutting", "Speed (mm/min)", "Power (%)"] {
         assert!(
             harness.query_by_label(label).is_some(),
             "the object cut shortcut is missing {label}"

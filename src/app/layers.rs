@@ -558,9 +558,13 @@ impl BeamBurinApp {
             return;
         };
         let name = entry.name.clone();
+        let mode = entry.op_type.label();
         let mut speed = entry.params.speed;
         let mut power = entry.params.power;
-        ui.label(egui::RichText::new(format!("Cut: {name}")).strong());
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(format!("Cut: {name}")).strong());
+            ui.weak(mode);
+        });
         let mut changed = false;
         egui::Grid::new(("object_cut_quick", operation_id.as_str()))
             .num_columns(2)
