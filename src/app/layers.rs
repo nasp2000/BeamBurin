@@ -581,7 +581,9 @@ impl BeamBurinApp {
             self.close_row_settings();
             return;
         }
-        let mut commit = false;
+        let enter =
+            ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        let mut commit = enter;
         let mut cancel = false;
         egui::containers::Modal::new(egui::Id::new("row_settings_modal")).show(ctx, |ui| {
             ui.set_min_width(430.0);
@@ -595,9 +597,6 @@ impl BeamBurinApp {
                     cancel = true;
                 }
             });
-            if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                commit = true;
-            }
             if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                 cancel = true;
             }
