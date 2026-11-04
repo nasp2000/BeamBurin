@@ -245,6 +245,62 @@ fn the_object_menu_opens_the_cut_settings_of_its_layer() {
 }
 
 #[test]
+fn the_selection_quick_cut_numbers_are_undoable() {
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    app.run_context_action(ContextAction::CutSettings);
+    let operation = app
+        .active_operation
+        .clone()
+        .expect("no cut entry became active");
+    let (_, _, resolved) = app
+        .selection_cut_context()
+        .expect("the selection has no cut context");
+    assert_eq!(resolved.as_deref(), Some(operation.as_str()));
+
+    app.set_cut_speed_power(&operation, 1500.0, 45.0);
+    let entry = app
+        .editor
+        .document
+        .operations
+        .iter()
+        .find(|entry| entry.id == operation)
+        .expect("the cut entry is missing");
+    assert_eq!(entry.params.speed, 1500.0);
+    assert_eq!(entry.params.power, 45.0);
+    assert!(app.editor.undo().is_some());
+    let entry = app
+        .editor
+        .document
+        .operations
+        .iter()
+        .find(|entry| entry.id == operation)
+        .expect("the cut entry is missing");
+    assert_eq!(entry.params.speed, 1000.0, "undo did not restore the speed");
+    assert_eq!(entry.params.power, 20.0, "undo did not restore the power");
+}
+
+#[test]
+fn the_object_cut_shortcut_shows_speed_and_power() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    app.run_context_action(ContextAction::CutSettings);
+    let mut harness =
+        egui_kittest::Harness::new_ui_state(|ui, app| app.object_cut_quick_ui(ui), app);
+    harness.run();
+    for label in ["Cut: C00", "Speed (mm/min)", "Power (%)"] {
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "the object cut shortcut is missing {label}"
+        );
+    }
+}
+
+#[test]
 fn canvas_context_menu_offers_work_area_commands() {
     let actions = canvas_context_actions();
     assert!(actions.contains(&ContextAction::Paste));

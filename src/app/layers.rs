@@ -499,35 +499,30 @@ impl BeamBurinApp {
         self.status = format!("{} set to {}", name, kind.label());
     }
 
+    /// Resolve the layer, drawing colour and cut entry of the first selected
+    /// object. The entry comes from the object, then the layer, then the colour.
+    pub(super) fn selection_cut_context(&self) -> Option<(String, String, Option<String>)> {
+        let object_id = self.editor.selection.ids().first()?;
+        let object = self.editor.document.object(object_id)?;
+        let layer = self.editor.document.layer(&object.layer_id)?;
+        let colour = object.color.clone().unwrap_or_else(|| layer.color.clone());
+        let operation = object
+            .operation_id
+            .clone()
+            .or_else(|| layer.operation_id.clone())
+            .or_else(|| self.editor.operation_for_colour(&colour));
+        Some((layer.id.clone(), colour, operation))
+    }
+
     /// Open the full cut window on the cut entry of the selected object's
     /// layer, creating one for its colour when the layer has none.
     pub(super) fn open_cut_settings_for_selection(&mut self) {
-        let Some(object_id) = self.editor.selection.ids().first().cloned() else {
-            return;
-        };
-        let Some((layer_id, colour, object_operation)) =
-            self.editor.document.object(&object_id).map(|object| {
-                let colour = object.color.clone().unwrap_or_else(|| {
-                    self.editor
-                        .document
-                        .layer(&object.layer_id)
-                        .map_or_else(|| "#000000".to_string(), |layer| layer.color.clone())
-                });
-                (object.layer_id.clone(), colour, object.operation_id.clone())
-            })
-        else {
+        let Some((layer_id, colour, operation)) = self.selection_cut_context() else {
             return;
         };
         let before = self.editor.document.clone();
-        let operation = object_operation
-            .or_else(|| {
-                self.editor
-                    .document
-                    .layer(&layer_id)
-                    .and_then(|layer| layer.operation_id.clone())
-            })
-            .or_else(|| self.editor.operation_for_colour(&colour))
-            .unwrap_or_else(|| self.editor.ensure_operation_for_colour(&colour));
+        let operation =
+            operation.unwrap_or_else(|| self.editor.ensure_operation_for_colour(&colour));
         if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
             layer.operation_id.get_or_insert_with(|| operation.clone());
         }
@@ -543,6 +538,73 @@ impl BeamBurinApp {
         }
         self.active_operation = Some(operation);
         self.open_cuts();
+    }
+
+    /// Compact speed and power fields for the selected object's cut entry,
+    /// shown inside the object context menu.
+    pub(super) fn object_cut_quick_ui(&mut self, ui: &mut Ui) {
+        let Some((_, _, Some(operation_id))) = self.selection_cut_context() else {
+            ui.weak("No cut entry for this layer");
+            return;
+        };
+        let Some(entry) = self
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|entry| entry.id == operation_id)
+        else {
+            ui.weak("No cut entry for this layer");
+            return;
+        };
+        let name = entry.name.clone();
+        let mut speed = entry.params.speed;
+        let mut power = entry.params.power;
+        ui.label(egui::RichText::new(format!("Cut: {name}")).strong());
+        let mut changed = false;
+        egui::Grid::new(("object_cut_quick", operation_id.as_str()))
+            .num_columns(2)
+            .spacing([8.0, 3.0])
+            .show(ui, |ui| {
+                ui.label("Speed (mm/min)");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut speed)
+                            .speed(10.0)
+                            .range(1.0..=100_000.0),
+                    )
+                    .changed();
+                ui.end_row();
+                ui.label("Power (%)");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut power)
+                            .speed(1.0)
+                            .range(0.0..=100.0),
+                    )
+                    .changed();
+                ui.end_row();
+            });
+        if changed {
+            self.set_cut_speed_power(&operation_id, speed, power);
+        }
+    }
+
+    fn set_cut_speed_power(&mut self, operation_id: &str, speed: f64, power: f64) {
+        let before = self.editor.document.clone();
+        if let Some(entry) = self
+            .editor
+            .document
+            .operations
+            .iter_mut()
+            .find(|entry| entry.id == operation_id)
+        {
+            entry.params.speed = speed;
+            entry.params.power = power;
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Cut speed and power");
+        }
     }
 
     #[allow(clippy::too_many_lines)]
