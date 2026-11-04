@@ -1963,4 +1963,88 @@ fn the_drawing_colour_strip_colours_the_selected_layer() {
         "#e53935",
         "the palette did not colour the selected layer"
     );
+    let document = &harness.state().editor.document;
+    let operation = document
+        .operations
+        .iter()
+        .find(|operation| operation.params.color == "#e53935")
+        .expect("the palette did not create a cut entry");
+    assert_eq!(
+        document.objects[0].operation_id.as_deref(),
+        Some(operation.id.as_str()),
+        "the object did not adopt the colour's cut entry"
+    );
+    assert!(
+        harness.state().status.contains("new cut entry"),
+        "the new cut entry was not reported: {}",
+        harness.state().status
+    );
+}
+
+#[test]
+fn the_palette_reuses_an_existing_cut_entry() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let operation = app.editor.add_operation(
+        "Red cut".to_string(),
+        crate::operations::OperationType::OutlineCutting,
+    );
+    if let Some(entry) = app
+        .editor
+        .document
+        .operations
+        .iter_mut()
+        .find(|entry| entry.id == operation)
+    {
+        entry.params.color = "#e53935".to_string();
+    }
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+    let document = &harness.state().editor.document;
+    assert_eq!(
+        document.operations.len(),
+        1,
+        "an existing cut entry should be reused"
+    );
+    assert_eq!(
+        document.objects[0].operation_id.as_deref(),
+        Some(operation.as_str())
+    );
+    assert!(
+        !harness.state().status.contains("new cut entry"),
+        "the reused cut entry was reported as new"
+    );
+}
+
+#[test]
+fn the_palette_creates_a_cut_entry_for_the_active_layer() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor.selection.clear();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #1e88e5")
+        .click_accesskit();
+    harness.run();
+    let document = &harness.state().editor.document;
+    assert_eq!(
+        document.layer(&layer).expect("the layer is missing").color,
+        "#1e88e5"
+    );
+    assert_eq!(
+        document.operations.len(),
+        1,
+        "choosing a colour should create its cut entry"
+    );
+    assert_eq!(document.operations[0].params.color, "#1e88e5");
 }

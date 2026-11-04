@@ -664,43 +664,31 @@ impl BeamBurinApp {
     fn apply_drawing_colour(&mut self, colour: &str) {
         let before = self.editor.document.clone();
         let selected = self.editor.selection.ids().to_vec();
-        let matching = self.operation_for_colour(colour);
+        let created = self.editor.operation_for_colour(colour).is_none();
+        let operation = self.editor.ensure_operation_for_colour(colour);
         if selected.is_empty() {
             let active = self.editor.active_layer_id.clone();
             if let Some(layer) = self.editor.document.layer_mut(&active) {
                 layer.color = colour.to_string();
             }
-            if let Some(operation) = &matching {
-                let ids: Vec<String> = self
-                    .editor
-                    .document
-                    .objects_on_layer(&active)
-                    .iter()
-                    .map(|object| object.id.clone())
-                    .collect();
-                for id in ids {
-                    if let Some(object) = self.editor.document.object_mut(&id) {
-                        object.operation_id = Some(operation.clone());
-                    }
+            let ids: Vec<String> = self
+                .editor
+                .document
+                .objects_on_layer(&active)
+                .iter()
+                .map(|object| object.id.clone())
+                .collect();
+            for id in ids {
+                if let Some(object) = self.editor.document.object_mut(&id) {
+                    object.operation_id = Some(operation.clone());
                 }
             }
-            if let Some(operation) = self.layer_mode(&active).0.and_then(|id| {
-                self.editor
-                    .document
-                    .operations
-                    .iter_mut()
-                    .find(|operation| operation.id == id)
-            }) {
-                operation.params.color = colour.to_string();
-            }
-            self.status = format!("New objects will use {colour}");
+            self.status = format!("New objects will use {colour}{}", cut_entry_note(created));
         } else {
             for id in &selected {
                 if let Some(object) = self.editor.document.object_mut(id) {
                     object.color = Some(colour.to_string());
-                    if let Some(operation) = &matching {
-                        object.operation_id = Some(operation.clone());
-                    }
+                    object.operation_id = Some(operation.clone());
                 }
             }
             let mut layers: Vec<String> = selected
@@ -729,18 +717,13 @@ impl BeamBurinApp {
                     if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
                         layer.color = colour.to_string();
                     }
-                    if let Some(operation) = self.layer_mode(&layer_id).0.and_then(|id| {
-                        self.editor
-                            .document
-                            .operations
-                            .iter_mut()
-                            .find(|operation| operation.id == id)
-                    }) {
-                        operation.params.color = colour.to_string();
-                    }
                 }
             }
-            self.status = format!("Colour {colour} applied to {} object(s)", selected.len());
+            self.status = format!(
+                "Colour {colour} applied to {} object(s){}",
+                selected.len(),
+                cut_entry_note(created)
+            );
         }
         if self.editor.document != before {
             self.editor.history.record(&before, "Colour");
@@ -749,16 +732,7 @@ impl BeamBurinApp {
 
     /// Operation whose cut colour matches `colour`, if any.
     fn operation_for_colour(&self, colour: &str) -> Option<String> {
-        let wanted = crate::color::normalize_hex_color(colour)?;
-        self.editor
-            .document
-            .operations
-            .iter()
-            .find(|operation| {
-                crate::color::normalize_hex_color(&operation.params.color).as_deref()
-                    == Some(wanted.as_str())
-            })
-            .map(|operation| operation.id.clone())
+        self.editor.operation_for_colour(colour)
     }
 
     /// Give an operation a colour and carry it to the layers that use it, so
@@ -783,7 +757,7 @@ impl BeamBurinApp {
             .filter(|layer_id| self.layer_mode(layer_id).0.as_deref() == Some(operation_id))
             .collect();
         for layer_id in layers {
-            self.set_layer_colour(&layer_id, colour);
+            self.set_layer_colour_inner(&layer_id, colour);
         }
         if self.editor.document != before {
             self.editor.history.record(&before, "Colour");
@@ -791,6 +765,14 @@ impl BeamBurinApp {
     }
 
     fn set_layer_colour(&mut self, layer_id: &str, colour: &str) {
+        let before = self.editor.document.clone();
+        self.set_layer_colour_inner(layer_id, colour);
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Colour");
+        }
+    }
+
+    fn set_layer_colour_inner(&mut self, layer_id: &str, colour: &str) {
         let ids: Vec<String> = self
             .editor
             .document
@@ -801,13 +783,11 @@ impl BeamBurinApp {
         if let Some(layer) = self.editor.document.layer_mut(layer_id) {
             layer.color = colour.to_string();
         }
-        let matching = self.operation_for_colour(colour);
+        let operation = self.editor.ensure_operation_for_colour(colour);
         for id in ids {
             if let Some(object) = self.editor.document.object_mut(&id) {
                 object.color = Some(colour.to_string());
-                if let Some(operation) = &matching {
-                    object.operation_id = Some(operation.clone());
-                }
+                object.operation_id = Some(operation.clone());
             }
         }
     }
@@ -1210,4 +1190,8 @@ impl BeamBurinApp {
             self.editor.history.record(&before, "Edit operation");
         }
     }
+}
+
+fn cut_entry_note(created: bool) -> &'static str {
+    if created { " (new cut entry)" } else { "" }
 }

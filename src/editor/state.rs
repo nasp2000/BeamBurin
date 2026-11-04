@@ -2721,6 +2721,39 @@ impl EditorState {
             .is_some_and(|layer| layer.locked)
     }
 
+    /// Operation whose cut colour matches `colour`, if any.
+    pub fn operation_for_colour(&self, colour: &str) -> Option<String> {
+        let wanted = crate::color::normalize_hex_color(colour)?;
+        self.document
+            .operations
+            .iter()
+            .find(|operation| {
+                crate::color::normalize_hex_color(&operation.params.color).as_deref()
+                    == Some(wanted.as_str())
+            })
+            .map(|operation| operation.id.clone())
+    }
+
+    /// Return the operation for `colour`, creating a cut entry when missing.
+    ///
+    /// The caller records undo once for the whole colour change; this helper
+    /// only touches the document.
+    pub fn ensure_operation_for_colour(&mut self, colour: &str) -> String {
+        let colour =
+            crate::color::normalize_hex_color(colour).unwrap_or_else(|| colour.trim().to_string());
+        if let Some(id) = self.operation_for_colour(&colour) {
+            return id;
+        }
+        let mut operation = crate::operations::Operation::new(
+            format!("C{:02}", self.document.operations.len()),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        operation.params.color = colour;
+        let id = operation.id.clone();
+        self.document.operations.push(operation);
+        id
+    }
+
     /// Create an operation and return its id.
     pub fn add_operation(
         &mut self,
@@ -3710,6 +3743,28 @@ mod tests {
         assert!(editor.undo().is_some());
         assert_eq!(editor.document.layers[0].id, first);
         assert_eq!(editor.document.layers[2].id, third);
+    }
+
+    #[test]
+    fn choosing_a_colour_creates_one_cut_entry() {
+        let mut editor = editor();
+        let id = editor.ensure_operation_for_colour("#E53935");
+        assert_eq!(editor.document.operations.len(), 1);
+        let operation = &editor.document.operations[0];
+        assert_eq!(operation.id, id);
+        assert_eq!(operation.params.color, "#e53935");
+        assert_eq!(operation.name, "C00");
+        assert_eq!(editor.ensure_operation_for_colour("#e53935"), id);
+        assert_eq!(
+            editor.document.operations.len(),
+            1,
+            "a second choice reuses the same entry"
+        );
+        assert_eq!(
+            editor.operation_for_colour("#e53935").as_deref(),
+            Some(id.as_str())
+        );
+        assert!(editor.operation_for_colour("#123456").is_none());
     }
 
     #[test]
