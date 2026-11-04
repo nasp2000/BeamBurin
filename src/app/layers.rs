@@ -86,7 +86,7 @@ impl BeamBurinApp {
                     }
                     if ui.button("- Layer").clicked() {
                         let id = self.editor.active_layer_id.clone();
-                        match self.editor.document.remove_layer(&id) {
+                        match self.delete_layer(&id) {
                             Ok(()) => {
                                 self.editor.active_layer_id = self
                                     .editor
@@ -223,7 +223,7 @@ impl BeamBurinApp {
                                                     .frame(false),
                                                 )
                                                 .on_hover_text(format!(
-                                                    "{count} object(s) — right-click for cut settings"
+                                                    "{count} object(s) — right-click for cut settings, double-click to open"
                                                 ));
                                             if name_button.clicked() {
                                                 self.editor.active_layer_id.clone_from(id);
@@ -471,6 +471,39 @@ impl BeamBurinApp {
             });
     }
 
+    /// Delete a layer and, when nothing else uses its cut entry, the entry too.
+    pub(super) fn delete_layer(&mut self, layer_id: &str) -> Result<(), String> {
+        let operation = self
+            .editor
+            .document
+            .layer(layer_id)
+            .and_then(|layer| layer.operation_id.clone());
+        self.editor.document.remove_layer(layer_id)?;
+        if let Some(operation) = operation {
+            let in_use = self
+                .editor
+                .document
+                .layers
+                .iter()
+                .filter_map(|layer| layer.operation_id.as_deref())
+                .chain(
+                    self.editor
+                        .document
+                        .objects
+                        .iter()
+                        .filter_map(|object| object.operation_id.as_deref()),
+                )
+                .any(|id| id == operation.as_str());
+            if !in_use {
+                self.editor
+                    .document
+                    .operations
+                    .retain(|entry| entry.id != operation);
+            }
+        }
+        Ok(())
+    }
+
     /// Put a layer on a cut mode, creating the cut entry for its colour when
     /// there is none and assigning it to every object of the layer.
     pub(super) fn set_layer_mode(
@@ -701,7 +734,7 @@ impl BeamBurinApp {
             .document
             .layer(id)
             .map_or_else(String::new, |layer| layer.name.clone());
-        ui.label(egui::RichText::new(format!("Layer {name}")).strong());
+        ui.label(egui::RichText::new(&name).strong());
         egui::Grid::new(("row_layer", id))
             .num_columns(2)
             .spacing([8.0, 3.0])
@@ -856,7 +889,7 @@ impl BeamBurinApp {
             ui.close();
         }
         if ui.button("Delete layer").clicked() {
-            if let Err(error) = self.editor.document.remove_layer(id) {
+            if let Err(error) = self.delete_layer(id) {
                 self.status = error;
             }
             ui.close();

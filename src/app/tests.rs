@@ -981,6 +981,55 @@ fn the_row_menu_opens_from_the_speeds_cell() {
 }
 
 #[test]
+fn deleting_a_layer_removes_its_unused_cut_entry() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("+ Layer").click();
+    harness.run();
+    assert_eq!(harness.state().editor.document.operations.len(), 1);
+    harness.get_by_label("- Layer").click();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.document.layers.len(),
+        1,
+        "the layer was not deleted"
+    );
+    assert!(
+        harness.state().editor.document.operations.is_empty(),
+        "the orphan cut entry survived the layer"
+    );
+}
+
+#[test]
+fn a_cut_entry_used_by_another_layer_survives() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let first = app.editor.active_layer_id.clone();
+    let second = app.editor.document.add_layer("Layer 2").id.clone();
+    app.editor.active_layer_id = second.clone();
+    let operation = app.editor.ensure_operation_for_colour("#1e88e5");
+    for layer in [&first, &second] {
+        app.editor.document.layer_mut(layer).unwrap().operation_id = Some(operation.clone());
+    }
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("- Layer").click();
+    harness.run();
+    assert!(
+        harness.state().editor.document.layer(&first).is_some(),
+        "the wrong layer was deleted"
+    );
+    assert_eq!(
+        harness.state().editor.document.operations.len(),
+        1,
+        "the shared cut entry was deleted"
+    );
+}
+
+#[test]
 fn the_cut_switches_wait_for_a_cut_entry() {
     use egui_kittest::kittest::{NodeT as _, Queryable as _};
 
@@ -1048,6 +1097,10 @@ fn the_row_menu_adds_and_edits_the_cut_entry() {
     harness.run();
     harness.get_by_label("Layer 1").click_secondary();
     harness.run();
+    assert!(
+        harness.query_by_label("Layer Layer 1").is_none(),
+        "the row menu repeats the Layer prefix"
+    );
     assert!(
         harness.query_by_label("Add cut entry").is_some(),
         "the row menu has no cut entry action"
