@@ -228,6 +228,9 @@ impl BeamBurinApp {
                                             if name_button.clicked() {
                                                 self.editor.active_layer_id.clone_from(id);
                                             }
+                                            if name_button.double_clicked() {
+                                                self.open_cut_settings_for_layer(id);
+                                            }
                                             name_hit = Some(name_button);
                                         },
                                     );
@@ -534,18 +537,41 @@ impl BeamBurinApp {
     /// Open the full cut window on the cut entry of the selected object's
     /// layer, creating one for its colour when the layer has none.
     pub(super) fn open_cut_settings_for_selection(&mut self) {
-        let Some((layer_id, colour, operation)) = self.selection_cut_context() else {
+        let Some((layer_id, _, _)) = self.selection_cut_context() else {
             return;
         };
+        self.open_cut_settings_for_layer(&layer_id);
+    }
+
+    /// Open the full cut window on a layer, creating and binding its cut entry
+    /// when the layer has none.
+    pub(super) fn open_cut_settings_for_layer(&mut self, layer_id: &str) {
+        if self.editor.document.layer(layer_id).is_none() {
+            return;
+        }
+        let colour = self.layer_display_colour(layer_id);
+        let stored = self
+            .editor
+            .document
+            .layer(layer_id)
+            .and_then(|layer| layer.operation_id.clone());
         let before = self.editor.document.clone();
-        let operation =
-            operation.unwrap_or_else(|| self.editor.ensure_operation_for_colour(&colour));
-        if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
+        let operation = stored
+            .or_else(|| self.editor.operation_for_colour(&colour))
+            .unwrap_or_else(|| self.editor.ensure_operation_for_colour(&colour));
+        if let Some(layer) = self.editor.document.layer_mut(layer_id) {
             layer.operation_id.get_or_insert_with(|| operation.clone());
         }
-        for id in self.editor.selection.ids().to_vec() {
+        let ids: Vec<String> = self
+            .editor
+            .document
+            .objects_on_layer(layer_id)
+            .iter()
+            .map(|object| object.id.clone())
+            .collect();
+        for id in ids {
             if let Some(object) = self.editor.document.object_mut(&id) {
-                if object.layer_id == layer_id && object.operation_id.is_none() {
+                if object.operation_id.is_none() {
                     object.operation_id = Some(operation.clone());
                 }
             }

@@ -215,6 +215,35 @@ fn object_context_menu_matches_the_selection() {
 }
 
 #[test]
+fn opening_a_layer_cut_entry_binds_it() {
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    app.open_cut_settings_for_layer(&layer);
+    assert!(app.cuts_open, "the cut settings did not open");
+    let operation = app
+        .active_operation
+        .clone()
+        .expect("no cut entry became active");
+    let document = &app.editor.document;
+    assert_eq!(
+        document.operations[0].params.color, "#000000",
+        "the cut entry does not use the layer colour"
+    );
+    assert_eq!(
+        document.layer(&layer).unwrap().operation_id.as_deref(),
+        Some(operation.as_str()),
+        "the layer was not bound to its cut entry"
+    );
+    assert_eq!(
+        document.objects[0].operation_id.as_deref(),
+        Some(operation.as_str()),
+        "the object was not bound to the cut entry"
+    );
+}
+
+#[test]
 fn the_object_menu_opens_the_cut_settings_of_its_layer() {
     let mut app = ui_test_app();
     let layer = app.editor.active_layer_id.clone();
