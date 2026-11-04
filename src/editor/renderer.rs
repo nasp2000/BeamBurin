@@ -869,3 +869,85 @@ pub fn format_mm(value: f64) -> String {
         format!("{value:.2}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::Document;
+    use crate::geometry::Transform2;
+
+    fn stroke_of(shape: &egui::Shape) -> Option<Stroke> {
+        match shape {
+            egui::Shape::Path(path) => Some(path.stroke),
+            egui::Shape::LineSegment { stroke, .. } => Some(*stroke),
+            egui::Shape::Rect(rect) => Some(rect.stroke),
+            egui::Shape::Circle(circle) => Some(circle.stroke),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn selected_objects_keep_their_colour_with_a_dashed_frame() {
+        let mut document = Document::default();
+        let layer = document.layers[0].id.clone();
+        let mut object = Object::new(
+            layer,
+            Shape::Rect {
+                width: 200.0,
+                height: 150.0,
+                corner_radius: 0.0,
+            },
+        );
+        object.transform = Transform2::translate(10.0, 10.0);
+        object.color = Some("#e53935".to_string());
+        let id = object.id.clone();
+        document.add_object(object);
+
+        let mut editor = EditorState::new(document);
+        editor.selection.add(id);
+        editor.selection_color = "#1e88e5".to_string();
+        let images = ImageTextures::new();
+
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+            ..egui::RawInput::default()
+        };
+        let output = egui::Context::default().run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+                let theme = Theme { dark: true };
+                paint_objects(ui.painter(), rect, &editor, theme, &images);
+                paint_selection(ui.painter(), rect, &editor, theme);
+            });
+        });
+
+        let mut red = 0;
+        let mut selection_segments = 0;
+        let mut selection_paths = 0;
+        for clipped in &output.shapes {
+            let Some(stroke) = stroke_of(&clipped.shape) else {
+                continue;
+            };
+            let rgb = (stroke.color.r(), stroke.color.g(), stroke.color.b());
+            if rgb == (229, 57, 53) {
+                red += 1;
+            }
+            if rgb == (30, 136, 229) {
+                match &clipped.shape {
+                    egui::Shape::LineSegment { .. } => selection_segments += 1,
+                    egui::Shape::Path(_) => selection_paths += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert!(red > 0, "the object lost its drawing colour");
+        assert!(
+            selection_segments >= 8,
+            "the selection frame is not dashed ({selection_segments} segments)"
+        );
+        assert_eq!(
+            selection_paths, 0,
+            "a selected object was repainted in the selection colour"
+        );
+    }
+}
