@@ -205,7 +205,11 @@ impl BeamBurinApp {
                                         |ui| {
                                             let rgb = parse_hex_color(color).unwrap_or((0, 0, 0));
                                             let mut srgb = [rgb.0, rgb.1, rgb.2];
-                                            if ui.color_edit_button_srgb(&mut srgb).changed() {
+                                            let swatch = ui.color_edit_button_srgb(&mut srgb);
+                                            swatch.context_menu(|ui| {
+                                                self.layer_context_menu(ui, id);
+                                            });
+                                            if swatch.changed() {
                                                 let colour = to_hex(srgb[0], srgb[1], srgb[2]);
                                                 self.set_layer_colour(id, &colour);
                                             }
@@ -246,23 +250,30 @@ impl BeamBurinApp {
                                                 kind.label().to_string()
                                             })
                                     };
-                                    egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(80.0)
-                                        .selected_text(text)
-                                        .show_ui(ui, |ui| {
-                                            for candidate in OperationType::all() {
-                                                if ui
-                                                    .selectable_value(
-                                                        &mut chosen,
-                                                        Some(candidate),
-                                                        candidate.label(),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    ui.close();
+                                    let mode_combo =
+                                        egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
+                                            .width(80.0)
+                                            .selected_text(text)
+                                            .show_ui(ui, |ui| {
+                                                for candidate in OperationType::all() {
+                                                    if ui
+                                                        .selectable_value(
+                                                            &mut chosen,
+                                                            Some(candidate),
+                                                            candidate.label(),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        ui.close();
+                                                    }
                                                 }
-                                            }
-                                        });
+                                            });
+                                    if let Some(entry) = operation {
+                                        mode_combo.response.on_hover_text(format!(
+                                            "{} · {:.0} mm/min · {:.0}%",
+                                            entry.1, entry.2, entry.3
+                                        ));
+                                    }
                                     if chosen != current_type {
                                         if let Some(kind) = chosen {
                                             mode_choice = Some((id.clone(), kind));
@@ -282,8 +293,8 @@ impl BeamBurinApp {
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
-                                            ui.add_sized(
-                                                [22.0, 18.0],
+                                            ui.add_enabled(
+                                                operation.is_some(),
                                                 egui::Checkbox::without_text(&mut output),
                                             )
                                         })
@@ -331,8 +342,8 @@ impl BeamBurinApp {
                                     let mut air = operation.is_some_and(|entry| entry.5);
                                     let air_response = ui
                                         .push_id(("layer_air", id), |ui| {
-                                            ui.add_sized(
-                                                [22.0, 18.0],
+                                            ui.add_enabled(
+                                                operation.is_some(),
                                                 egui::Checkbox::without_text(&mut air),
                                             )
                                         })

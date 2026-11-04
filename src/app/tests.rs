@@ -867,6 +867,34 @@ fn the_row_menu_opens_from_the_speeds_cell() {
 }
 
 #[test]
+fn the_cut_switches_wait_for_a_cut_entry() {
+    use egui_kittest::kittest::{NodeT as _, Queryable as _};
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    let air = harness.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Air");
+    assert!(
+        air.accesskit_node().is_disabled(),
+        "Air is clickable without a cut entry"
+    );
+    let output = harness.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Output");
+    assert!(
+        output.accesskit_node().is_disabled(),
+        "Output is clickable without a cut entry"
+    );
+
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #1e88e5")
+        .click_accesskit();
+    harness.run();
+    let air = harness.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Air");
+    assert!(
+        !air.accesskit_node().is_disabled(),
+        "Air stayed disabled after the cut entry was created"
+    );
+}
+
+#[test]
 fn the_row_menu_selects_every_object_of_its_colour() {
     use egui_kittest::kittest::Queryable as _;
 
