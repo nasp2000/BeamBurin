@@ -595,6 +595,9 @@ impl BeamBurinApp {
                     cancel = true;
                 }
             });
+            if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                commit = true;
+            }
             if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                 cancel = true;
             }
@@ -696,6 +699,21 @@ impl BeamBurinApp {
         let cut = self.layer_mode(id).0;
         if let Some(cut_id) = cut.clone() {
             ui.label(egui::RichText::new("Cut settings").strong());
+            let shared: Vec<String> = self
+                .editor
+                .document
+                .layers
+                .iter()
+                .filter(|layer| {
+                    layer.id != *id
+                        && self.layer_mode(&layer.id).0.as_deref() == Some(cut_id.as_str())
+                })
+                .map(|layer| layer.name.clone())
+                .collect();
+            if !shared.is_empty() {
+                ui.weak(format!("Shared with {}", shared.join(", ")))
+                    .on_hover_text("Changing this entry also changes those layers");
+            }
             let mut open_all = false;
             egui::Grid::new(("row_cut", id))
                 .num_columns(2)
@@ -962,6 +980,30 @@ impl BeamBurinApp {
                     );
                     if response.on_hover_text(tip).clicked() {
                         self.apply_drawing_colour(colour);
+                    }
+                }
+                if let Some(active) = &active {
+                    if !DRAWING_COLOURS
+                        .iter()
+                        .any(|colour| colour.eq_ignore_ascii_case(active))
+                    {
+                        ui.separator();
+                        let (r, g, b) = parse_hex_color(active).unwrap_or((0, 0, 0));
+                        let response = ui.add(
+                            egui::Button::new("")
+                                .fill(Color32::from_rgb(r, g, b))
+                                .min_size(egui::vec2(14.0, 14.0))
+                                .stroke(egui::Stroke::new(1.0, Color32::WHITE)),
+                        );
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::Button,
+                                true,
+                                format!("Custom colour {active}"),
+                            )
+                        });
+                        ui.weak(active.clone());
+                        response.on_hover_text("Custom colour outside the palette");
                     }
                 }
             });

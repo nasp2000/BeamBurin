@@ -1157,6 +1157,61 @@ fn drawing_after_deleting_the_cut_entry_creates_it_again() {
 }
 
 #[test]
+fn enter_confirms_the_row_settings() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    assert!(harness.query_by_label("Cancel").is_some());
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(
+        harness.query_by_label("Cancel").is_none(),
+        "Enter did not confirm the dialog"
+    );
+}
+
+#[test]
+fn the_row_settings_warns_about_a_shared_cut_entry() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let first = app.editor.active_layer_id.clone();
+    let second = app.editor.document.add_layer("Layer 2").id.clone();
+    let operation = app.editor.ensure_operation_for_colour("#000000");
+    for layer in [&first, &second] {
+        app.editor.document.layer_mut(layer).unwrap().operation_id = Some(operation.clone());
+    }
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    assert!(
+        harness
+            .query_by_label_contains("Shared with Layer 2")
+            .is_some(),
+        "the dialog does not say the entry is shared"
+    );
+}
+
+#[test]
+fn the_palette_marks_a_custom_colour() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor.document.layer_mut(&layer).unwrap().color = "#123456".to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("Custom colour #123456").is_some(),
+        "the palette does not mark the custom colour"
+    );
+}
+
+#[test]
 fn the_row_settings_delete_layer_is_undoable() {
     use egui_kittest::kittest::Queryable as _;
 
