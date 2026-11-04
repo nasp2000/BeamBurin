@@ -907,6 +907,7 @@ impl EditorState {
             return None;
         }
         let layer_color = layer.color.clone();
+        let layer_operation = layer.operation_id.clone();
         let matching_operation = self
             .document
             .operations
@@ -919,7 +920,7 @@ impl EditorState {
         self.record_action(&format!("Draw {}", shape.kind_name()));
         let mut object = Object::new(self.active_layer_id.clone(), shape).with_transform(transform);
         object.color = Some(layer_color);
-        object.operation_id = matching_operation;
+        object.operation_id = layer_operation.or(matching_operation);
         let id = object.id.clone();
         self.document.add_object(object);
         self.selection.clear();
@@ -2852,6 +2853,11 @@ impl EditorState {
                 object.operation_id = None;
             }
         }
+        for layer in &mut self.document.layers {
+            if layer.operation_id.as_deref() == Some(id) {
+                layer.operation_id = None;
+            }
+        }
         true
     }
 
@@ -2992,10 +2998,17 @@ impl EditorState {
             })
             .map(|(index, _)| index)
             .collect();
-        if targets.is_empty() {
+        let stored = self
+            .document
+            .layer(layer_id)
+            .and_then(|layer| layer.operation_id.clone());
+        if targets.is_empty() && stored.as_deref() == operation_id {
             return 0;
         }
         self.record_action("Assign to layer");
+        if let Some(layer) = self.document.layer_mut(layer_id) {
+            layer.operation_id = operation_id.map(str::to_string);
+        }
         for index in &targets {
             self.document.objects[*index].operation_id = operation_id.map(str::to_string);
         }

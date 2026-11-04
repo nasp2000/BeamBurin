@@ -13,6 +13,19 @@ impl BeamBurinApp {
     /// objects disagree. A layer has no operation of its own: this keeps the
     /// existing per-object assignment and presents it as one mode row.
     pub(super) fn layer_mode(&self, layer_id: &str) -> (Option<String>, bool) {
+        if let Some(layer) = self.editor.document.layer(layer_id) {
+            if let Some(operation_id) = &layer.operation_id {
+                if self
+                    .editor
+                    .document
+                    .operations
+                    .iter()
+                    .any(|operation| operation.id == *operation_id)
+                {
+                    return (Some(operation_id.clone()), false);
+                }
+            }
+        }
         let mut ids: Vec<&str> = self
             .editor
             .document
@@ -29,7 +42,10 @@ impl BeamBurinApp {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) fn layers_panel(&mut self, ui: &mut Ui) {
+        use crate::operations::OperationType;
+
         egui::Panel::left("layers_panel")
             .default_size(480.0)
             .min_size(380.0)
@@ -60,18 +76,11 @@ impl BeamBurinApp {
                             Err(error) => message = Some(error),
                         }
                     }
-                    if ui.button("+ Mode").clicked() {
-                        let id = self.editor.add_operation(
-                            format!("Mode {}", self.editor.document.operations.len() + 1),
-                            crate::operations::OperationType::OutlineCutting,
-                        );
-                        self.active_operation = Some(id);
-                    }
+                    ui.weak("Right-click a row for cut settings");
                 });
 
                 // One row per layer, with the mode and the switches that matter
-                // for the job. The remaining settings live in the row menu and
-                // in the Cuts / Layers window.
+                // for the job. The remaining settings live in the row menu.
                 let operations: Vec<(String, String, f64, f64, bool, bool)> = self
                     .editor
                     .document
@@ -87,6 +96,13 @@ impl BeamBurinApp {
                             operation.params.air_assist,
                         )
                     })
+                    .collect();
+                let operation_types: Vec<(String, OperationType)> = self
+                    .editor
+                    .document
+                    .operations
+                    .iter()
+                    .map(|operation| (operation.id.clone(), operation.op_type))
                     .collect();
                 let rows: Vec<LayerRow> = self
                     .editor
@@ -108,7 +124,7 @@ impl BeamBurinApp {
                     })
                     .collect();
 
-                let mut assign: Option<(String, Option<String>)> = None;
+                let mut mode_choice: Option<(String, OperationType)> = None;
                 let mut toggle_operation: Option<(String, bool, bool)> = None;
                 egui::ScrollArea::horizontal()
                     .id_salt("layers_table_scroll")
@@ -128,7 +144,7 @@ impl BeamBurinApp {
                                 );
                                 for header in ["Mode", "Spd/Pwr", "Out", "Show", "Air"] {
                                     let width = if header == "Mode" {
-                                        68.0
+                                        86.0
                                     } else if header == "Spd/Pwr" {
                                         40.0
                                     } else {
@@ -151,11 +167,15 @@ impl BeamBurinApp {
                                     let operation = mode.as_deref().and_then(|mode| {
                                         operations.iter().find(|entry| entry.0 == mode)
                                     });
-                                    let mut name_hit: Option<egui::Response> = None;
-                                    ui.add_sized(
+                                    let number = ui.add_sized(
                                         [20.0, 18.0],
-                                        egui::Label::new(format!("L{:02}", index + 1)),
+                                        egui::Label::new(format!("L{:02}", index + 1))
+                                            .sense(egui::Sense::click()),
                                     );
+                                    number.context_menu(|ui| {
+                                        self.layer_context_menu(ui, id);
+                                    });
+                                    let mut name_hit: Option<egui::Response> = None;
                                     ui.allocate_ui_with_layout(
                                         egui::vec2(96.0, 18.0),
                                         egui::Layout::left_to_right(egui::Align::Center),
@@ -175,40 +195,44 @@ impl BeamBurinApp {
                                                     )
                                                     .frame(false),
                                                 )
-                                                .on_hover_text(format!("{count} object(s)"));
+                                                .on_hover_text(format!(
+                                                    "{count} object(s) — right-click for cut settings"
+                                                ));
                                             if name_button.clicked() {
                                                 self.editor.active_layer_id.clone_from(id);
                                             }
                                             name_hit = Some(name_button);
                                         },
                                     );
-                                    let current = if *mixed {
+                                    let current_type = if *mixed {
+                                        None
+                                    } else {
+                                        mode.as_deref().and_then(|mode| {
+                                            operation_types
+                                                .iter()
+                                                .find(|entry| entry.0 == mode)
+                                                .map(|entry| entry.1)
+                                        })
+                                    };
+                                    let mut chosen = current_type;
+                                    let text = if *mixed {
                                         "Mixed".to_string()
                                     } else {
-                                        mode.as_deref()
-                                            .and_then(|mode| {
-                                                operations
-                                                    .iter()
-                                                    .find(|entry| entry.0 == mode)
-                                                    .map(|entry| entry.1.clone())
+                                        current_type
+                                            .map_or_else(|| "—".to_string(), |kind| {
+                                                kind.label().to_string()
                                             })
-                                            .unwrap_or_else(|| "—".to_string())
                                     };
-                                    let mut chosen = mode.clone();
                                     egui::ComboBox::from_id_salt(format!("layer_mode_{id}"))
-                                        .width(62.0)
-                                        .selected_text(current)
+                                        .width(80.0)
+                                        .selected_text(text)
                                         .show_ui(ui, |ui| {
-                                            if ui.selectable_value(&mut chosen, None, "—").clicked()
-                                            {
-                                                ui.close();
-                                            }
-                                            for (op_id, op_name, ..) in &operations {
+                                            for candidate in OperationType::all() {
                                                 if ui
                                                     .selectable_value(
                                                         &mut chosen,
-                                                        Some(op_id.clone()),
-                                                        op_name,
+                                                        Some(candidate),
+                                                        candidate.label(),
                                                     )
                                                     .clicked()
                                                 {
@@ -216,8 +240,10 @@ impl BeamBurinApp {
                                                 }
                                             }
                                         });
-                                    if &chosen != mode {
-                                        assign = Some((id.clone(), chosen));
+                                    if chosen != current_type {
+                                        if let Some(kind) = chosen {
+                                            mode_choice = Some((id.clone(), kind));
+                                        }
                                     }
                                     let speeds = operation.map_or_else(
                                         || "—".to_string(),
@@ -333,17 +359,14 @@ impl BeamBurinApp {
                                     ui.end_row();
                                     if let Some(name_button) = name_hit {
                                         name_button.context_menu(|ui| {
-                                            self.layer_context_menu(ui, id, mode.as_deref());
+                                            self.layer_context_menu(ui, id);
                                         });
                                     }
                                 }
                             });
                     });
-                if let Some((id, operation)) = assign {
-                    let changed = self
-                        .editor
-                        .assign_operation_to_layer(&id, operation.as_deref());
-                    self.status = format!("Assigned a mode to {changed} object(s)");
+                if let Some((id, kind)) = mode_choice {
+                    self.set_layer_mode(&id, kind);
                 }
                 if let Some((operation, enabled, air)) = toggle_operation {
                     if let Some(entry) = self
@@ -357,118 +380,6 @@ impl BeamBurinApp {
                         entry.params.air_assist = air;
                     }
                 }
-
-                ui.separator();
-                let active = self.editor.active_layer_id.clone();
-                if let Some(layer) = self.editor.document.layer(&active).cloned() {
-                    ui.strong(format!("Layer: {}", layer.name));
-                    egui::Grid::new("layer_details")
-                        .num_columns(2)
-                        .spacing([8.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.label("Color");
-                            let rgb = parse_hex_color(&layer.color).unwrap_or((0, 0, 0));
-                            let mut srgb = [rgb.0, rgb.1, rgb.2];
-                            if ui.color_edit_button_srgb(&mut srgb).changed() {
-                                self.set_layer_colour(&active, &to_hex(srgb[0], srgb[1], srgb[2]));
-                            }
-                            ui.end_row();
-                            ui.label("Name");
-                            if let Some(layer) = self.editor.document.layer_mut(&active) {
-                                ui.text_edit_singleline(&mut layer.name);
-                            }
-                            ui.end_row();
-                            let (mode, _) = self.layer_mode(&active);
-                            ui.label("Mode");
-                            let current = mode
-                                .as_deref()
-                                .and_then(|mode| {
-                                    operations
-                                        .iter()
-                                        .find(|entry| entry.0 == mode)
-                                        .map(|entry| entry.1.clone())
-                                })
-                                .unwrap_or_else(|| "—".to_string());
-                            let mut chosen = mode.clone();
-                            egui::ComboBox::from_id_salt("layer_details_mode")
-                                .selected_text(current)
-                                .show_ui(ui, |ui| {
-                                    if ui.selectable_value(&mut chosen, None, "—").clicked() {
-                                        ui.close();
-                                    }
-                                    for (op_id, op_name, ..) in &operations {
-                                        if ui
-                                            .selectable_value(
-                                                &mut chosen,
-                                                Some(op_id.clone()),
-                                                op_name,
-                                            )
-                                            .clicked()
-                                        {
-                                            ui.close();
-                                        }
-                                    }
-                                });
-                            if chosen != mode {
-                                self.editor
-                                    .assign_operation_to_layer(&active, chosen.as_deref());
-                            }
-                            ui.end_row();
-                        });
-                    let (mode, _) = self.layer_mode(&active);
-                    if let Some(operation) = self
-                        .editor
-                        .document
-                        .operations
-                        .iter_mut()
-                        .find(|operation| Some(operation.id.as_str()) == mode.as_deref())
-                    {
-                        egui::Grid::new("layer_operation_details")
-                            .num_columns(2)
-                            .spacing([8.0, 4.0])
-                            .show(ui, |ui| {
-                                ui.label("Speed (mm/min)");
-                                ui.add(
-                                    egui::DragValue::new(&mut operation.params.speed)
-                                        .speed(10.0)
-                                        .range(1.0..=100_000.0),
-                                );
-                                ui.end_row();
-                                ui.label("Pass count");
-                                ui.add(
-                                    egui::DragValue::new(&mut operation.params.passes)
-                                        .speed(0.2)
-                                        .range(1..=100),
-                                );
-                                ui.end_row();
-                                ui.label("Power max (%)");
-                                ui.add(
-                                    egui::DragValue::new(&mut operation.params.power)
-                                        .speed(1.0)
-                                        .range(0.0..=100.0),
-                                );
-                                ui.end_row();
-                                ui.label("Interval (mm)");
-                                ui.add(
-                                    egui::DragValue::new(&mut operation.params.line_interval_mm)
-                                        .speed(0.01)
-                                        .range(0.01..=10.0),
-                                );
-                                ui.end_row();
-                            });
-                        if ui
-                            .button("All settings...")
-                            .on_hover_text("Passes, leads, kerf, tabs, fill and output")
-                            .clicked()
-                        {
-                            self.active_operation = Some(operation.id.clone());
-                            self.cuts_open = true;
-                        }
-                    } else {
-                        ui.weak("Choose a mode to set speed and power.");
-                    }
-                }
-
                 if let Some(message) = message {
                     ui.colored_label(Color32::from_rgb(200, 60, 60), message);
                 }
@@ -508,32 +419,206 @@ impl BeamBurinApp {
                         ui.colored_label(Color32::from_rgb(180, 120, 0), warning);
                     }
                 }
-                ui.separator();
-                egui::CollapsingHeader::new("Cut order")
-                    .default_open(true)
-                    .show(ui, |ui| self.operations_section(ui));
             });
     }
 
-    pub(super) fn layer_context_menu(&mut self, ui: &mut Ui, id: &str, mode: Option<&str>) {
+    /// Put a layer on a cut mode, creating the cut entry for its colour when
+    /// there is none and assigning it to every object of the layer.
+    pub(super) fn set_layer_mode(
+        &mut self,
+        layer_id: &str,
+        kind: crate::operations::OperationType,
+    ) {
+        let before = self.editor.document.clone();
+        let current = self.layer_mode(layer_id).0;
+        let operation = current.unwrap_or_else(|| {
+            let colour = self.layer_display_colour(layer_id);
+            self.editor.ensure_operation_for_colour(&colour)
+        });
+        if let Some(entry) = self
+            .editor
+            .document
+            .operations
+            .iter_mut()
+            .find(|entry| entry.id == operation)
+        {
+            entry.op_type = kind;
+        }
+        if let Some(layer) = self.editor.document.layer_mut(layer_id) {
+            layer.operation_id = Some(operation.clone());
+        }
+        let ids: Vec<String> = self
+            .editor
+            .document
+            .objects_on_layer(layer_id)
+            .iter()
+            .map(|object| object.id.clone())
+            .collect();
+        for id in ids {
+            if let Some(object) = self.editor.document.object_mut(&id) {
+                object.operation_id = Some(operation.clone());
+            }
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Cut mode");
+        }
+        let name = self
+            .editor
+            .document
+            .layer(layer_id)
+            .map_or_else(String::new, |layer| layer.name.clone());
+        self.status = format!("{} set to {}", name, kind.label());
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn layer_context_menu(&mut self, ui: &mut Ui, id: &str) {
+        use crate::operations::OperationType;
+
         let name = self
             .editor
             .document
             .layer(id)
-            .map(|layer| layer.name.clone())
-            .unwrap_or_default();
-        let operations: Vec<(String, String)> = self
-            .editor
-            .document
-            .operations
-            .iter()
-            .map(|operation| (operation.id.clone(), operation.name.clone()))
-            .collect();
-        let mut assign: Option<Option<String>> = None;
-        if ui.button("Rename (edit below)").clicked() {
-            self.editor.active_layer_id = id.to_string();
-            ui.close();
+            .map_or_else(String::new, |layer| layer.name.clone());
+        ui.label(egui::RichText::new(format!("Layer {name}")).strong());
+        egui::Grid::new(("row_layer", id))
+            .num_columns(2)
+            .spacing([8.0, 3.0])
+            .show(ui, |ui| {
+                ui.label("Name");
+                if let Some(layer) = self.editor.document.layer_mut(id) {
+                    ui.text_edit_singleline(&mut layer.name);
+                }
+                ui.end_row();
+                ui.label("Colour");
+                let colour = self.layer_display_colour(id);
+                let rgb = parse_hex_color(&colour).unwrap_or((0, 0, 0));
+                let mut srgb = [rgb.0, rgb.1, rgb.2];
+                if ui.color_edit_button_srgb(&mut srgb).changed() {
+                    self.set_layer_colour(id, &to_hex(srgb[0], srgb[1], srgb[2]));
+                }
+                ui.end_row();
+            });
+        ui.separator();
+        let cut = self.layer_mode(id).0;
+        if let Some(cut_id) = cut.clone() {
+            ui.label(egui::RichText::new("Cut settings").strong());
+            let mut open_all = false;
+            egui::Grid::new(("row_cut", id))
+                .num_columns(2)
+                .spacing([8.0, 3.0])
+                .show(ui, |ui| {
+                    let Some(operation) = self
+                        .editor
+                        .document
+                        .operations
+                        .iter_mut()
+                        .find(|operation| operation.id == cut_id)
+                    else {
+                        ui.weak("The cut entry is missing");
+                        return;
+                    };
+                    ui.label("Cut");
+                    ui.text_edit_singleline(&mut operation.name);
+                    ui.end_row();
+                    ui.label("Mode");
+                    let mut kind = operation.op_type;
+                    egui::ComboBox::from_id_salt(("row_cut_mode", id))
+                        .width(130.0)
+                        .selected_text(kind.label())
+                        .show_ui(ui, |ui| {
+                            for candidate in OperationType::all() {
+                                if ui
+                                    .selectable_value(&mut kind, candidate, candidate.label())
+                                    .clicked()
+                                {
+                                    ui.close();
+                                }
+                            }
+                        });
+                    operation.op_type = kind;
+                    ui.end_row();
+                    ui.label("Speed (mm/min)");
+                    ui.add(
+                        egui::DragValue::new(&mut operation.params.speed)
+                            .speed(10.0)
+                            .range(1.0..=100_000.0),
+                    );
+                    ui.end_row();
+                    ui.label("Power (%)");
+                    ui.add(
+                        egui::DragValue::new(&mut operation.params.power)
+                            .speed(1.0)
+                            .range(0.0..=100.0),
+                    );
+                    ui.end_row();
+                    ui.label("Passes");
+                    ui.add(
+                        egui::DragValue::new(&mut operation.params.passes)
+                            .speed(0.2)
+                            .range(1..=1000),
+                    );
+                    ui.end_row();
+                    ui.label("DPI");
+                    let mut dpi = (25.4 / operation.params.line_interval_mm.max(0.001)).round();
+                    let response = ui
+                        .add(
+                            egui::DragValue::new(&mut dpi)
+                                .speed(1.0)
+                                .range(10.0..=2540.0)
+                                .max_decimals(0),
+                        )
+                        .on_hover_text("Lines per inch; stored as the line interval in mm");
+                    if response.changed() {
+                        operation.params.line_interval_mm = 25.4 / dpi.max(1.0);
+                    }
+                    ui.end_row();
+                    ui.label("Air assist");
+                    ui.checkbox(&mut operation.params.air_assist, "");
+                    ui.end_row();
+                    ui.label("Output");
+                    ui.checkbox(&mut operation.enabled, "");
+                    ui.end_row();
+                    if ui
+                        .button("All settings...")
+                        .on_hover_text("Passes, leads, kerf, tabs, fill and output")
+                        .clicked()
+                    {
+                        open_all = true;
+                    }
+                });
+            if open_all {
+                self.active_operation = Some(cut_id);
+                self.cuts_open = true;
+                ui.close();
+            }
+        } else {
+            ui.weak("This layer has no cut entry.");
+            if ui.button("Add cut entry").clicked() {
+                let before = self.editor.document.clone();
+                let colour = self.layer_display_colour(id);
+                let operation = self.editor.ensure_operation_for_colour(&colour);
+                if let Some(layer) = self.editor.document.layer_mut(id) {
+                    layer.operation_id = Some(operation.clone());
+                }
+                let ids: Vec<String> = self
+                    .editor
+                    .document
+                    .objects_on_layer(id)
+                    .iter()
+                    .map(|object| object.id.clone())
+                    .collect();
+                for object_id in ids {
+                    if let Some(object) = self.editor.document.object_mut(&object_id) {
+                        object.operation_id = Some(operation.clone());
+                    }
+                }
+                if self.editor.document != before {
+                    self.editor.history.record(&before, "Cut entry");
+                }
+                ui.close();
+            }
         }
+        ui.separator();
         if ui.button("Duplicate layer").clicked() {
             if let Some(copy) = self.editor.duplicate_layer(id) {
                 self.editor.active_layer_id = copy;
@@ -588,39 +673,10 @@ impl BeamBurinApp {
             }
             ui.close();
         }
-        ui.menu_button("Mode", |ui| {
-            if ui.button("None").clicked() {
-                assign = Some(None);
-                ui.close();
-            }
-            for (op_id, op_name) in &operations {
-                if ui
-                    .selectable_label(mode == Some(op_id.as_str()), op_name)
-                    .clicked()
-                {
-                    assign = Some(Some(op_id.clone()));
-                    ui.close();
-                }
-            }
-        });
-        if let Some(mode) = mode {
-            if ui.button("All settings...").clicked() {
-                self.active_operation = Some(mode.to_string());
-                self.cuts_open = true;
-                ui.close();
-            }
-        }
-        if let Some(assignment) = assign {
-            let changed = self
-                .editor
-                .assign_operation_to_layer(id, assignment.as_deref());
-            self.status = format!("Assigned a mode to {changed} object(s)");
-        }
         if name.is_empty() {
             ui.weak("Missing layer");
         }
     }
-
     /// Compact colour strip: applies the colour to the selection, or makes it
     /// the colour of the active layer so the next shapes use it.
     pub(super) fn color_palette(&mut self, ui: &mut Ui) {
@@ -670,6 +726,7 @@ impl BeamBurinApp {
             let active = self.editor.active_layer_id.clone();
             if let Some(layer) = self.editor.document.layer_mut(&active) {
                 layer.color = colour.to_string();
+                layer.operation_id = Some(operation.clone());
             }
             let ids: Vec<String> = self
                 .editor
@@ -716,6 +773,7 @@ impl BeamBurinApp {
                 if colours.iter().all(|value| value == colour) {
                     if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
                         layer.color = colour.to_string();
+                        layer.operation_id = Some(operation.clone());
                     }
                 }
             }
@@ -724,40 +782,6 @@ impl BeamBurinApp {
                 selected.len(),
                 cut_entry_note(created)
             );
-        }
-        if self.editor.document != before {
-            self.editor.history.record(&before, "Colour");
-        }
-    }
-
-    /// Operation whose cut colour matches `colour`, if any.
-    fn operation_for_colour(&self, colour: &str) -> Option<String> {
-        self.editor.operation_for_colour(colour)
-    }
-
-    /// Give an operation a colour and carry it to the layers that use it, so
-    /// the table, the canvas and the cut order stay consistent.
-    fn set_operation_colour(&mut self, operation_id: &str, colour: &str) {
-        let before = self.editor.document.clone();
-        if let Some(operation) = self
-            .editor
-            .document
-            .operations
-            .iter_mut()
-            .find(|operation| operation.id == operation_id)
-        {
-            operation.params.color = colour.to_string();
-        }
-        let layers: Vec<String> = self
-            .editor
-            .document
-            .layers
-            .iter()
-            .map(|layer| layer.id.clone())
-            .filter(|layer_id| self.layer_mode(layer_id).0.as_deref() == Some(operation_id))
-            .collect();
-        for layer_id in layers {
-            self.set_layer_colour_inner(&layer_id, colour);
         }
         if self.editor.document != before {
             self.editor.history.record(&before, "Colour");
@@ -784,6 +808,9 @@ impl BeamBurinApp {
             layer.color = colour.to_string();
         }
         let operation = self.editor.ensure_operation_for_colour(colour);
+        if let Some(layer) = self.editor.document.layer_mut(layer_id) {
+            layer.operation_id = Some(operation.clone());
+        }
         for id in ids {
             if let Some(object) = self.editor.document.object_mut(&id) {
                 object.color = Some(colour.to_string());
@@ -806,388 +833,6 @@ impl BeamBurinApp {
         match colours.as_slice() {
             [colour] => colour.clone(),
             _ => layer.color.clone(),
-        }
-    }
-
-    pub(super) fn operations_section(&mut self, ui: &mut Ui) {
-        use crate::operations::OperationType;
-
-        let before = self.editor.document.clone();
-        let operations: Vec<_> = self
-            .editor
-            .document
-            .operations
-            .iter()
-            .map(|operation| {
-                (
-                    operation.id.clone(),
-                    operation.name.clone(),
-                    operation.op_type,
-                    operation.enabled,
-                    operation.params.speed,
-                    operation.params.power,
-                )
-            })
-            .collect();
-        ui.horizontal(|ui| {
-            if ui.button("+ Operation").clicked() {
-                let id = self.editor.add_operation(
-                    format!("Operation {}", operations.len() + 1),
-                    OperationType::OutlineCutting,
-                );
-                self.active_operation = Some(id);
-            }
-            let active = self.active_operation.clone().unwrap_or_default();
-            if ui
-                .add_enabled(
-                    operations.iter().any(|(id, ..)| *id == active),
-                    egui::Button::new("- Operation"),
-                )
-                .clicked()
-            {
-                self.editor.remove_operation(&active);
-                self.active_operation = None;
-            }
-        });
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            egui::Grid::new("operations_table")
-                .num_columns(7)
-                .striped(true)
-                .spacing([8.0, 4.0])
-                .show(ui, |ui| {
-                    for header in ["On", "Colour", "Operation", "Type", "Spd/Pwr", "Used", ""] {
-                        ui.strong(header);
-                    }
-                    ui.end_row();
-                    for (index, (id, name, op_type, enabled, speed, power)) in
-                        operations.iter().enumerate()
-                    {
-                        let mut is_enabled = *enabled;
-                        if ui
-                            .push_id(("operation_enabled", id), |ui| {
-                                ui.checkbox(&mut is_enabled, "")
-                            })
-                            .inner
-                            .changed()
-                        {
-                            if let Some(operation) = self
-                                .editor
-                                .document
-                                .operations
-                                .iter_mut()
-                                .find(|operation| operation.id == *id)
-                            {
-                                operation.enabled = is_enabled;
-                            }
-                        }
-                        let colour = self
-                            .editor
-                            .document
-                            .operations
-                            .iter()
-                            .find(|operation| operation.id == *id)
-                            .map_or_else(
-                                || "#000000".to_string(),
-                                |operation| operation.params.color.clone(),
-                            );
-                        let rgb = parse_hex_color(&colour).unwrap_or((0, 0, 0));
-                        let mut srgb = [rgb.0, rgb.1, rgb.2];
-                        if ui
-                            .push_id(("operation_colour", id), |ui| {
-                                ui.color_edit_button_srgb(&mut srgb)
-                            })
-                            .inner
-                            .changed()
-                        {
-                            let colour = to_hex(srgb[0], srgb[1], srgb[2]);
-                            self.set_operation_colour(id, &colour);
-                        }
-                        let selected = self.active_operation.as_deref() == Some(id.as_str());
-                        let label = format!("{}  {name}", index + 1);
-                        if ui.selectable_label(selected, label).clicked() {
-                            self.active_operation = Some(id.clone());
-                        }
-                        ui.label(op_type.label());
-                        ui.label(format!("{speed:.0} / {power:.0}"));
-                        let used = self
-                            .editor
-                            .document
-                            .objects
-                            .iter()
-                            .filter(|object| object.operation_id.as_deref() == Some(id.as_str()))
-                            .count();
-                        ui.weak(used.to_string());
-                        ui.horizontal(|ui| {
-                            if ui
-                                .small_button("Up")
-                                .on_hover_text("Run this operation earlier")
-                                .clicked()
-                            {
-                                self.editor.move_operation(id, -1);
-                            }
-                            if ui
-                                .small_button("Down")
-                                .on_hover_text("Run this operation later")
-                                .clicked()
-                            {
-                                self.editor.move_operation(id, 1);
-                            }
-                            if ui
-                                .small_button("Duplicate")
-                                .on_hover_text("Duplicate this operation")
-                                .clicked()
-                            {
-                                if let Some(copy) = self.editor.duplicate_operation(id) {
-                                    self.active_operation = Some(copy);
-                                }
-                            }
-                        });
-                        ui.end_row();
-                    }
-                });
-        });
-        let mut copy_parameters = false;
-        let mut paste_parameters = false;
-        let mut save_as_profile = false;
-        let mut dependency_choice: Option<Option<String>> = None;
-        if let Some(active) = self.active_operation.clone() {
-            if let Some(operation) = self
-                .editor
-                .document
-                .operations
-                .iter_mut()
-                .find(|operation| operation.id == active)
-            {
-                ui.label("Name");
-                ui.text_edit_singleline(&mut operation.name);
-                let mut op_type = operation.op_type;
-                egui::ComboBox::from_label("Type")
-                    .selected_text(op_type.label())
-                    .show_ui(ui, |ui| {
-                        for candidate in OperationType::all() {
-                            ui.selectable_value(&mut op_type, candidate, candidate.label());
-                        }
-                    });
-                operation.op_type = op_type;
-                ui.horizontal(|ui| {
-                    ui.label("Runs after");
-                    let selected = operation.depends_on.first().cloned();
-                    let selected_text = selected
-                        .as_ref()
-                        .and_then(|id| {
-                            operations
-                                .iter()
-                                .find(|(operation_id, ..)| operation_id == id)
-                                .map(|(_, name, ..)| name.clone())
-                        })
-                        .unwrap_or_else(|| "None".to_string());
-                    egui::ComboBox::from_id_salt("operation_dependency")
-                        .selected_text(selected_text)
-                        .show_ui(ui, |ui| {
-                            if ui.selectable_label(selected.is_none(), "None").clicked() {
-                                dependency_choice = Some(None);
-                            }
-                            for (id, name, ..) in &operations {
-                                if *id == active {
-                                    continue;
-                                }
-                                if ui
-                                    .selectable_label(
-                                        selected.as_deref() == Some(id.as_str()),
-                                        name,
-                                    )
-                                    .clicked()
-                                {
-                                    dependency_choice = Some(Some(id.clone()));
-                                }
-                            }
-                        });
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Speed");
-                    ui.add(
-                        egui::DragValue::new(&mut operation.params.speed)
-                            .speed(10.0)
-                            .range(1.0..=20000.0)
-                            .suffix(" mm/min"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Power");
-                    ui.add(
-                        egui::DragValue::new(&mut operation.params.power)
-                            .speed(1.0)
-                            .range(0.0..=100.0)
-                            .suffix(" %"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Passes");
-                    ui.add(
-                        egui::DragValue::new(&mut operation.params.passes)
-                            .speed(1.0)
-                            .range(1..=100),
-                    );
-                    ui.label("Interval");
-                    ui.add(
-                        egui::DragValue::new(&mut operation.params.line_interval_mm)
-                            .speed(0.01)
-                            .range(0.01..=10.0)
-                            .suffix(" mm"),
-                    );
-                });
-                if matches!(
-                    operation.op_type,
-                    OperationType::Fill
-                        | OperationType::FillWithOutline
-                        | OperationType::FillWithOffset
-                ) {
-                    ui.horizontal(|ui| {
-                        ui.label("Fill angle");
-                        ui.add(
-                            egui::DragValue::new(&mut operation.params.fill_angle_degrees)
-                                .speed(1.0)
-                                .range(-180.0..=180.0)
-                                .suffix(" deg"),
-                        );
-                        ui.label("Margin");
-                        ui.add(
-                            egui::DragValue::new(&mut operation.params.fill_margin_mm)
-                                .speed(0.1)
-                                .range(0.0..=50.0)
-                                .suffix(" mm"),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Pattern offset");
-                        ui.add(
-                            egui::DragValue::new(&mut operation.params.fill_offset_mm)
-                                .speed(0.1)
-                                .range(-50.0..=50.0)
-                                .suffix(" mm"),
-                        );
-                        ui.checkbox(&mut operation.params.fill_alternate, "Alternate direction");
-                    });
-                    ui.weak("Fill spacing is the line interval above. Offset fill uses the interval between loops.");
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("Copy parameters").clicked() {
-                        copy_parameters = true;
-                    }
-                    if ui
-                        .add_enabled(
-                            self.operation_params.is_some(),
-                            egui::Button::new("Paste parameters"),
-                        )
-                        .clicked()
-                    {
-                        paste_parameters = true;
-                    }
-                    if ui.button("Save as profile").clicked() {
-                        save_as_profile = true;
-                    }
-                });
-            }
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(
-                        !self.editor.selection.is_empty(),
-                        egui::Button::new("Assign to selection"),
-                    )
-                    .clicked()
-                {
-                    let changed = self.editor.assign_operation(Some(&active));
-                    self.status = format!("Assigned operation to {changed} object(s)");
-                }
-                if ui
-                    .add_enabled(
-                        !self.editor.selection.is_empty(),
-                        egui::Button::new("Clear assignment"),
-                    )
-                    .clicked()
-                {
-                    let changed = self.editor.assign_operation(None);
-                    self.status = format!("Cleared operation on {changed} object(s)");
-                }
-                if ui
-                    .add_enabled(
-                        !self.editor.document.objects.is_empty(),
-                        egui::Button::new("Assign to active layer"),
-                    )
-                    .clicked()
-                {
-                    let layer = self.editor.active_layer_id.clone();
-                    let changed = self.editor.assign_operation_to_layer(&layer, Some(&active));
-                    self.status = format!("Assigned operation to {changed} layer object(s)");
-                }
-                if ui
-                    .add_enabled(
-                        !self.editor.document.objects.is_empty(),
-                        egui::Button::new("Clear layer assignment"),
-                    )
-                    .clicked()
-                {
-                    let layer = self.editor.active_layer_id.clone();
-                    let changed = self.editor.assign_operation_to_layer(&layer, None);
-                    self.status = format!("Cleared operation on {changed} layer object(s)");
-                }
-            });
-        }
-        if let Some(choice) = dependency_choice {
-            if let Some(active) = self.active_operation.clone() {
-                self.editor
-                    .set_operation_dependency(&active, choice.as_deref());
-            }
-        }
-        if let Some(active) = self.active_operation.clone() {
-            if copy_parameters {
-                if let Some(operation) = self
-                    .editor
-                    .document
-                    .operations
-                    .iter()
-                    .find(|operation| operation.id == active)
-                {
-                    self.operation_params = Some(operation.params.clone());
-                    self.status = "Operation parameters copied".to_string();
-                }
-            }
-            if paste_parameters {
-                if let Some(params) = self.operation_params.clone() {
-                    if let Some(operation) = self
-                        .editor
-                        .document
-                        .operations
-                        .iter_mut()
-                        .find(|operation| operation.id == active)
-                    {
-                        operation.params = params;
-                        self.status = "Operation parameters pasted".to_string();
-                    }
-                }
-            }
-            if save_as_profile {
-                if let Some(operation) = self
-                    .editor
-                    .document
-                    .operations
-                    .iter()
-                    .find(|operation| operation.id == active)
-                {
-                    let mut profile = crate::profiles::OperationProfile::new(
-                        format!("{} profile", operation.name),
-                        operation.op_type,
-                    );
-                    profile.params = operation.params.clone();
-                    profile.notes = "Saved from an operation".to_string();
-                    self.profiles.add_operation(profile);
-                    self.save_profiles();
-                    self.status = "Operation saved as a profile".to_string();
-                }
-            }
-        }
-        if self.editor.document != before {
-            self.editor.history.record(&before, "Edit operation");
         }
     }
 }

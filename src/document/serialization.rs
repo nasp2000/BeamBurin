@@ -177,6 +177,34 @@ mod tests {
     }
 
     #[test]
+    fn layer_cut_entry_survives_round_trip() {
+        let mut doc = sample();
+        let operation = crate::operations::Operation::new(
+            "C00",
+            crate::operations::OperationType::OutlineCutting,
+        );
+        let operation_id = operation.id.clone();
+        doc.operations.push(operation);
+        doc.layers[0].operation_id = Some(operation_id.clone());
+        let back = from_json(&to_json(&doc).unwrap()).unwrap();
+        assert_eq!(
+            back.layers[0].operation_id.as_deref(),
+            Some(operation_id.as_str()),
+            "the layer cut entry was not saved"
+        );
+    }
+
+    #[test]
+    fn a_layer_cannot_use_a_missing_cut_entry() {
+        let mut doc = sample();
+        doc.layers[0].operation_id = Some("missing".to_string());
+        assert!(
+            to_json(&doc).is_err(),
+            "the dangling cut entry was accepted"
+        );
+    }
+
+    #[test]
     fn object_colour_survives_round_trip() {
         let mut doc = sample();
         let layer_id = doc.layers[0].id.clone();

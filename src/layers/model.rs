@@ -11,6 +11,12 @@ pub struct Layer {
     pub visible: bool,
     pub locked: bool,
     pub order: u32,
+    /// Cut entry assigned to this layer, so an empty layer keeps its mode.
+    ///
+    /// Older projects leave it empty; the mode is then derived from the
+    /// objects, as before.
+    #[serde(default)]
+    pub operation_id: Option<String>,
 }
 
 impl Layer {
@@ -22,6 +28,7 @@ impl Layer {
             visible: true,
             locked: false,
             order: 0,
+            operation_id: None,
         }
     }
 
@@ -41,6 +48,11 @@ impl Layer {
         }
         if normalize_hex_color(&self.color).is_none() {
             return Err(format!("invalid layer colour: {}", self.color));
+        }
+        if let Some(operation_id) = &self.operation_id {
+            if operation_id.trim().is_empty() {
+                return Err(format!("layer {} has an empty operation id", self.id));
+            }
         }
         Ok(())
     }

@@ -537,10 +537,6 @@ fn a_layer_mode_assignment_reaches_every_object() {
     let layer = app.editor.active_layer_id.clone();
     app.editor
         .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
-    let operation = app.editor.add_operation(
-        "Mode 1".to_string(),
-        crate::operations::OperationType::OutlineCutting,
-    );
     let mut harness = ui_harness(app);
     harness.run();
     let combo = harness
@@ -549,51 +545,25 @@ fn a_layer_mode_assignment_reaches_every_object() {
         .expect("the layer mode combo is missing");
     combo.click();
     harness.run();
-    harness.get_by_label("Mode 1").click();
+    harness.get_by_label("Fill").click();
     harness.run();
     let document = &harness.state().editor.document;
+    let operation = document
+        .operations
+        .iter()
+        .find(|operation| operation.op_type == crate::operations::OperationType::Fill)
+        .expect("the mode did not create a cut entry");
     assert!(
         document
             .objects_on_layer(&layer)
             .iter()
-            .all(|object| object.operation_id.as_deref() == Some(operation.as_str())),
+            .all(|object| object.operation_id.as_deref() == Some(operation.id.as_str())),
         "the mode was not assigned to the layer objects"
     );
-    assert!(
-        harness.state().status.contains("Assigned a mode"),
-        "the assignment was not reported: {}",
-        harness.state().status
-    );
-}
-
-#[test]
-fn the_layer_order_arrows_move_a_layer_in_the_cut_table() {
-    use egui_kittest::kittest::Queryable as _;
-
-    let mut app = ui_test_app();
-    let first = app.editor.active_layer_id.clone();
-    let second = app.editor.document.add_layer("Layer 2").id.clone();
-    let mut harness = ui_harness(app);
-    harness.run();
-    harness
-        .query_all_by_label("\u{25bc}")
-        .next()
-        .expect("the first row has no down arrow")
-        .click_accesskit();
-    harness.run();
-    let layers: Vec<String> = harness
-        .state()
-        .editor
-        .document
-        .layers
-        .iter()
-        .map(|layer| layer.id.clone())
-        .collect();
-    assert_eq!(layers, vec![second, first]);
     assert_eq!(
-        harness.state().editor.document.layers[0].order,
-        0,
-        "the stored cut order did not follow the table"
+        document.layer(&layer).unwrap().operation_id.as_deref(),
+        Some(operation.id.as_str()),
+        "the layer did not keep its cut entry"
     );
 }
 
@@ -729,29 +699,74 @@ fn save_as_suggests_the_project_extension_and_can_be_cancelled() {
 }
 
 #[test]
-fn the_operations_section_adds_and_removes_an_operation() {
+fn the_row_menu_adds_and_edits_the_cut_entry() {
     use egui_kittest::kittest::Queryable as _;
 
-    let mut harness = ui_harness(ui_test_app());
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
     harness.run();
-    let start = harness.state().editor.document.operations.len();
-    harness.get_by_label("+ Operation").click();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    assert!(
+        harness.query_by_label("Add cut entry").is_some(),
+        "the row menu has no cut entry action"
+    );
+    harness.get_by_label("Add cut entry").click_accesskit();
     harness.run();
     assert_eq!(
         harness.state().editor.document.operations.len(),
-        start + 1,
-        "+ Operation did not add an operation"
+        1,
+        "the row menu did not create the cut entry"
     );
     assert!(
-        harness.state().active_operation.is_some(),
-        "the new operation is not active"
+        harness
+            .state()
+            .editor
+            .document
+            .layer(&layer)
+            .expect("the layer is missing")
+            .operation_id
+            .is_some(),
+        "the layer did not keep its cut entry"
     );
-    harness.get_by_label("- Operation").click();
+
+    harness.get_by_label("Layer 1").click_secondary();
     harness.run();
-    assert_eq!(
-        harness.state().editor.document.operations.len(),
-        start,
-        "- Operation did not remove the active operation"
+    for label in ["Speed (mm/min)", "Power (%)", "Passes", "DPI"] {
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "the row menu is missing {label}"
+        );
+    }
+}
+
+#[test]
+fn the_row_menu_opens_the_full_cut_settings() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drawing colour #e53935")
+        .click_accesskit();
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness.get_by_label("All settings...").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().cuts_open,
+        "the full cut settings did not open"
+    );
+    assert!(
+        harness.query_by_label("Cut settings").is_some(),
+        "the Cuts window has no settings"
     );
 }
 
@@ -943,63 +958,6 @@ fn a_broken_svg_is_rejected_without_touching_the_document() {
         harness.state().status.contains("Import failed"),
         "the failure was not reported: {}",
         harness.state().status
-    );
-}
-
-#[test]
-fn operation_actions_assign_duplicate_and_reorder() {
-    use egui_kittest::kittest::Queryable as _;
-
-    let mut app = ui_test_app();
-    app.editor
-        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
-    let mut harness = ui_harness(app);
-    harness.run();
-    harness.get_by_label("+ Operation").click();
-    harness.run();
-    let first = harness
-        .state()
-        .active_operation
-        .clone()
-        .expect("the new operation is not active");
-    harness
-        .get_by_label("Assign to selection")
-        .click_accesskit();
-    harness.run();
-    assert_eq!(
-        harness.state().editor.document.objects[0]
-            .operation_id
-            .as_deref(),
-        Some(first.as_str()),
-        "Assign to selection did not set the operation"
-    );
-    harness
-        .get_all_by_label("Duplicate")
-        .last()
-        .expect("the operation duplicate button is missing")
-        .click_accesskit();
-    harness.run();
-    assert_eq!(
-        harness.state().editor.document.operations.len(),
-        2,
-        "Duplicate did not copy the operation"
-    );
-    let copy = harness
-        .state()
-        .active_operation
-        .clone()
-        .expect("the copy is not active");
-    assert_ne!(copy, first, "the copy reused the original id");
-    harness
-        .get_all_by_label("Up")
-        .last()
-        .expect("the second Up button is missing")
-        .click_accesskit();
-    harness.run();
-    assert_eq!(
-        harness.state().editor.document.operations[0].id,
-        copy,
-        "Up did not move the operation earlier"
     );
 }
 

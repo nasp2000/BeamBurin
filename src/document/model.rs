@@ -409,6 +409,17 @@ impl Document {
             }
         }
 
+        for layer in &self.layers {
+            if let Some(operation_id) = &layer.operation_id {
+                if !operation_ids.contains(operation_id.as_str()) {
+                    return Err(format!(
+                        "layer {} uses missing operation {operation_id}",
+                        layer.id
+                    ));
+                }
+            }
+        }
+
         for operation in &self.operations {
             for dependency in &operation.depends_on {
                 if !operation_ids.contains(dependency.as_str()) {
