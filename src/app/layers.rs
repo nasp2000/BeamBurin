@@ -293,10 +293,13 @@ impl BeamBurinApp {
                                     let mut output = operation.is_some_and(|entry| entry.4);
                                     let output_response = ui
                                         .push_id(("layer_output", id), |ui| {
-                                            ui.add_enabled(
-                                                operation.is_some(),
-                                                egui::Checkbox::without_text(&mut output),
-                                            )
+                                            ui.add_enabled_ui(operation.is_some(), |ui| {
+                                                ui.add_sized(
+                                                    [22.0, 18.0],
+                                                    egui::Checkbox::without_text(&mut output),
+                                                )
+                                            })
+                                            .inner
                                         })
                                         .inner;
                                     output_response.widget_info(|| {
@@ -342,10 +345,13 @@ impl BeamBurinApp {
                                     let mut air = operation.is_some_and(|entry| entry.5);
                                     let air_response = ui
                                         .push_id(("layer_air", id), |ui| {
-                                            ui.add_enabled(
-                                                operation.is_some(),
-                                                egui::Checkbox::without_text(&mut air),
-                                            )
+                                            ui.add_enabled_ui(operation.is_some(), |ui| {
+                                                ui.add_sized(
+                                                    [22.0, 18.0],
+                                                    egui::Checkbox::without_text(&mut air),
+                                                )
+                                            })
+                                            .inner
                                         })
                                         .inner;
                                     air_response.widget_info(|| {
