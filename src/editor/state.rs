@@ -830,11 +830,22 @@ impl EditorState {
             .objects
             .iter()
             .filter(|object| {
-                [&object.style.stroke, &object.style.fill]
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|value| crate::color::normalize_hex_color(value))
-                    .any(|value| value == normalized)
+                let drawing = object
+                    .color
+                    .as_deref()
+                    .and_then(crate::color::normalize_hex_color);
+                let layer = object.color.is_none().then(|| {
+                    self.document
+                        .layer(&object.layer_id)
+                        .and_then(|layer| crate::color::normalize_hex_color(&layer.color))
+                });
+                drawing.as_deref() == Some(normalized.as_str())
+                    || layer.flatten().as_deref() == Some(normalized.as_str())
+                    || [&object.style.stroke, &object.style.fill]
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|value| crate::color::normalize_hex_color(value))
+                        .any(|value| value == normalized)
             })
             .map(|object| object.id.clone())
             .collect();
@@ -3816,6 +3827,27 @@ mod tests {
             (0, 0),
             "a lone colour is not a group"
         );
+    }
+
+    #[test]
+    fn objects_are_selected_by_their_drawing_colour() {
+        let mut editor = editor();
+        editor.add_rectangle(Point2::new(0.0, 0.0), Point2::new(4.0, 4.0));
+        editor.add_rectangle(Point2::new(10.0, 0.0), Point2::new(14.0, 4.0));
+        editor.document.objects[0].color = Some("#e53935".to_string());
+        editor.document.objects[1].color = None;
+        let layer = editor.document.layers[0].id.clone();
+        editor.document.layer_mut(&layer).unwrap().color = "#1e88e5".to_string();
+        editor.selection.clear();
+        assert_eq!(editor.select_by_color("#E53935"), 1);
+        assert!(editor.selection.contains(&editor.document.objects[0].id));
+        assert_eq!(
+            editor.select_by_color("#1e88e5"),
+            1,
+            "the layer colour is the fallback"
+        );
+        assert!(editor.selection.contains(&editor.document.objects[1].id));
+        assert_eq!(editor.select_by_color("not-a-colour"), 0);
     }
 
     #[test]

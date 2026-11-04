@@ -842,6 +842,34 @@ fn the_row_menu_opens_from_the_speeds_cell() {
 }
 
 #[test]
+fn the_row_menu_selects_every_object_of_its_colour() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0));
+    app.editor
+        .add_rectangle(Point2::new(30.0, 10.0), Point2::new(40.0, 20.0));
+    let layer = app.editor.active_layer_id.clone();
+    for object in &mut app.editor.document.objects {
+        object.color = Some("#e53935".to_string());
+    }
+    app.editor.document.layer_mut(&layer).unwrap().color = "#e53935".to_string();
+    app.editor.selection.clear();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness.get_by_label("Select this colour").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.selection.len(),
+        2,
+        "select this colour missed an object"
+    );
+}
+
+#[test]
 fn the_row_menu_adds_and_edits_the_cut_entry() {
     use egui_kittest::kittest::Queryable as _;
 

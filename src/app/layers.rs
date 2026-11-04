@@ -773,6 +773,12 @@ impl BeamBurinApp {
             self.status = format!("Selected {count} object(s)");
             ui.close();
         }
+        if ui.button("Select this colour").clicked() {
+            let colour = self.layer_display_colour(id);
+            let count = self.editor.select_by_color(&colour);
+            self.status = format!("Selected {count} object(s) of {colour}");
+            ui.close();
+        }
         if ui.button("Group objects").clicked() {
             let count = self.editor.group_layer_objects(id);
             self.status = format!("Grouped {count} object(s)");
@@ -829,6 +835,19 @@ impl BeamBurinApp {
                 for colour in DRAWING_COLOURS {
                     let (r, g, b) = parse_hex_color(colour).unwrap_or((0, 0, 0));
                     let selected = active.as_deref() == Some(colour);
+                    let cut = self.editor.operation_for_colour(colour).and_then(|id| {
+                        self.editor
+                            .document
+                            .operations
+                            .iter()
+                            .find(|operation| operation.id == id)
+                            .map(|operation| {
+                                format!(
+                                    "{} · {:.0} mm/min · {:.0}%",
+                                    operation.name, operation.params.speed, operation.params.power
+                                )
+                            })
+                    });
                     let response = ui.add(
                         egui::Button::new("")
                             .fill(Color32::from_rgb(r, g, b))
@@ -839,6 +858,21 @@ impl BeamBurinApp {
                                 egui::Stroke::NONE
                             }),
                     );
+                    if cut.is_some() {
+                        let luminance =
+                            (0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b))
+                                / 255.0;
+                        let ink = if luminance > 0.6 {
+                            Color32::BLACK
+                        } else {
+                            Color32::WHITE
+                        };
+                        ui.painter().circle_filled(
+                            response.rect.right_bottom() + egui::vec2(-3.5, -3.5),
+                            2.0,
+                            ink,
+                        );
+                    }
                     response.widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::Button,
@@ -846,7 +880,11 @@ impl BeamBurinApp {
                             format!("Drawing colour {colour}"),
                         )
                     });
-                    if response.on_hover_text(format!("Use {colour}")).clicked() {
+                    let tip = cut.as_ref().map_or_else(
+                        || format!("Use {colour} — no cut entry"),
+                        |cut| format!("Use {colour}\nCut {cut}"),
+                    );
+                    if response.on_hover_text(tip).clicked() {
                         self.apply_drawing_colour(colour);
                     }
                 }
