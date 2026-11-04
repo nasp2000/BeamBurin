@@ -574,14 +574,32 @@ impl BeamBurinApp {
             ui.weak("No cut entry for this layer");
             return;
         };
+        use crate::operations::OperationType;
+
         let name = entry.name.clone();
-        let mode = entry.op_type.label();
+        let current_mode = entry.op_type;
+        let mut mode = current_mode;
         let mut speed = entry.params.speed;
         let mut power = entry.params.power;
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(format!("Cut: {name}")).strong());
-            ui.weak(mode);
+            egui::ComboBox::from_id_salt(("object_cut_mode", operation_id.as_str()))
+                .width(120.0)
+                .selected_text(mode.label())
+                .show_ui(ui, |ui| {
+                    for candidate in OperationType::all() {
+                        if ui
+                            .selectable_value(&mut mode, candidate, candidate.label())
+                            .clicked()
+                        {
+                            ui.close();
+                        }
+                    }
+                });
         });
+        if mode != current_mode {
+            self.set_cut_mode(&operation_id, mode);
+        }
         let mut changed = false;
         egui::Grid::new(("object_cut_quick", operation_id.as_str()))
             .num_columns(2)
@@ -608,6 +626,26 @@ impl BeamBurinApp {
             });
         if changed {
             self.set_cut_speed_power(&operation_id, speed, power);
+        }
+    }
+
+    pub(super) fn set_cut_mode(
+        &mut self,
+        operation_id: &str,
+        kind: crate::operations::OperationType,
+    ) {
+        let before = self.editor.document.clone();
+        if let Some(entry) = self
+            .editor
+            .document
+            .operations
+            .iter_mut()
+            .find(|entry| entry.id == operation_id)
+        {
+            entry.op_type = kind;
+        }
+        if self.editor.document != before {
+            self.editor.history.record(&before, "Cut mode");
         }
     }
 
@@ -747,6 +785,14 @@ impl BeamBurinApp {
             if open_all {
                 self.active_operation = Some(cut_id);
                 self.cuts_open = true;
+                ui.close();
+            }
+            if ui
+                .button("Delete cut entry")
+                .on_hover_text("Remove the cut entry; objects keep their colour")
+                .clicked()
+            {
+                self.editor.remove_operation(&cut_id);
                 ui.close();
             }
         } else {
