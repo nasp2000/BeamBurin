@@ -30,7 +30,8 @@ impl BeamBurinApp {
                     || self.task.is_some()
                     || self.machines_open
                     || self.machine_wizard_open
-                    || self.cuts_open;
+                    || self.cuts_open
+                    || self.palette_open;
                 let pointer = if modal {
                     None
                 } else {
