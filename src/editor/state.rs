@@ -3665,12 +3665,13 @@ mod tests {
         assert!((after.0.y - before.0.y).abs() < 1e-9);
         assert!((after.1.x - before.1.x).abs() < 1e-9);
         assert!((after.1.y - before.1.y).abs() < 1e-9);
+        // Converting again is a no-op while both are already paths.
+        assert_eq!(editor.convert_selection_to_paths(), 0);
         assert!(editor.undo().is_some());
         assert!(matches!(
             editor.document.object(&rect).unwrap().shape,
             Shape::Rect { .. }
         ));
-        assert_eq!(editor.convert_selection_to_paths(), 0);
     }
 
     #[test]
