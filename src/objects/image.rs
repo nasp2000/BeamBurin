@@ -344,6 +344,38 @@ pub fn target_resolution(
     })
 }
 
+/// Working pixel size and line interval for an engraving at a target width.
+///
+/// The aspect ratio is the one the prepared image already has, so crop and
+/// rotation are respected. `None` means the request would leave the supported
+/// range (1–20000 px, 0.01–2.0 mm).
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn engraving_resolution(
+    target_width_mm: f64,
+    target_dpi: f64,
+    aspect: f64,
+) -> Option<(u32, u32, f32)> {
+    if !target_width_mm.is_finite() || target_width_mm <= 0.0 {
+        return None;
+    }
+    if !target_dpi.is_finite() || !(50.0..=1000.0).contains(&target_dpi) {
+        return None;
+    }
+    if !aspect.is_finite() || aspect <= 0.0 {
+        return None;
+    }
+    let width_px = target_width_mm / 25.4 * target_dpi;
+    let height_px = width_px * aspect;
+    if !(1.0..=20_000.0).contains(&width_px) || !(1.0..=20_000.0).contains(&height_px) {
+        return None;
+    }
+    let interval = (25.4 / target_dpi) as f32;
+    if !(0.01..=2.0).contains(&interval) {
+        return None;
+    }
+    Some((width_px.round() as u32, height_px.round() as u32, interval))
+}
+
 impl ImageObject {
     pub fn new(path: impl Into<String>, width_px: u32, height_px: u32, dpi: f64) -> Self {
         Self {
@@ -439,6 +471,29 @@ impl ImageObject {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_engraving_resolution_follows_the_target_width_and_dpi() {
+        let (width, height, interval) = engraving_resolution(100.0, 254.0, 0.5).unwrap();
+        assert_eq!(width, 1000);
+        assert_eq!(height, 500);
+        assert!((interval - 0.1).abs() < 1e-6);
+        // One inch at 300 dpi is 300 px and a 0.0847 mm interval.
+        let (width, height, interval) = engraving_resolution(25.4, 300.0, 2.0).unwrap();
+        assert_eq!(width, 300);
+        assert_eq!(height, 600);
+        assert!((interval - 25.4 / 300.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_engraving_resolution_rejects_impossible_requests() {
+        assert!(engraving_resolution(0.0, 254.0, 1.0).is_none());
+        assert!(engraving_resolution(100.0, 0.0, 1.0).is_none());
+        assert!(engraving_resolution(100.0, 2000.0, 1.0).is_none());
+        assert!(engraving_resolution(100.0, 254.0, 0.0).is_none());
+        // 10 m at 1000 dpi would need 393701 px, beyond the working limit.
+        assert!(engraving_resolution(10_000.0, 1000.0, 1.0).is_none());
+    }
 
     #[test]
     fn every_image_mode_explains_itself() {

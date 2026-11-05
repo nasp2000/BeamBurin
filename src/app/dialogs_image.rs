@@ -49,6 +49,7 @@ impl BeamBurinApp {
         let mut open_test_grid = false;
         let mut preset: Option<crate::objects::ImageSettings> = None;
         let mut auto_levels = false;
+        let mut target_message: Option<String> = None;
         egui::Window::new(format!("Adjust image - {object_name}"))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -162,6 +163,39 @@ impl BeamBurinApp {
                                 }
                                 None => {
                                     ui.weak("Enter a positive width and DPI");
+                                }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button("Apply target")
+                                .on_hover_text(
+                                    "Set the working size and line interval from the target width and DPI",
+                                )
+                                .clicked()
+                            {
+                                let (work_width, work_height) = image.effective_size_px();
+                                let aspect =
+                                    f64::from(work_height) / f64::from(work_width.max(1));
+                                match crate::objects::engraving_resolution(
+                                    target_width_mm,
+                                    target_dpi,
+                                    aspect,
+                                ) {
+                                    Some((width, height, interval)) => {
+                                        image.settings.target_width_px = width;
+                                        image.settings.target_height_px = height;
+                                        image.settings.line_interval_mm = interval;
+                                        target_message = Some(format!(
+                                            "Target applied: {width} x {height} px, {interval:.3} mm line interval"
+                                        ));
+                                    }
+                                    None => {
+                                        target_message = Some(
+                                            "The target leaves the supported working range."
+                                                .to_string(),
+                                        );
+                                    }
                                 }
                             }
                         });
@@ -449,6 +483,9 @@ impl BeamBurinApp {
 
         self.image_burn_map = burn_map;
         self.image_target_dpi = target_dpi;
+        if let Some(message) = target_message {
+            self.status = message;
+        }
         self.image_target_width_mm = target_width_mm;
         if open_test_grid {
             self.image_test_target = Some(id.clone());

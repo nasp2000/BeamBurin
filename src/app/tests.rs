@@ -2347,6 +2347,52 @@ fn the_image_adjust_auto_levels_uses_the_histogram() {
 }
 
 #[test]
+fn the_image_adjust_target_sets_the_working_size_and_interval() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("target_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_target_width_mm = 100.0;
+    app.image_target_dpi = 254.0;
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Apply target").click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("the image disappeared");
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    assert_eq!(image.settings.target_width_px, 1000);
+    assert_eq!(image.settings.target_height_px, 1000);
+    assert!(
+        (image.settings.line_interval_mm - 0.1).abs() < 1e-5,
+        "the line interval is {}",
+        image.settings.line_interval_mm
+    );
+}
+
+#[test]
 fn the_image_adjust_window_applies_every_preset() {
     use egui_kittest::kittest::Queryable as _;
 
