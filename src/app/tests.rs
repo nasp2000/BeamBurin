@@ -2570,6 +2570,38 @@ fn cancel_restores_every_image_touched_by_apply_to_selected() {
 }
 
 #[test]
+fn the_image_preview_can_zoom() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("zoom_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Fit").click_accesskit();
+    harness.run();
+    harness.get_by_label("2×").click_accesskit();
+    harness.run();
+    assert!(
+        (harness.state().image_preview_zoom - 2.0).abs() < f32::EPSILON,
+        "the preview zoom did not change"
+    );
+}
+
+#[test]
 fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
     use egui_kittest::kittest::Queryable as _;
 

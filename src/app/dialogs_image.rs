@@ -46,6 +46,7 @@ impl BeamBurinApp {
             });
         let original = image.clone();
         let mut burn_map = self.image_burn_map;
+        let mut zoom = self.image_preview_zoom;
         let mut target_dpi = self.image_target_dpi;
         let mut target_width_mm = self.image_target_width_mm;
         let original_texture = self.original_image_texture(ctx, &image);
@@ -101,14 +102,44 @@ impl BeamBurinApp {
                         ui.horizontal(|ui| {
                             ui.label("Preview");
                             ui.checkbox(&mut burn_map, "Burn map");
+                            let label = if (zoom - 1.0).abs() < f32::EPSILON {
+                                "1:1".to_string()
+                            } else if zoom > 0.0 {
+                                format!("{zoom:.0}×")
+                            } else {
+                                "Fit".to_string()
+                            };
+                            egui::ComboBox::from_id_salt("image_preview_zoom")
+                                .selected_text(label)
+                                .width(70.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut zoom, 0.0, "Fit");
+                                    ui.selectable_value(&mut zoom, 1.0, "1:1");
+                                    ui.selectable_value(&mut zoom, 2.0, "2×");
+                                    ui.selectable_value(&mut zoom, 4.0, "4×");
+                                });
                         });
                         if let Some(texture) = burn_texture.as_ref().or(processed_texture.as_ref())
                         {
-                            ui.add(
-                                egui::Image::new(texture)
-                                    .max_size(egui::vec2(320.0, 220.0))
-                                    .shrink_to_fit(),
-                            );
+                            if zoom > 0.0 {
+                                egui::ScrollArea::both()
+                                    .id_salt("image_preview_zoom_scroll")
+                                    .max_width(320.0)
+                                    .max_height(220.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Image::new(texture)
+                                                .fit_to_exact_size(texture.size_vec2() * zoom),
+                                        );
+                                    });
+                            } else {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .max_size(egui::vec2(320.0, 220.0))
+                                        .shrink_to_fit(),
+                                );
+                            }
                         } else {
                             ui.weak("No preview available");
                         }
@@ -567,6 +598,7 @@ impl BeamBurinApp {
             });
 
         self.image_burn_map = burn_map;
+        self.image_preview_zoom = zoom;
         self.image_target_dpi = target_dpi;
         if let Some(message) = target_message {
             self.status = message;

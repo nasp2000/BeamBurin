@@ -425,6 +425,7 @@ pub struct BeamBurinApp {
     image_adjust: Option<String>,
     image_adjust_snapshot: Option<Document>,
     image_burn_map: bool,
+    image_preview_zoom: f32,
     image_estimate_speed: f64,
     image_target_dpi: f64,
     image_target_width_mm: f64,
