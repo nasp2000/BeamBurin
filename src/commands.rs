@@ -34,6 +34,8 @@ pub enum CommandId {
     ClosePaths,
     JoinPaths,
     ConvertToPath,
+    CornerRadius,
+    ClearCornerRadius,
     BooleanUnion,
     BooleanDifference,
     BooleanIntersection,
