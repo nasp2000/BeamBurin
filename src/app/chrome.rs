@@ -746,6 +746,17 @@ impl BeamBurinApp {
                 }
                 if ui
                     .add_enabled(
+                        enabled,
+                        icons::widget(ui, Icon::Nodes, "Convert to path"),
+                    )
+                    .clicked()
+                {
+                    let count = self.editor.convert_selection_to_paths();
+                    self.status = format!("Converted {count} shape(s) to paths");
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
                         self.editor.selection.len() == 2,
                         icons::widget(ui, Icon::TextOnPath, "Fit text to path"),
                     )

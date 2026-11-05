@@ -1959,6 +1959,33 @@ impl EditorState {
         }
     }
 
+    /// Replace rectangles and ellipses in the selection with their path form.
+    ///
+    /// The transform and style stay with the object, so the drawing does not
+    /// move. Paths, text and images are left alone. Returns how many objects
+    /// changed and records one undo step.
+    pub fn convert_selection_to_paths(&mut self) -> usize {
+        let convertible: Vec<usize> = self
+            .selected_indices()
+            .into_iter()
+            .filter(|index| {
+                matches!(
+                    self.document.objects[*index].shape,
+                    Shape::Rect { .. } | Shape::Ellipse { .. }
+                )
+            })
+            .collect();
+        if convertible.is_empty() {
+            return 0;
+        }
+        self.record_action("Convert to path");
+        for index in &convertible {
+            let path = self.document.objects[*index].shape.to_path();
+            self.document.objects[*index].shape = Shape::Path(path);
+        }
+        convertible.len()
+    }
+
     /// Move the selection so its bounding-box minimum corner is at (x, y).
     ///
     /// Records one undo step. Returns `false` when nothing is selected or the
@@ -3609,6 +3636,41 @@ mod tests {
         editor.selection.add(b.clone());
         assert_eq!(editor.raise_selection(), 2);
         assert_eq!(order(&editor), vec![c, a, b]);
+    }
+
+    #[test]
+    fn convert_to_path_keeps_the_shape_in_place_and_undoes_once() {
+        let mut editor = editor();
+        let rect = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        let ellipse = editor
+            .add_ellipse(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
+            .unwrap();
+        let before = editor.document.object(&rect).unwrap().bounds().unwrap();
+        editor.selection.clear();
+        editor.selection.add(rect.clone());
+        editor.selection.add(ellipse.clone());
+        assert_eq!(editor.convert_selection_to_paths(), 2);
+        assert!(matches!(
+            editor.document.object(&rect).unwrap().shape,
+            Shape::Path(_)
+        ));
+        assert!(matches!(
+            editor.document.object(&ellipse).unwrap().shape,
+            Shape::Path(_)
+        ));
+        let after = editor.document.object(&rect).unwrap().bounds().unwrap();
+        assert!((after.0.x - before.0.x).abs() < 1e-9);
+        assert!((after.0.y - before.0.y).abs() < 1e-9);
+        assert!((after.1.x - before.1.x).abs() < 1e-9);
+        assert!((after.1.y - before.1.y).abs() < 1e-9);
+        assert!(editor.undo().is_some());
+        assert!(matches!(
+            editor.document.object(&rect).unwrap().shape,
+            Shape::Rect { .. }
+        ));
+        assert_eq!(editor.convert_selection_to_paths(), 0);
     }
 
     #[test]

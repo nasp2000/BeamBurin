@@ -32,6 +32,7 @@ pub enum CommandId {
     SetPosition,
     ClosePaths,
     JoinPaths,
+    ConvertToPath,
     BooleanUnion,
     BooleanDifference,
     BooleanIntersection,
@@ -337,6 +338,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Close every selected open path."
+    ),
+    command!(
+        ConvertToPath,
+        "edit.convert-to-path",
+        "Convert to path",
+        Edit,
+        None,
+        false,
+        "Replace the selected rectangles and ellipses with editable paths."
     ),
     command!(
         JoinPaths,

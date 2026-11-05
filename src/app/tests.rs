@@ -594,6 +594,35 @@ fn the_edit_menu_selects_the_open_shapes() {
 }
 
 #[test]
+fn the_arrange_menu_converts_a_rectangle_to_a_path() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        .expect("the rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Convert to path").click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .expect("the object disappeared");
+    assert!(
+        matches!(object.shape, crate::document::Shape::Path(_)),
+        "the rectangle was not converted"
+    );
+}
+
+#[test]
 fn the_edit_menu_selects_the_layer_and_clears_the_selection() {
     use egui_kittest::kittest::Queryable as _;
 

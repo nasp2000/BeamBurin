@@ -578,6 +578,10 @@ impl BeamBurinApp {
             Action::SetPosition => self.open_position(),
             Action::ClosePaths => self.apply_close_paths(),
             Action::JoinPaths => self.apply_join_paths(),
+            Action::ConvertToPath => {
+                let count = self.editor.convert_selection_to_paths();
+                self.status = format!("Converted {count} shape(s) to paths");
+            }
             Action::BooleanUnion => self.apply_boolean(crate::geometry::BooleanOp::Union),
             Action::BooleanDifference => self.apply_boolean(crate::geometry::BooleanOp::Difference),
             Action::BooleanIntersection => {
