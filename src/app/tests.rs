@@ -2591,9 +2591,13 @@ fn the_image_preview_can_zoom() {
     app.image_adjust = Some(id);
     let mut harness = ui_harness(app);
     harness.run();
-    harness.get_by_label("Fit").click_accesskit();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::ComboBox, "Fit")
+        .click();
     harness.run();
-    harness.get_by_label("2×").click_accesskit();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "2×")
+        .click();
     harness.run();
     assert!(
         (harness.state().image_preview_zoom - 2.0).abs() < f32::EPSILON,
