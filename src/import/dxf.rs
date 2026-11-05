@@ -455,6 +455,7 @@ impl Context<'_> {
             letter_spacing: 0.0,
             line_spacing: 1.2,
             align,
+            uppercase: false,
         };
         let transform = parent.compose(&Transform2::rotate_around(rotation, x, y));
         self.document
