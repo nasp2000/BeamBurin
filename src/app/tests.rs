@@ -1603,15 +1603,22 @@ fn the_palette_closes_the_selected_open_path() {
     harness.run();
     harness.key_press(egui::Key::Enter);
     harness.run();
-    let object = harness
-        .state()
+    let app = harness.state();
+    assert_eq!(
+        app.editor.selection.len(),
+        1,
+        "the selection was lost before the palette ran: {}",
+        app.status
+    );
+    let object = app
         .editor
         .document
         .object(&id)
         .expect("the path disappeared");
     assert!(
         object.shape.to_path().is_closed(),
-        "the palette did not close the path"
+        "the palette did not close the path: {}",
+        app.status
     );
 }
 
