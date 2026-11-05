@@ -78,6 +78,25 @@ impl RasterStats {
     pub fn is_empty(&self) -> bool {
         self.burned == 0
     }
+
+    /// Burned share with one decimal and the number of burned runs.
+    ///
+    /// Integer per-mille keeps the text exact for the interface and avoids a
+    /// floating-point cast.
+    pub fn coverage_text(&self) -> String {
+        let total = self.width.saturating_mul(self.height);
+        let per_mille = if total == 0 {
+            0
+        } else {
+            self.burned.saturating_mul(1000) / total
+        };
+        let runs = if self.runs == 1 {
+            "1 run".to_string()
+        } else {
+            format!("{} runs", self.runs)
+        };
+        format!("{}.{}% burned, {runs}", per_mille / 10, per_mille % 10)
+    }
 }
 
 /// Rough engraving time from the processed pixels.
@@ -1037,6 +1056,28 @@ mod tests {
         assert_eq!(stats.runs, 3);
         assert_eq!(stats.gap_pixels, 1);
         assert!(!stats.is_empty());
+    }
+
+    #[test]
+    fn coverage_text_reports_the_burned_share_and_runs() {
+        let stats = super::RasterStats {
+            width: 400,
+            height: 100,
+            burned: 12_345,
+            runs: 7,
+            gap_pixels: 0,
+        };
+        assert_eq!(stats.coverage_text(), "30.8% burned, 7 runs");
+        let one = super::RasterStats {
+            width: 10,
+            height: 10,
+            burned: 50,
+            runs: 1,
+            gap_pixels: 0,
+        };
+        assert_eq!(one.coverage_text(), "50.0% burned, 1 run");
+        let empty = super::RasterStats::default();
+        assert_eq!(empty.coverage_text(), "0.0% burned, 0 runs");
     }
 
     #[test]

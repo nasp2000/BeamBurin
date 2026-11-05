@@ -2247,6 +2247,10 @@ fn the_image_adjust_window_edits_the_settings() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    assert!(
+        harness.query_by_label_contains("burned").is_some(),
+        "the burn coverage is missing"
+    );
     for label in [
         "Target DPI",
         "Image mode",

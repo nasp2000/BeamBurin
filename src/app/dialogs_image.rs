@@ -98,6 +98,9 @@ impl BeamBurinApp {
                             image.height_mm(),
                             image.effective_dpi()
                         ));
+                        if let Some(preview) = self.image_previews.get(&id) {
+                            ui.weak(preview.stats.coverage_text());
+                        }
                     });
                 });
                 draw_histogram(ui, &histogram, &image.settings);
