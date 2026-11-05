@@ -1123,10 +1123,10 @@ mod tests {
         enhance(&mut quiet, 4, 4, 1, 1.0, 10.0);
         assert_eq!(quiet[5], 105, "denoise sharpened the small bump");
 
-        let mut edge = vec![0u8; 16];
+        let mut edge = vec![60u8; 16];
         for y in 0..4 {
-            edge[y * 4 + 2] = 255;
-            edge[y * 4 + 3] = 255;
+            edge[y * 4 + 2] = 200;
+            edge[y * 4 + 3] = 200;
         }
         let before = edge.clone();
         enhance(&mut edge, 4, 4, 1, 1.0, 10.0);
