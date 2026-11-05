@@ -218,6 +218,8 @@ impl BeamBurinApp {
             position_open: false,
             position_x: 0.0,
             position_y: 0.0,
+            corner_radius_open: false,
+            corner_radius_value: 0.0,
             skew_x: 0.0,
             skew_y: 0.0,
             simplify_open: false,

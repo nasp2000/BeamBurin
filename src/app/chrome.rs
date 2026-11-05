@@ -768,6 +768,27 @@ impl BeamBurinApp {
                 }
                 if ui
                     .add_enabled(
+                        enabled,
+                        icons::widget(ui, Icon::Rectangle, "Corner radius..."),
+                    )
+                    .clicked()
+                {
+                    self.open_corner_radius();
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        enabled,
+                        icons::widget(ui, Icon::Rectangle, "Clear corner radius"),
+                    )
+                    .clicked()
+                {
+                    let count = self.editor.set_corner_radius(0.0);
+                    self.status = format!("Squared the corners of {count} rectangle(s)");
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
                         self.editor.selection.len() == 2,
                         icons::widget(ui, Icon::TextOnPath, "Fit text to path"),
                     )

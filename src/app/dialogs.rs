@@ -25,6 +25,9 @@ impl BeamBurinApp {
         if self.position_open {
             self.position_window(ctx);
         }
+        if self.corner_radius_open {
+            self.corner_radius_window(ctx);
+        }
         if self.material_test_open {
             self.material_test_window(ctx);
         }

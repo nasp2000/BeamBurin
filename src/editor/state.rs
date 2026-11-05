@@ -2008,6 +2008,34 @@ impl EditorState {
         }
     }
 
+    /// Set the corner radius of every selected rectangle, in millimetres.
+    ///
+    /// The value is clamped to half the smaller side so the stored radius always
+    /// matches what is drawn. Returns how many rectangles changed and records
+    /// one undo step.
+    pub fn set_corner_radius(&mut self, radius: f64) -> usize {
+        let targets: Vec<usize> = self
+            .selected_indices()
+            .into_iter()
+            .filter(|index| matches!(self.document.objects[*index].shape, Shape::Rect { .. }))
+            .collect();
+        if targets.is_empty() {
+            return 0;
+        }
+        self.record_action("Corner radius");
+        for index in &targets {
+            if let Shape::Rect {
+                width,
+                height,
+                corner_radius,
+            } = &mut self.document.objects[*index].shape
+            {
+                *corner_radius = radius.max(0.0).min(width.min(*height) / 2.0);
+            }
+        }
+        targets.len()
+    }
+
     /// Replace rectangles and ellipses in the selection with their path form.
     ///
     /// The transform and style stay with the object, so the drawing does not
@@ -3685,6 +3713,48 @@ mod tests {
         editor.selection.add(b.clone());
         assert_eq!(editor.raise_selection(), 2);
         assert_eq!(order(&editor), vec![c, a, b]);
+    }
+
+    #[test]
+    fn corner_radius_applies_to_rectangles_and_clamps_to_half_the_side() {
+        let mut editor = editor();
+        let first = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 6.0))
+            .unwrap();
+        let second = editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 20.0))
+            .unwrap();
+        let ellipse = editor
+            .add_ellipse(Point2::new(40.0, 0.0), Point2::new(50.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(first.clone());
+        editor.selection.add(second.clone());
+        editor.selection.add(ellipse.clone());
+        assert_eq!(editor.set_corner_radius(3.0), 2);
+        for id in [&first, &second] {
+            let Shape::Rect { corner_radius, .. } = &editor.document.object(id).unwrap().shape
+            else {
+                panic!("the rectangle turned into another shape");
+            };
+            assert!((corner_radius - 3.0).abs() < 1e-9);
+        }
+        assert!(matches!(
+            editor.document.object(&ellipse).unwrap().shape,
+            Shape::Ellipse { .. }
+        ));
+        assert_eq!(editor.set_corner_radius(100.0), 2);
+        let Shape::Rect { corner_radius, .. } = &editor.document.object(&first).unwrap().shape
+        else {
+            panic!("the rectangle turned into another shape");
+        };
+        assert!((corner_radius - 3.0).abs() < 1e-9);
+        assert!(editor.undo().is_some());
+        let Shape::Rect { corner_radius, .. } = &editor.document.object(&first).unwrap().shape
+        else {
+            panic!("the rectangle turned into another shape");
+        };
+        assert!((corner_radius - 3.0).abs() < 1e-9);
     }
 
     #[test]

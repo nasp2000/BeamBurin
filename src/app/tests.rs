@@ -623,6 +623,64 @@ fn the_arrange_menu_converts_a_rectangle_to_a_path() {
 }
 
 #[test]
+fn the_arrange_menu_sets_and_clears_the_corner_radius() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        .expect("the rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Corner radius...").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().corner_radius_open,
+        "the corner radius window did not open"
+    );
+    harness.state_mut().corner_radius_value = 2.0;
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .expect("the rectangle disappeared");
+    let crate::document::Shape::Rect { corner_radius, .. } = object.shape else {
+        panic!("the object is not a rectangle");
+    };
+    assert!(
+        (corner_radius - 2.0).abs() < 1e-9,
+        "radius is {corner_radius}"
+    );
+    assert!(!harness.state().corner_radius_open);
+
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness
+        .get_by_label("Clear corner radius")
+        .click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .expect("the rectangle disappeared");
+    let crate::document::Shape::Rect { corner_radius, .. } = object.shape else {
+        panic!("the object is not a rectangle");
+    };
+    assert!(corner_radius.abs() < 1e-9, "radius is {corner_radius}");
+}
+
+#[test]
 fn the_edit_menu_selects_the_layer_and_clears_the_selection() {
     use egui_kittest::kittest::Queryable as _;
 

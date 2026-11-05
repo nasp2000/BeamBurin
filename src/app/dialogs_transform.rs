@@ -14,6 +14,78 @@ impl BeamBurinApp {
         self.position_open = true;
     }
 
+    /// Open the corner-radius dialog with the first selected rectangle's value.
+    pub(super) fn open_corner_radius(&mut self) {
+        let value = self
+            .editor
+            .selection
+            .ids()
+            .iter()
+            .filter_map(|id| self.editor.document.object(id))
+            .find_map(|object| match object.shape {
+                crate::document::Shape::Rect { corner_radius, .. } => Some(corner_radius),
+                _ => None,
+            })
+            .unwrap_or(0.0);
+        self.corner_radius_value = value;
+        self.corner_radius_open = true;
+    }
+
+    pub(super) fn corner_radius_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.corner_radius_open;
+        let mut apply = false;
+        let mut cancel = false;
+        egui::Window::new("Corner radius")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                    apply = true;
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Radius");
+                    ui.add(
+                        egui::DragValue::new(&mut self.corner_radius_value)
+                            .speed(0.1)
+                            .range(0.0..=100_000.0)
+                            .suffix(" mm"),
+                    );
+                });
+                ui.weak("Applies to every selected rectangle, up to half the smaller side.");
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Clear corners").clicked() {
+                        self.corner_radius_value = 0.0;
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if apply {
+            let count = self.editor.set_corner_radius(self.corner_radius_value);
+            if count == 0 {
+                self.status = "Select at least one rectangle".to_string();
+            } else {
+                self.status = format!("Set the corner radius on {count} rectangle(s)");
+                self.corner_radius_open = false;
+            }
+        } else if cancel {
+            self.corner_radius_open = false;
+        } else {
+            self.corner_radius_open = open;
+        }
+    }
+
     pub(super) fn position_window(&mut self, ctx: &egui::Context) {
         let mut open = self.position_open;
         let mut apply = false;
@@ -585,6 +657,11 @@ impl BeamBurinApp {
             Action::ConvertToPath => {
                 let count = self.editor.convert_selection_to_paths();
                 self.status = format!("Converted {count} shape(s) to paths");
+            }
+            Action::CornerRadius => self.open_corner_radius(),
+            Action::ClearCornerRadius => {
+                let count = self.editor.set_corner_radius(0.0);
+                self.status = format!("Squared the corners of {count} rectangle(s)");
             }
             Action::BooleanUnion => self.apply_boolean(crate::geometry::BooleanOp::Union),
             Action::BooleanDifference => self.apply_boolean(crate::geometry::BooleanOp::Difference),

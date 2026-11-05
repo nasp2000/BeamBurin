@@ -521,6 +521,8 @@ pub struct BeamBurinApp {
     position_open: bool,
     position_x: f64,
     position_y: f64,
+    corner_radius_open: bool,
+    corner_radius_value: f64,
     skew_x: f64,
     skew_y: f64,
     simplify_open: bool,

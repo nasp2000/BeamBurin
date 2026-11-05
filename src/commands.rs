@@ -404,6 +404,24 @@ pub const ALL: &[PaletteCommand] = &[
         "Keep the areas covered by an odd number of shapes."
     ),
     command!(
+        CornerRadius,
+        "tools.corner-radius",
+        "Corner radius...",
+        Tools,
+        None,
+        false,
+        "Round the corners of the selected rectangles."
+    ),
+    command!(
+        ClearCornerRadius,
+        "tools.clear-corner-radius",
+        "Clear corner radius",
+        Tools,
+        None,
+        false,
+        "Square the corners of the selected rectangles."
+    ),
+    command!(
         Offset,
         "tools.offset",
         "Offset...",
