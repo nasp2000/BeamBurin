@@ -258,10 +258,10 @@ impl FileDialog {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([880.0, 660.0])
-            .min_width(760.0)
-            .min_height(560.0)
-            .max_width(1000.0)
+            .default_size([780.0, 780.0])
+            .min_width(640.0)
+            .min_height(640.0)
+            .max_width(900.0)
             .open(&mut open)
             .show(ctx, |ui| {
                 let mut accept = false;

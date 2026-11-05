@@ -665,17 +665,6 @@ fn paint_object(
                 Stroke::new(1.0, stroke_color),
                 egui::StrokeKind::Inside,
             );
-            painter.line_segment(
-                [image_rect.min, image_rect.max],
-                Stroke::new(1.0, stroke_color),
-            );
-            painter.line_segment(
-                [
-                    Pos2::new(image_rect.max.x, image_rect.min.y),
-                    Pos2::new(image_rect.min.x, image_rect.max.y),
-                ],
-                Stroke::new(1.0, stroke_color),
-            );
             let _ = image;
         }
         _ => {

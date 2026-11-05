@@ -1,7 +1,7 @@
 use crate::document::Document;
 use crate::document::model::{Object, Shape};
 use crate::errors::{BeamError, Result};
-use crate::objects::ImageObject;
+use crate::objects::{ImageMode, ImageObject};
 use std::path::Path;
 
 /// Default resolution assumed when the file carries no usable DPI metadata.
@@ -43,7 +43,11 @@ pub fn import_raster_with_limit(path: &Path, max_pixels: u64) -> Result<Document
             "image has {pixels} pixels; the limit is {max_pixels}"
         )));
     }
-    let image_object = ImageObject::new(path.to_string_lossy(), width_px, height_px, DEFAULT_DPI);
+    let mut image_object =
+        ImageObject::new(path.to_string_lossy(), width_px, height_px, DEFAULT_DPI);
+    // Show the whole picture in grayscale first; the engraving mode and its
+    // dithering are chosen afterwards in Adjust image.
+    image_object.settings.mode = ImageMode::Grayscale;
     let mut document = Document {
         width_mm: image_object.width_mm(),
         height_mm: image_object.height_mm(),
@@ -60,6 +64,19 @@ pub fn import_raster_with_limit(path: &Path, max_pixels: u64) -> Result<Document
 mod tests {
     use super::*;
     use std::env::temp_dir;
+
+    #[test]
+    fn an_imported_photo_starts_in_grayscale() {
+        let path = temp_dir().join("bw_import_grayscale.png");
+        let image = image::RgbaImage::from_pixel(4, 3, image::Rgba([10, 120, 240, 255]));
+        image.save(&path).unwrap();
+        let document = import_raster(&path).unwrap();
+        let Shape::Image(image) = &document.objects[0].shape else {
+            panic!("the imported object is not an image");
+        };
+        assert_eq!(image.settings.mode, ImageMode::Grayscale);
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn missing_file_errors() {
