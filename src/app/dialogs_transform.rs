@@ -493,6 +493,7 @@ impl BeamBurinApp {
                 }
             }
             Action::SelectAll => self.editor.select_all(),
+            Action::SelectOpenShapes => self.editor.select_open_shapes(),
             Action::ZoomIn => self.editor.zoom_in(),
             Action::ZoomOut => self.editor.zoom_out(),
             Action::FitPage => self.needs_fit = true,

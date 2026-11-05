@@ -378,6 +378,10 @@ impl BeamBurinApp {
                     self.editor.select_all();
                     ui.close();
                 }
+                if icons::button(ui, Icon::SelectAll, "Select open shapes").clicked() {
+                    self.editor.select_open_shapes();
+                    ui.close();
+                }
                 if ui
                     .add_enabled(
                         !self.editor.selection.is_empty(),

@@ -24,6 +24,7 @@ pub enum CommandId {
     Duplicate,
     Delete,
     SelectAll,
+    SelectOpenShapes,
     ZoomIn,
     ZoomOut,
     FitPage,
@@ -258,6 +259,15 @@ pub const ALL: &[PaletteCommand] = &[
         Some(Shortcut::SelectAll),
         false,
         "Select every visible object."
+    ),
+    command!(
+        SelectOpenShapes,
+        "edit.select-open-shapes",
+        "Select open shapes",
+        Edit,
+        None,
+        false,
+        "Select every visible path that is not closed."
     ),
     command!(
         ZoomIn,

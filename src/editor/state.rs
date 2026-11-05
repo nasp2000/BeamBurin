@@ -1880,6 +1880,30 @@ impl EditorState {
         }
     }
 
+    /// Select every visible, unlocked object whose outline is open.
+    ///
+    /// Rectangles and ellipses are closed by construction, and text and images
+    /// have no outline yet, so only open paths match.
+    pub fn select_open_shapes(&mut self) {
+        self.selection.clear();
+        for object in &self.document.objects {
+            if !object.visible || object.locked {
+                continue;
+            }
+            if self
+                .document
+                .layer(&object.layer_id)
+                .is_some_and(|layer| !layer.visible || layer.locked)
+            {
+                continue;
+            }
+            let path = object.shape.to_path();
+            if !path.is_empty() && !path.is_closed() {
+                self.selection.add(object.id.clone());
+            }
+        }
+    }
+
     /// Select every selectable object whose bounds intersect `rect`.
     pub fn select_in_rect(&mut self, rect: (Point2, Point2), additive: bool) {
         if !additive {
@@ -3485,6 +3509,27 @@ mod tests {
         let mut editor = editor();
         assert!(!editor.rotate_selection(1.0));
         assert!(!editor.flip_selection(false));
+    }
+
+    #[test]
+    fn select_open_shapes_skips_closed_and_plain_shapes() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let open = Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], false);
+        let open_id = {
+            let object = Object::new(layer.clone(), Shape::Path(open));
+            let id = object.id.clone();
+            editor.document.add_object(object);
+            id
+        };
+        let closed = Path::from_points(&[(20.0, 0.0), (30.0, 0.0), (30.0, 10.0)], true);
+        editor
+            .document
+            .add_object(Object::new(layer.clone(), Shape::Path(closed)));
+        editor.add_rectangle(Point2::new(40.0, 0.0), Point2::new(50.0, 10.0));
+        editor.select_open_shapes();
+        assert_eq!(editor.selection.len(), 1);
+        assert!(editor.selection.contains(&open_id));
     }
 
     #[test]

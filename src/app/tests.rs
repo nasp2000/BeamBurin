@@ -563,6 +563,37 @@ fn every_top_level_menu_opens_with_its_main_entry() {
 }
 
 #[test]
+fn the_edit_menu_selects_the_open_shapes() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.document.layers[0].id.clone();
+    let open = crate::geometry::Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], false);
+    let open_id = {
+        let object =
+            crate::document::Object::new(layer.clone(), crate::document::Shape::Path(open));
+        let id = object.id.clone();
+        app.editor.document.add_object(object);
+        id
+    };
+    app.editor
+        .add_rectangle(Point2::new(20.0, 20.0), Point2::new(30.0, 30.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Edit").click_accesskit();
+    harness.run();
+    harness.get_by_label("Select open shapes").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert_eq!(
+        app.editor.selection.len(),
+        1,
+        "the wrong objects were selected"
+    );
+    assert!(app.editor.selection.contains(&open_id));
+}
+
+#[test]
 fn toolbar_toggles_and_history_change_the_model() {
     use egui_kittest::kittest::Queryable as _;
 
