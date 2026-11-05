@@ -26,6 +26,7 @@ pub enum CommandId {
     SelectAll,
     SelectNone,
     SelectLayer,
+    SelectContained,
     SelectOpenShapes,
     BringForward,
     SendBackward,
@@ -293,6 +294,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Select every visible, unlocked object on the active layer."
+    ),
+    command!(
+        SelectContained,
+        "edit.select-contained",
+        "Select contained shapes",
+        Edit,
+        None,
+        false,
+        "Select the shapes that lie inside the single selected closed shape."
     ),
     command!(
         SelectOpenShapes,

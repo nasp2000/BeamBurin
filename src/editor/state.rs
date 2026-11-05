@@ -1880,6 +1880,55 @@ impl EditorState {
         }
     }
 
+    /// Add every visible, unlocked object whose outline lies inside the single
+    /// selected closed shape.
+    ///
+    /// The container stays selected, so the result can be grouped, moved or cut
+    /// as one. Returns how many objects were added.
+    pub fn select_contained_shapes(&mut self) -> usize {
+        use crate::geometry::boolean::point_in_polygon;
+
+        let ids = self.selection.ids().to_vec();
+        if ids.len() != 1 {
+            return 0;
+        }
+        let container_id = ids[0].clone();
+        let Some(container) = self.document.object(&container_id) else {
+            return 0;
+        };
+        let Some(contour) = Self::closed_world_contour(container) else {
+            return 0;
+        };
+        let contained: Vec<String> = self
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.id != container_id)
+            .filter(|object| object.visible && !object.locked)
+            .filter(|object| {
+                self.document
+                    .layer(&object.layer_id)
+                    .is_none_or(|layer| layer.visible && !layer.locked)
+            })
+            .filter(|object| {
+                let path = object.world_path();
+                if path.is_empty() {
+                    return false;
+                }
+                let points = path.flatten(0.2);
+                !points.is_empty()
+                    && points
+                        .iter()
+                        .all(|point| point_in_polygon(point.x, point.y, &contour))
+            })
+            .map(|object| object.id.clone())
+            .collect();
+        for id in &contained {
+            self.selection.add(id.clone());
+        }
+        contained.len()
+    }
+
     /// Select every visible, unlocked object whose outline is open.
     ///
     /// Rectangles and ellipses are closed by construction, and text and images
@@ -3695,6 +3744,28 @@ mod tests {
         assert!((min.x - 10.0).abs() < 1e-9);
         assert!((min.y - 10.0).abs() < 1e-9);
         assert!(!editor.move_selection_to(10.0, 10.0));
+    }
+
+    #[test]
+    fn select_contained_shapes_keeps_the_container_and_the_inside_objects() {
+        let mut editor = editor();
+        let outer = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(100.0, 100.0))
+            .unwrap();
+        let inner = editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0))
+            .unwrap();
+        let outside = editor
+            .add_rectangle(Point2::new(120.0, 0.0), Point2::new(130.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(outer.clone());
+        assert_eq!(editor.select_contained_shapes(), 1);
+        assert!(editor.selection.contains(&outer));
+        assert!(editor.selection.contains(&inner));
+        assert!(!editor.selection.contains(&outside));
+        // Without exactly one container nothing is added.
+        assert_eq!(editor.select_contained_shapes(), 0);
     }
 
     #[test]

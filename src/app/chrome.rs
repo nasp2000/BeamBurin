@@ -400,6 +400,17 @@ impl BeamBurinApp {
                 }
                 if ui
                     .add_enabled(
+                        self.editor.selection.len() == 1,
+                        icons::widget(ui, Icon::SelectAll, "Select contained shapes"),
+                    )
+                    .clicked()
+                {
+                    let count = self.editor.select_contained_shapes();
+                    self.status = format!("Selected {count} contained object(s)");
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
                         !self.editor.selection.is_empty(),
                         icons::widget(ui, Icon::Cut, "Cut"),
                     )

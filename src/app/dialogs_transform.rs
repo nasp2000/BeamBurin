@@ -574,6 +574,10 @@ impl BeamBurinApp {
                 let count = self.editor.select_layer_objects(&layer);
                 self.status = format!("Selected {count} object(s) on the active layer");
             }
+            Action::SelectContained => {
+                let count = self.editor.select_contained_shapes();
+                self.status = format!("Selected {count} contained object(s)");
+            }
             Action::SelectOpenShapes => self.editor.select_open_shapes(),
             Action::SetPosition => self.open_position(),
             Action::ClosePaths => self.apply_close_paths(),
