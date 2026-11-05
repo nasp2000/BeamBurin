@@ -3044,6 +3044,73 @@ fn compare_with_original_shows_the_opening_settings_without_losing_the_edit() {
 }
 
 #[test]
+fn the_image_mask_can_be_cleared_and_cancelled() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("mask_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let mut document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let crop = crate::objects::ImageCrop {
+        x: 1,
+        y: 1,
+        width: 4,
+        height: 4,
+    };
+    let crate::document::Shape::Image(image) = &mut document
+        .object_mut(&id)
+        .expect("the image is missing")
+        .shape
+    else {
+        panic!("the object is not an image");
+    };
+    image.crop = Some(crop);
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust_snapshot = Some(app.editor.document.clone());
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("Mask").is_some(),
+        "the mask controls are missing"
+    );
+    harness.get_by_label("Full image").click_accesskit();
+    harness.run();
+    let crop_of = |app: &BeamBurinApp| {
+        let object = app
+            .editor
+            .document
+            .object(&id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        image.crop
+    };
+    assert!(
+        crop_of(harness.state()).is_none(),
+        "Full image kept the mask"
+    );
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(
+        crop_of(harness.state()),
+        Some(crop),
+        "Cancel did not restore the mask"
+    );
+}
+
+#[test]
 fn the_image_adjust_duplicates_and_deletes_a_preset() {
     use egui_kittest::kittest::Queryable as _;
 

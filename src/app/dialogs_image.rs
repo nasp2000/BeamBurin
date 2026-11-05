@@ -90,6 +90,11 @@ impl BeamBurinApp {
         let mut open_test_grid = false;
         let mut preset: Option<crate::objects::ImageSettings> = None;
         let mut auto_levels = false;
+        let mut mask = image.crop.is_some();
+        let mut mask_x = image.crop.map_or(0, |crop| crop.x);
+        let mut mask_y = image.crop.map_or(0, |crop| crop.y);
+        let mut mask_w = image.crop.map_or(image.width_px, |crop| crop.width);
+        let mut mask_h = image.crop.map_or(image.height_px, |crop| crop.height);
         let mut target_message: Option<String> = None;
         let mut profile_saved: Option<String> = None;
         egui::Window::new(format!("Adjust image - {object_name}"))
@@ -357,6 +362,37 @@ impl BeamBurinApp {
                                     ui.end_row();
                                 });
                             ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut mask, "Mask");
+                                ui.weak("Limit the engraved area (source pixels)");
+                                if ui.button("Full image").clicked() {
+                                    mask = false;
+                                }
+                            });
+                            if mask {
+                                ui.horizontal(|ui| {
+                                    ui.label("Mask X");
+                                    ui.add(
+                                        egui::DragValue::new(&mut mask_x)
+                                            .range(0..=image.width_px.saturating_sub(1)),
+                                    );
+                                    ui.label("Mask Y");
+                                    ui.add(
+                                        egui::DragValue::new(&mut mask_y)
+                                            .range(0..=image.height_px.saturating_sub(1)),
+                                    );
+                                    ui.label("Mask W");
+                                    ui.add(
+                                        egui::DragValue::new(&mut mask_w)
+                                            .range(1..=image.width_px.max(1)),
+                                    );
+                                    ui.label("Mask H");
+                                    ui.add(
+                                        egui::DragValue::new(&mut mask_h)
+                                            .range(1..=image.height_px.max(1)),
+                                    );
+                                });
+                            }
                             egui::Grid::new("image_adjust_settings")
                                 .num_columns(2)
                                 .spacing([12.0, 6.0])
@@ -659,6 +695,20 @@ impl BeamBurinApp {
                 });
             });
 
+        image.crop = if mask {
+            let x = mask_x.min(image.width_px.saturating_sub(1));
+            let y = mask_y.min(image.height_px.saturating_sub(1));
+            let width = mask_w.clamp(1, image.width_px.saturating_sub(x).max(1));
+            let height = mask_h.clamp(1, image.height_px.saturating_sub(y).max(1));
+            Some(crate::objects::ImageCrop {
+                x,
+                y,
+                width,
+                height,
+            })
+        } else {
+            None
+        };
         self.image_burn_map = burn_map;
         self.image_preview_zoom = zoom;
         self.image_target_dpi = target_dpi;
@@ -739,6 +789,7 @@ impl BeamBurinApp {
                         continue;
                     };
                     current.settings = original.settings;
+                    current.crop = original.crop;
                 }
             } else if let Some(current) = self
                 .editor
@@ -749,6 +800,7 @@ impl BeamBurinApp {
             {
                 if let crate::document::Shape::Image(current) = &mut current.shape {
                     current.settings = original_settings;
+                    current.crop = image.crop;
                 }
             }
             self.image_adjust_edit = None;
@@ -777,6 +829,7 @@ impl BeamBurinApp {
                     current.settings = shown;
                     document_changed = true;
                 }
+                current.crop = image.crop;
             }
         }
         if apply_all {

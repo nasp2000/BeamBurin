@@ -571,7 +571,7 @@ fn paint_objects(
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
 fn paint_object(
     painter: &Painter,
     rect: Rect,
@@ -665,6 +665,35 @@ fn paint_object(
                 Stroke::new(1.0, stroke_color),
                 egui::StrokeKind::Inside,
             );
+            if editor.selection.contains(&object.id) {
+                if let Some(crop) = image.crop {
+                    let scale_x = image_rect.width() / image.width_px as f32;
+                    let scale_y = image_rect.height() / image.height_px as f32;
+                    let mask_rect = Rect::from_min_max(
+                        Pos2::new(
+                            image_rect.left() + crop.x as f32 * scale_x,
+                            image_rect.top() + crop.y as f32 * scale_y,
+                        ),
+                        Pos2::new(
+                            image_rect.left() + (crop.x + crop.width) as f32 * scale_x,
+                            image_rect.top() + (crop.y + crop.height) as f32 * scale_y,
+                        ),
+                    );
+                    let points = [
+                        mask_rect.left_top(),
+                        mask_rect.right_top(),
+                        mask_rect.right_bottom(),
+                        mask_rect.left_bottom(),
+                        mask_rect.left_top(),
+                    ];
+                    painter.extend(egui::Shape::dashed_line(
+                        &points,
+                        Stroke::new(1.0, Color32::from_rgb(255, 140, 0)),
+                        5.0,
+                        3.0,
+                    ));
+                }
+            }
             let _ = image;
         }
         _ => {
