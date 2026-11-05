@@ -607,12 +607,24 @@ fn paint_object(
             let size = (text.size * scale * editor.canvas.zoom) as f32;
             if size >= 3.0 {
                 let color = fill_color.unwrap_or(stroke_color);
+                // New font families become active at the start of the next
+                // pass, so the first frame that uses one must fall back to the
+                // built-in family instead of panicking.
+                let family = crate::textfont::family(&text.font);
+                let family = if painter
+                    .ctx()
+                    .fonts(|fonts| fonts.families().contains(&family))
+                {
+                    family
+                } else {
+                    egui::FontFamily::Proportional
+                };
                 let mut job = egui::text::LayoutJob::default();
                 job.append(
                     &text.rendered(),
                     0.0,
                     egui::TextFormat {
-                        font_id: FontId::new(size, crate::textfont::family(&text.font)),
+                        font_id: FontId::new(size, family),
                         color,
                         extra_letter_spacing: (text.letter_spacing * scale * editor.canvas.zoom)
                             as f32,
