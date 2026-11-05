@@ -24,6 +24,26 @@ impl BeamBurinApp {
         };
         let mut image = image.clone();
         let object_name = self.editor.document.objects[index].name.clone();
+        let cut_entry = self
+            .editor
+            .document
+            .object(&id)
+            .and_then(|object| object.operation_id.as_deref())
+            .and_then(|operation_id| {
+                self.editor
+                    .document
+                    .operations
+                    .iter()
+                    .find(|operation| operation.id == operation_id)
+            })
+            .map(|operation| {
+                (
+                    operation.name.clone(),
+                    operation.params.speed,
+                    operation.params.power,
+                    operation.params.passes.max(1),
+                )
+            });
         let original = image.clone();
         let mut burn_map = self.image_burn_map;
         let mut target_dpi = self.image_target_dpi;
@@ -105,6 +125,30 @@ impl BeamBurinApp {
                         ));
                         if let Some(preview) = self.image_previews.get(&id) {
                             ui.weak(preview.stats.coverage_text());
+                            if let Some((name, speed, power, passes)) = &cut_entry {
+                                let passes_text = if *passes == 1 {
+                                    "1 pass".to_string()
+                                } else {
+                                    format!("{passes} passes")
+                                };
+                                ui.weak(format!(
+                                    "{name}: {speed:.0} mm/min, {power:.0}%, {passes_text}"
+                                ));
+                                if let Some((_, _, seconds)) = crate::raster::estimate_engraving(
+                                    preview.stats,
+                                    image.width_mm(),
+                                    *speed,
+                                ) {
+                                    let seconds = seconds * f64::from(*passes);
+                                    let minutes = seconds / 60.0;
+                                    let time = if minutes >= 1.5 {
+                                        format!("{minutes:.1} min")
+                                    } else {
+                                        format!("{seconds:.0} s")
+                                    };
+                                    ui.weak(format!("Estimated: {time} at this cut entry"));
+                                }
+                            }
                         }
                     });
                 });

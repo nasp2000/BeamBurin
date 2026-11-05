@@ -2584,6 +2584,51 @@ fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
 }
 
 #[test]
+fn the_image_adjust_shows_the_cut_entry_and_the_estimate() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("cut_entry_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let mut document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut operation = crate::operations::Operation::new(
+        "Photo engraving",
+        crate::operations::OperationType::ImageProcessing,
+    );
+    operation.params.speed = 1000.0;
+    operation.params.power = 20.0;
+    operation.params.passes = 2;
+    let operation_id = operation.id.clone();
+    document.operations.push(operation);
+    document
+        .object_mut(&id)
+        .expect("the image is missing")
+        .operation_id = Some(operation_id);
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("mm/min").is_some(),
+        "the cut entry summary is missing"
+    );
+    assert!(
+        harness.query_by_label_contains("Estimated:").is_some(),
+        "the engraving estimate is missing"
+    );
+}
+
+#[test]
 fn the_layer_menu_deletes_an_empty_layer() {
     use egui_kittest::kittest::Queryable as _;
 
