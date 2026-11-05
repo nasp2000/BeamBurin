@@ -1591,6 +1591,12 @@ fn the_palette_closes_the_selected_open_path() {
     app.editor.selection.add(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    assert_eq!(
+        harness.state().editor.selection.len(),
+        1,
+        "the selection was lost before the palette opened: {}",
+        harness.state().status
+    );
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Command palette...").click();
@@ -1601,6 +1607,12 @@ fn the_palette_closes_the_selected_open_path() {
         .expect("the palette entry field is missing")
         .type_text("close paths");
     harness.run();
+    assert_eq!(
+        harness.state().editor.selection.len(),
+        1,
+        "the selection was lost while typing: {}",
+        harness.state().status
+    );
     harness.key_press(egui::Key::Enter);
     harness.run();
     let app = harness.state();
