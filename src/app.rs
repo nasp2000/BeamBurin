@@ -655,6 +655,7 @@ fn run_export(
                 path,
                 &crate::gcode::JobOptions {
                     offset_to_origin: offset_origin,
+                    origin,
                     smooth_mm,
                     gcode,
                     ..crate::gcode::JobOptions::default()
