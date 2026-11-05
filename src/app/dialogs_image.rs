@@ -708,8 +708,9 @@ impl BeamBurinApp {
             self.image_adjust = None;
             return;
         }
+        let settings_changed = self.image_adjust_edit != Some(image.settings);
         self.image_adjust_edit = Some(image.settings);
-        let settings_changed = image.settings != original_settings;
+        let mut document_changed = false;
         if let Some(current) = self
             .editor
             .document
@@ -718,11 +719,15 @@ impl BeamBurinApp {
             .find(|object| object.id == id)
         {
             if let crate::document::Shape::Image(current) = &mut current.shape {
-                current.settings = if compare && !close {
+                let shown = if compare && !close {
                     original_settings
                 } else {
                     image.settings
                 };
+                if current.settings != shown {
+                    current.settings = shown;
+                    document_changed = true;
+                }
             }
         }
         if apply_all {
@@ -738,8 +743,9 @@ impl BeamBurinApp {
                 }
             }
             self.status = format!("Applied the image settings to {applied} image(s)");
+            document_changed |= applied > 0;
         }
-        if settings_changed {
+        if settings_changed || document_changed {
             ctx.request_repaint();
         }
         if close {
