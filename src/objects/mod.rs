@@ -4,7 +4,7 @@ pub mod text_outline;
 
 pub use image::{
     ImageCrop, ImageMode, ImageObject, ImageSettings, LOW_DPI_THRESHOLD, TargetResolution,
-    target_resolution,
+    engraving_resolution, target_resolution,
 };
 pub use text::{TextAlign, TextObject};
 pub use text_outline::{
