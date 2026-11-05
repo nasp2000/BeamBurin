@@ -706,6 +706,7 @@ impl BeamBurinApp {
                 }
             }
             self.image_adjust_edit = None;
+            self.image_compare = false;
             self.image_adjust = None;
             return;
         }
