@@ -32,6 +32,12 @@ impl BeamBurinApp {
                     || self.machine_wizard_open
                     || self.cuts_open
                     || self.palette_open;
+                if modal {
+                    // A window opened mid-drag must not leave the drag alive:
+                    // its release would be ignored and the canvas would keep
+                    // asking for repaints.
+                    self.drag = None;
+                }
                 let pointer = if modal {
                     None
                 } else {
