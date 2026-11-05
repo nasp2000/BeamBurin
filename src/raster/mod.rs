@@ -507,6 +507,17 @@ pub fn process_object(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<RasterBitmap> {
+    let luma = prepared_luma(path, image)?;
+    let width = usize::try_from(luma.width()).unwrap_or(0);
+    let height = usize::try_from(luma.height()).unwrap_or(0);
+    process_luma(luma.as_raw(), width, height, &image.settings)
+}
+
+/// Apply crop, flips, rotation and working size, returning the prepared source.
+fn prepared_luma(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+) -> Result<image::GrayImage> {
     image.validate().map_err(BeamError::InvalidInput)?;
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
@@ -551,11 +562,57 @@ pub fn process_object(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
-    let luma = picture.to_luma8();
-    drop(picture);
-    let width = usize::try_from(luma.width()).unwrap_or(0);
-    let height = usize::try_from(luma.height()).unwrap_or(0);
-    process_luma(luma.as_raw(), width, height, &image.settings)
+    Ok(picture.to_luma8())
+}
+
+/// Automatic black and white clip levels for the prepared image.
+///
+/// The lowest and highest half-percent of the histogram are ignored, so a few
+/// stray pixels cannot flatten the range. A flat or almost flat image is left
+/// unchanged instead of being stretched into noise.
+pub fn auto_levels(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+) -> Result<(u8, u8)> {
+    let luma = prepared_luma(path, image)?;
+    Ok(auto_clip(luma.as_raw()))
+}
+
+/// Percentile clip levels for a luminance buffer.
+pub fn auto_clip(luma: &[u8]) -> (u8, u8) {
+    if luma.is_empty() {
+        return (0, 255);
+    }
+    let mut histogram = [0u64; 256];
+    for value in luma {
+        histogram[usize::from(*value)] += 1;
+    }
+    let total = u64::try_from(luma.len()).unwrap_or(u64::MAX);
+    let tail = total / 200;
+    let mut accumulated = 0u64;
+    let mut black = 0u8;
+    for (value, count) in histogram.iter().enumerate() {
+        accumulated += count;
+        if accumulated > tail {
+            black = u8::try_from(value).unwrap_or(0);
+            break;
+        }
+    }
+    accumulated = 0;
+    let mut white = 255u8;
+    for (value, count) in histogram.iter().enumerate().rev() {
+        accumulated += count;
+        if accumulated > tail {
+            white = u8::try_from(value).unwrap_or(255);
+            break;
+        }
+    }
+    if white.saturating_sub(black) < 8 {
+        return (0, 255);
+    }
+    let black = black.min(240);
+    let white = white.max(black.saturating_add(15)).min(255);
+    (black, white)
 }
 
 /// Load an image file and produce its burn bitmap.
@@ -673,6 +730,32 @@ mod object_tests {
         let bitmap = process_object(&path, &object).unwrap();
         // The left half is black, so every cropped pixel burns.
         assert!(bitmap.power.iter().all(|value| *value > 0));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn auto_clip_ignores_the_extreme_tails() {
+        let mut luma = vec![20u8; 1000];
+        luma.extend(std::iter::repeat_n(230u8, 1000));
+        luma.push(0);
+        luma.push(255);
+        let (black, white) = auto_clip(&luma);
+        assert!((18..=24).contains(&black), "black clip {black}");
+        assert!((226..=232).contains(&white), "white clip {white}");
+    }
+
+    #[test]
+    fn auto_clip_leaves_a_flat_or_empty_image_alone() {
+        assert_eq!(auto_clip(&[]), (0, 255));
+        assert_eq!(auto_clip(&[128; 64]), (0, 255));
+    }
+
+    #[test]
+    fn auto_levels_reads_the_prepared_image() {
+        let path = write_image("bw_raster_auto_levels.png", 8, 4);
+        let object = ImageObject::new(path.to_string_lossy(), 8, 4, 96.0);
+        let (black, white) = auto_levels(&path, &object).unwrap();
+        assert_eq!((black, white), (0, 255));
         let _ = std::fs::remove_file(&path);
     }
 }

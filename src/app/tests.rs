@@ -2254,6 +2254,7 @@ fn the_image_adjust_window_edits_the_settings() {
         "Contrast",
         "Brightness",
         "Negative image",
+        "Auto levels",
     ] {
         assert!(
             harness.query_all_by_label(label).next().is_some(),
@@ -2276,6 +2277,49 @@ fn the_image_adjust_window_edits_the_settings() {
         panic!("the object is not an image");
     };
     assert!(image.settings.invert, "the negative switch did not apply");
+}
+
+#[test]
+fn the_image_adjust_auto_levels_uses_the_histogram() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("auto_levels_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("gradient.png");
+    let mut picture = image::RgbaImage::new(16, 16);
+    for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+        let value = 10 + x * 230 / 15;
+        let value = u8::try_from(value).unwrap_or(255);
+        *pixel = image::Rgba([value, value, value, 255]);
+    }
+    picture.save(&path).expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Auto levels").click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .objects
+        .iter()
+        .find(|object| object.id == id)
+        .expect("the image disappeared");
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    assert_eq!(image.settings.black_clip, 10);
+    assert_eq!(image.settings.white_clip, 240);
 }
 
 #[test]

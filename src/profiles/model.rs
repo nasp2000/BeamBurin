@@ -593,6 +593,107 @@ impl ProfileLibrary {
             builtin: true,
             meta: ProfileMeta::with_category("Photo"),
         });
+        // Material starting points for photo engraving. The values only shape
+        // contrast and screening; the operation still owns speed, power and
+        // passes, and every value must be tested on the real material.
+        const IMAGE_PRESETS: &[(&str, &str, crate::objects::ImageMode, f32, f32, f64)] = &[
+            (
+                "builtin-photo-wood",
+                "Wood photo",
+                crate::objects::ImageMode::Stucki,
+                1.25,
+                1.1,
+                0.1,
+            ),
+            (
+                "builtin-photo-slate",
+                "Slate photo",
+                crate::objects::ImageMode::Atkinson,
+                1.35,
+                1.05,
+                0.08,
+            ),
+            (
+                "builtin-photo-acrylic",
+                "Acrylic photo",
+                crate::objects::ImageMode::FloydSteinberg,
+                1.1,
+                0.95,
+                0.1,
+            ),
+            (
+                "builtin-photo-tile",
+                "Painted tile photo",
+                crate::objects::ImageMode::FloydSteinberg,
+                1.2,
+                1.0,
+                0.09,
+            ),
+            (
+                "builtin-photo-canvas",
+                "Canvas photo",
+                crate::objects::ImageMode::Stucki,
+                1.2,
+                1.05,
+                0.1,
+            ),
+            (
+                "builtin-photo-metal",
+                "Metal photo",
+                crate::objects::ImageMode::Atkinson,
+                1.4,
+                1.2,
+                0.08,
+            ),
+            (
+                "builtin-photo-leather",
+                "Leather photo",
+                crate::objects::ImageMode::Jarvis,
+                1.2,
+                1.05,
+                0.1,
+            ),
+            (
+                "builtin-photo-glass",
+                "Glass photo (grayscale)",
+                crate::objects::ImageMode::Grayscale,
+                1.05,
+                1.0,
+                0.08,
+            ),
+            (
+                "builtin-photo-portrait",
+                "Portrait (grayscale)",
+                crate::objects::ImageMode::Grayscale,
+                1.1,
+                0.95,
+                0.09,
+            ),
+            (
+                "builtin-photo-line-art",
+                "Line art (threshold)",
+                crate::objects::ImageMode::Threshold,
+                1.3,
+                1.0,
+                0.1,
+            ),
+        ];
+        for (id, name, mode, contrast, gamma, line_interval_mm) in IMAGE_PRESETS {
+            library.images.push(ImageProfile {
+                id: (*id).to_string(),
+                name: (*name).to_string(),
+                settings: crate::objects::ImageSettings {
+                    mode: *mode,
+                    contrast: *contrast,
+                    gamma: *gamma,
+                    line_interval_mm: *line_interval_mm,
+                    ..crate::objects::ImageSettings::default()
+                },
+                notes: "Starting point only; test on your own material.".to_string(),
+                builtin: true,
+                meta: ProfileMeta::with_category("Photo"),
+            });
+        }
         library.projects.push(ProjectProfile {
             id: "builtin-a3".to_string(),
             name: "A3 landscape (420 × 297)".to_string(),
@@ -1049,6 +1150,44 @@ mod tests {
             .find(|material| material.id == "builtin-glass-3")
             .unwrap();
         assert_eq!(glass.recommended_operations.len(), 0);
+        assert!(library.validate().is_ok());
+    }
+
+    #[test]
+    fn the_builtin_library_has_image_profiles_per_material() {
+        let library = ProfileLibrary::with_builtins();
+        let names: Vec<&str> = library
+            .images
+            .iter()
+            .map(|profile| profile.name.as_str())
+            .collect();
+        for name in [
+            "Wood photo",
+            "Slate photo",
+            "Acrylic photo",
+            "Painted tile photo",
+            "Canvas photo",
+            "Metal photo",
+            "Leather photo",
+            "Glass photo (grayscale)",
+            "Portrait (grayscale)",
+            "Line art (threshold)",
+        ] {
+            assert!(names.contains(&name), "the photo list is missing {name}");
+        }
+        let mut ids = std::collections::HashSet::new();
+        for profile in &library.images {
+            assert!(profile.builtin);
+            assert!(ids.insert(profile.id.clone()), "duplicate {}", profile.id);
+            assert!(profile.validate().is_ok(), "{} is invalid", profile.name);
+        }
+        assert!(
+            library
+                .images
+                .iter()
+                .any(|profile| profile.settings.mode == crate::objects::ImageMode::Grayscale),
+            "there is no grayscale photo profile"
+        );
         assert!(library.validate().is_ok());
     }
 

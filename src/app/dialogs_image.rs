@@ -47,6 +47,7 @@ impl BeamBurinApp {
         let mut compare = false;
         let mut open_test_grid = false;
         let mut preset: Option<crate::objects::ImageSettings> = None;
+        let mut auto_levels = false;
         egui::Window::new(format!("Adjust image - {object_name}"))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -319,6 +320,15 @@ impl BeamBurinApp {
                             if ui.button("Reset all").clicked() {
                                 reset = true;
                             }
+                            if ui
+                                .button("Auto levels")
+                                .on_hover_text(
+                                    "Set the black and white clip from the image histogram",
+                                )
+                                .clicked()
+                            {
+                                auto_levels = true;
+                            }
                             if ui.button("Export prepared PNG").clicked() {
                                 export_prepared = true;
                             }
@@ -445,6 +455,16 @@ impl BeamBurinApp {
         }
         if reset {
             image.settings = crate::objects::ImageSettings::default();
+        }
+        if auto_levels {
+            match crate::raster::auto_levels(std::path::Path::new(&image.path), &image) {
+                Ok((black, white)) => {
+                    image.settings.black_clip = black;
+                    image.settings.white_clip = white;
+                    self.status = format!("Auto levels: black {black}, white {white}");
+                }
+                Err(error) => self.status = format!("Cannot analyse the image: {error}"),
+            }
         }
         if cancel {
             self.image_adjust_snapshot = None;
