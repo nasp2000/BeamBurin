@@ -1959,6 +1959,24 @@ impl EditorState {
         }
     }
 
+    /// Move the selection so its bounding-box minimum corner is at (x, y).
+    ///
+    /// Records one undo step. Returns `false` when nothing is selected or the
+    /// selection is already there.
+    pub fn move_selection_to(&mut self, x: f64, y: f64) -> bool {
+        let Some((min, _)) = self.selected_bounds() else {
+            return false;
+        };
+        let dx = x - min.x;
+        let dy = y - min.y;
+        if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+            return false;
+        }
+        self.record_action("Move to position");
+        self.move_selection(dx, dy);
+        true
+    }
+
     /// Apply a transform around the selection centre.
     fn transform_selection(&mut self, transform: Transform2, action: &str) -> bool {
         if self.selection.is_empty() {
@@ -3509,6 +3527,29 @@ mod tests {
         let mut editor = editor();
         assert!(!editor.rotate_selection(1.0));
         assert!(!editor.flip_selection(false));
+    }
+
+    #[test]
+    fn move_selection_to_places_the_minimum_corner_and_undoes_once() {
+        let mut editor = editor();
+        let first = editor
+            .add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0))
+            .unwrap();
+        let second = editor
+            .add_rectangle(Point2::new(30.0, 30.0), Point2::new(40.0, 40.0))
+            .unwrap();
+        editor.selection.add(first);
+        editor.selection.add(second);
+        assert!(editor.move_selection_to(5.0, 7.0));
+        let (min, _) = editor.selected_bounds().unwrap();
+        assert!((min.x - 5.0).abs() < 1e-9);
+        assert!((min.y - 7.0).abs() < 1e-9);
+        assert!(editor.history.can_undo());
+        editor.undo();
+        let (min, _) = editor.selected_bounds().unwrap();
+        assert!((min.x - 10.0).abs() < 1e-9);
+        assert!((min.y - 10.0).abs() < 1e-9);
+        assert!(!editor.move_selection_to(5.0, 7.0));
     }
 
     #[test]

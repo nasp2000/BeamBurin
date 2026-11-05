@@ -594,6 +594,44 @@ fn the_edit_menu_selects_the_open_shapes() {
 }
 
 #[test]
+fn the_arrange_menu_moves_the_selection_to_a_position() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        .expect("the rectangle was not added");
+    app.editor.selection.add(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness
+        .get_by_label("Move to position...")
+        .click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert!(app.position_open, "the position window did not open");
+    assert!((app.position_x - 10.0).abs() < 1e-9);
+    assert!((app.position_y - 10.0).abs() < 1e-9);
+    assert!(harness.query_by_label("Apply").is_some());
+    assert!(harness.query_by_label("Cancel").is_some());
+    harness.state_mut().position_x = 25.0;
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert!(!app.position_open, "the window stayed open");
+    let (min, _) = app
+        .editor
+        .selected_bounds()
+        .expect("the selection disappeared");
+    assert!((min.x - 25.0).abs() < 1e-9, "x is {}", min.x);
+    assert!((min.y - 10.0).abs() < 1e-9, "y is {}", min.y);
+}
+
+#[test]
 fn toolbar_toggles_and_history_change_the_model() {
     use egui_kittest::kittest::Queryable as _;
 

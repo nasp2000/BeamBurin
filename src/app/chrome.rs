@@ -628,6 +628,16 @@ impl BeamBurinApp {
                 }
                 if ui
                     .add_enabled(
+                        enabled,
+                        icons::widget(ui, Icon::TransformCenter, "Move to position..."),
+                    )
+                    .clicked()
+                {
+                    self.open_position();
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
                         self.editor.selection.len() >= 2,
                         icons::widget(ui, Icon::DistributeH, "Distribute on page horizontally"),
                     )

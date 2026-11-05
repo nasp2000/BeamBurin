@@ -3,6 +3,81 @@
 use super::*;
 
 impl BeamBurinApp {
+    /// Open the position dialog with the selection's current corner.
+    pub(super) fn open_position(&mut self) {
+        let Some((min, _)) = self.editor.selected_bounds() else {
+            self.status = "Select something to move".to_string();
+            return;
+        };
+        self.position_x = min.x;
+        self.position_y = min.y;
+        self.position_open = true;
+    }
+
+    pub(super) fn position_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.position_open;
+        let mut apply = false;
+        let mut cancel = false;
+        egui::Window::new("Move to position")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                    apply = true;
+                }
+                ui.horizontal(|ui| {
+                    ui.label("X");
+                    ui.add(
+                        egui::DragValue::new(&mut self.position_x)
+                            .speed(0.5)
+                            .suffix(" mm"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Y");
+                    ui.add(
+                        egui::DragValue::new(&mut self.position_y)
+                            .speed(0.5)
+                            .suffix(" mm"),
+                    );
+                });
+                ui.weak("Places the bottom-left corner of the selection at X / Y.");
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if apply {
+            if self
+                .editor
+                .move_selection_to(self.position_x, self.position_y)
+            {
+                self.status = format!(
+                    "Moved the selection to {:.1}, {:.1} mm",
+                    self.position_x, self.position_y
+                );
+                self.position_open = false;
+            } else {
+                self.status =
+                    "Move to position failed: select something and change X or Y".to_string();
+            }
+        } else if cancel {
+            self.position_open = false;
+        } else {
+            self.position_open = open;
+        }
+    }
+
     pub(super) fn skew_window(&mut self, ctx: &egui::Context) {
         let mut open = self.skew_open;
         let mut apply = false;

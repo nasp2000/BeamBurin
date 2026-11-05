@@ -25,6 +25,7 @@ pub enum CommandId {
     Delete,
     SelectAll,
     SelectOpenShapes,
+    SetPosition,
     ZoomIn,
     ZoomOut,
     FitPage,
@@ -268,6 +269,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Select every visible path that is not closed."
+    ),
+    command!(
+        SetPosition,
+        "arrange.move-to-position",
+        "Move to position...",
+        Arrange,
+        None,
+        false,
+        "Place the bottom-left corner of the selection at an exact X and Y."
     ),
     command!(
         ZoomIn,

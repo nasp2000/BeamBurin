@@ -22,6 +22,9 @@ impl BeamBurinApp {
         if self.recipes_open {
             self.recipes_window(ctx);
         }
+        if self.position_open {
+            self.position_window(ctx);
+        }
         if self.material_test_open {
             self.material_test_window(ctx);
         }
