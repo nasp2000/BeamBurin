@@ -1601,6 +1601,12 @@ fn the_palette_closes_the_selected_open_path() {
     harness.run();
     harness.get_by_label("Command palette...").click();
     harness.run();
+    assert_eq!(
+        harness.state().editor.selection.len(),
+        1,
+        "the selection was lost when the palette opened: {}",
+        harness.state().status
+    );
     harness
         .get_all_by_role(egui::accesskit::Role::TextInput)
         .last()
