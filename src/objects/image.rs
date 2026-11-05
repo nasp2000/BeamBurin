@@ -52,6 +52,28 @@ impl ImageMode {
         }
     }
 
+    /// One line that helps choose this mode, shown in the picker.
+    pub fn hint(self) -> &'static str {
+        match self {
+            ImageMode::Threshold => "Burns every pixel darker than the threshold; crisp line art.",
+            ImageMode::FloydSteinberg => {
+                "Classic error diffusion; fine detail with a visible grain."
+            }
+            ImageMode::OrderedDither => "Regular 8×8 pattern; stable on most materials.",
+            ImageMode::Atkinson => "Lighter diffusion that keeps highlights clean.",
+            ImageMode::Stucki => "Finer diffusion than Floyd–Steinberg; good for photos.",
+            ImageMode::Jarvis => "Wide diffusion kernel; smooth gradients, more dots.",
+            ImageMode::Sierra => "Three-row diffusion with a softer grain.",
+            ImageMode::Burkes => "Short kernel; a compact grain.",
+            ImageMode::Halftone => "Clustered dots on a 4×4 screen; newspaper look.",
+            ImageMode::Newsprint => "Clustered dots rotated 45°; newsprint texture.",
+            ImageMode::Sketch => "Burns the outlines only; pencil-like.",
+            ImageMode::Grayscale => {
+                "Variable power per pixel in 16 levels; the controller must accept S changes."
+            }
+        }
+    }
+
     pub fn all() -> [ImageMode; 12] {
         [
             ImageMode::Threshold,
@@ -417,6 +439,16 @@ impl ImageObject {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_image_mode_explains_itself() {
+        let mut hints = std::collections::HashSet::new();
+        for mode in ImageMode::all() {
+            let hint = mode.hint();
+            assert!(!hint.is_empty(), "{mode:?} has no hint");
+            assert!(hints.insert(hint), "{mode:?} repeats a hint");
+        }
+    }
 
     #[test]
     fn valid_image() {

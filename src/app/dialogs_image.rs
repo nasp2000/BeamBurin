@@ -181,7 +181,8 @@ impl BeamBurinApp {
                                                     &mut mode,
                                                     candidate,
                                                     candidate.label(),
-                                                );
+                                                )
+                                                .on_hover_text(candidate.hint());
                                             }
                                         });
                                     image.settings.mode = mode;

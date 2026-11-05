@@ -1613,7 +1613,8 @@ impl BeamBurinApp {
                                                     &mut mode,
                                                     candidate,
                                                     candidate.label(),
-                                                );
+                                                )
+                                                .on_hover_text(candidate.hint());
                                             }
                                         });
                                     if mode != profile.settings.mode {
