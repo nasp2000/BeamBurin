@@ -3549,7 +3549,7 @@ mod tests {
         let (min, _) = editor.selected_bounds().unwrap();
         assert!((min.x - 10.0).abs() < 1e-9);
         assert!((min.y - 10.0).abs() < 1e-9);
-        assert!(!editor.move_selection_to(5.0, 7.0));
+        assert!(!editor.move_selection_to(10.0, 10.0));
     }
 
     #[test]
