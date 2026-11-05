@@ -24,6 +24,8 @@ pub enum CommandId {
     Duplicate,
     Delete,
     SelectAll,
+    SelectNone,
+    SelectLayer,
     SelectOpenShapes,
     BringForward,
     SendBackward,
@@ -262,6 +264,24 @@ pub const ALL: &[PaletteCommand] = &[
         Some(Shortcut::SelectAll),
         false,
         "Select every visible object."
+    ),
+    command!(
+        SelectNone,
+        "edit.select-none",
+        "Select none",
+        Edit,
+        None,
+        false,
+        "Clear the selection."
+    ),
+    command!(
+        SelectLayer,
+        "edit.select-layer",
+        "Select all on active layer",
+        Edit,
+        None,
+        false,
+        "Select every visible, unlocked object on the active layer."
     ),
     command!(
         SelectOpenShapes,

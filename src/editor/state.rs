@@ -1880,6 +1880,32 @@ impl EditorState {
         }
     }
 
+    /// Select every visible, unlocked object on one layer.
+    ///
+    /// Returns how many objects were selected; a hidden or locked layer selects
+    /// nothing.
+    pub fn select_layer_objects(&mut self, layer_id: &str) -> usize {
+        self.selection.clear();
+        let selectable = self
+            .document
+            .layer(layer_id)
+            .is_some_and(|layer| layer.visible && !layer.locked);
+        if !selectable {
+            return 0;
+        }
+        let ids: Vec<String> = self
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.layer_id == layer_id && object.visible && !object.locked)
+            .map(|object| object.id.clone())
+            .collect();
+        for id in &ids {
+            self.selection.add(id.clone());
+        }
+        ids.len()
+    }
+
     /// Select every visible, unlocked object whose outline is open.
     ///
     /// Rectangles and ellipses are closed by construction, and text and images
@@ -3632,6 +3658,26 @@ mod tests {
         assert!((min.x - 10.0).abs() < 1e-9);
         assert!((min.y - 10.0).abs() < 1e-9);
         assert!(!editor.move_selection_to(10.0, 10.0));
+    }
+
+    #[test]
+    fn select_layer_objects_stays_on_one_layer() {
+        let mut editor = editor();
+        let first = editor.document.layers[0].id.clone();
+        let second = editor.document.add_layer("Second").id.clone();
+        editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.active_layer_id = second.clone();
+        editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        assert_eq!(editor.select_layer_objects(&first), 1);
+        assert_eq!(editor.selection.len(), 1);
+        editor.document.layer_mut(&second).unwrap().visible = false;
+        assert_eq!(editor.select_layer_objects(&second), 0);
+        assert!(editor.selection.is_empty());
     }
 
     #[test]

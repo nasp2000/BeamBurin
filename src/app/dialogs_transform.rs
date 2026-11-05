@@ -568,6 +568,12 @@ impl BeamBurinApp {
                 }
             }
             Action::SelectAll => self.editor.select_all(),
+            Action::SelectNone => self.editor.selection.clear(),
+            Action::SelectLayer => {
+                let layer = self.editor.active_layer_id.clone();
+                let count = self.editor.select_layer_objects(&layer);
+                self.status = format!("Selected {count} object(s) on the active layer");
+            }
             Action::SelectOpenShapes => self.editor.select_open_shapes(),
             Action::SetPosition => self.open_position(),
             Action::BringForward => {

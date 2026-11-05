@@ -378,8 +378,24 @@ impl BeamBurinApp {
                     self.editor.select_all();
                     ui.close();
                 }
+                if ui
+                    .add_enabled(
+                        !self.editor.selection.is_empty(),
+                        icons::widget(ui, Icon::SelectAll, "Select none"),
+                    )
+                    .clicked()
+                {
+                    self.editor.selection.clear();
+                    ui.close();
+                }
                 if icons::button(ui, Icon::SelectAll, "Select open shapes").clicked() {
                     self.editor.select_open_shapes();
+                    ui.close();
+                }
+                if icons::button(ui, Icon::SelectAll, "Select all on layer").clicked() {
+                    let layer = self.editor.active_layer_id.clone();
+                    let count = self.editor.select_layer_objects(&layer);
+                    self.status = format!("Selected {count} object(s) on the active layer");
                     ui.close();
                 }
                 if ui
