@@ -1071,6 +1071,90 @@ impl EditorState {
         Ok(contours.len())
     }
 
+    /// Union every selected closed shape into one or more paths.
+    ///
+    /// Unlike the two-shape boolean this accepts any number of shapes and
+    /// merges overlapping parts pairwise until no pair overlaps. One path object
+    /// is created per resulting contour, keeping the first object's style, layer
+    /// and operation. Returns the number of contours and records one undo step.
+    pub fn weld_selection(&mut self) -> std::result::Result<usize, String> {
+        use crate::geometry::boolean::{BooleanOp, boolean_contours, polygon_area};
+
+        let selected = self.selected_indices();
+        if selected.len() < 2 {
+            return Err("Select at least two closed shapes".to_string());
+        }
+        for &index in &selected {
+            self.ensure_editable(index)?;
+        }
+        let mut parts: Vec<Vec<(f64, f64)>> = Vec::new();
+        for &index in &selected {
+            let contour =
+                Self::closed_world_contour(&self.document.objects[index]).ok_or_else(|| {
+                    format!(
+                        "'{}' is not a closed shape",
+                        self.document.objects[index].name
+                    )
+                })?;
+            parts.push(contour);
+        }
+        loop {
+            let mut merged = false;
+            'search: for first in 0..parts.len() {
+                for second in (first + 1)..parts.len() {
+                    let area_first = polygon_area(&parts[first]);
+                    let area_second = polygon_area(&parts[second]);
+                    let union = boolean_contours(BooleanOp::Union, &parts[first], &parts[second]);
+                    let union_area: f64 = union.iter().map(|contour| polygon_area(contour)).sum();
+                    if union_area < area_first + area_second - 1e-6 {
+                        parts.splice(first..=second, union);
+                        merged = true;
+                        break 'search;
+                    }
+                }
+            }
+            if !merged {
+                break;
+            }
+        }
+        for contour in &mut parts {
+            if polygon_area(contour) < 0.0 {
+                contour.reverse();
+            }
+        }
+        parts.sort_by(|left, right| {
+            polygon_area(right)
+                .partial_cmp(&polygon_area(left))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        self.record_action("Weld");
+        let template = self.document.objects[selected[0]].clone();
+        let insert_at = selected[0];
+        for &index in selected.iter().rev() {
+            self.document.objects.remove(index);
+        }
+        let insert_at = insert_at.min(self.document.objects.len());
+        self.selection.clear();
+        for (index, contour) in parts.iter().enumerate() {
+            let name = if parts.len() == 1 {
+                format!("Weld {}", template.name)
+            } else {
+                format!("Weld {} {}", template.name, index + 1)
+            };
+            let mut object = Object::new(
+                template.layer_id.clone(),
+                Shape::Path(Path::from_points(contour, true)),
+            )
+            .with_style(template.style.clone());
+            object.name = name;
+            object.operation_id.clone_from(&template.operation_id);
+            self.selection.add(object.id.clone());
+            self.document.objects.insert(insert_at + index, object);
+        }
+        Ok(parts.len())
+    }
+
     /// Outline of an object flattened to straight segments, if it has geometry.
     fn outline_segments(object: &Object) -> Vec<crate::geometry::Segment> {
         let points = object.world_path().flatten(0.2);
@@ -3713,6 +3797,53 @@ mod tests {
         editor.selection.add(b.clone());
         assert_eq!(editor.raise_selection(), 2);
         assert_eq!(order(&editor), vec![c, a, b]);
+    }
+
+    #[test]
+    fn weld_unions_every_overlapping_shape_and_undoes_once() {
+        let mut editor = editor();
+        let first = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(40.0, 20.0))
+            .unwrap();
+        let second = editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(60.0, 20.0))
+            .unwrap();
+        let third = editor
+            .add_rectangle(Point2::new(40.0, 0.0), Point2::new(80.0, 20.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(first);
+        editor.selection.add(second);
+        editor.selection.add(third);
+        assert_eq!(editor.weld_selection().unwrap(), 1);
+        assert_eq!(editor.document.objects.len(), 1);
+        let (min, max) = editor.document.objects[0].bounds().unwrap();
+        assert!((min.x).abs() < 1e-6);
+        assert!((max.x - 80.0).abs() < 1e-6);
+        assert!(editor.undo().is_some());
+        assert_eq!(editor.document.objects.len(), 3);
+    }
+
+    #[test]
+    fn weld_keeps_disjoint_groups_apart_and_rejects_open_paths() {
+        let mut editor = editor();
+        editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
+            .unwrap();
+        editor.select_all();
+        assert_eq!(editor.weld_selection().unwrap(), 2);
+        assert_eq!(editor.document.objects.len(), 2);
+        // An open path cannot be welded.
+        let layer = editor.document.layers[0].id.clone();
+        let open = Path::from_points(&[(0.0, 0.0), (5.0, 5.0)], false);
+        editor
+            .document
+            .add_object(Object::new(layer, Shape::Path(open)));
+        editor.select_all();
+        assert!(editor.weld_selection().is_err());
     }
 
     #[test]

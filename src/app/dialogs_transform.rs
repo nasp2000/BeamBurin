@@ -669,6 +669,10 @@ impl BeamBurinApp {
                 self.apply_boolean(crate::geometry::BooleanOp::Intersection);
             }
             Action::BooleanExclusion => self.apply_boolean(crate::geometry::BooleanOp::Xor),
+            Action::Weld => match self.editor.weld_selection() {
+                Ok(count) => self.status = format!("Welded into {count} contour(s)"),
+                Err(error) => self.status = format!("Weld failed: {error}"),
+            },
             Action::Offset => self.offset_open = true,
             Action::Repeat => self.repeat_open = true,
             Action::Skew => self.skew_open = true,

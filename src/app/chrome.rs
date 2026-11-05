@@ -929,6 +929,19 @@ impl BeamBurinApp {
                     }
                 });
                 if ui
+                    .add_enabled(
+                        self.editor.selection.len() >= 2,
+                        icons::widget(ui, Icon::BooleanUnion, "Weld shapes"),
+                    )
+                    .clicked()
+                {
+                    match self.editor.weld_selection() {
+                        Ok(count) => self.status = format!("Welded into {count} contour(s)"),
+                        Err(error) => self.status = format!("Weld failed: {error}"),
+                    }
+                    ui.close();
+                }
+                if ui
                     .add_enabled(enabled, icons::widget(ui, Icon::OutlineStroke, "Outline stroke"))
                     .clicked()
                 {

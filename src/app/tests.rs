@@ -623,6 +623,40 @@ fn the_arrange_menu_converts_a_rectangle_to_a_path() {
 }
 
 #[test]
+fn the_arrange_menu_welds_overlapping_shapes() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let first = app
+        .editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(40.0, 20.0))
+        .expect("the first rectangle was not added");
+    let second = app
+        .editor
+        .add_rectangle(Point2::new(20.0, 0.0), Point2::new(60.0, 20.0))
+        .expect("the second rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(first);
+    app.editor.selection.add(second);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Weld shapes").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().editor.document.objects.len(),
+        1,
+        "the weld left more than one object"
+    );
+    let (min, max) = harness.state().editor.document.objects[0]
+        .bounds()
+        .expect("the welded object has no bounds");
+    assert!((min.x).abs() < 1e-6);
+    assert!((max.x - 60.0).abs() < 1e-6);
+}
+
+#[test]
 fn the_arrange_menu_sets_and_clears_the_corner_radius() {
     use egui_kittest::kittest::Queryable as _;
 

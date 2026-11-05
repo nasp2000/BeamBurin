@@ -40,6 +40,7 @@ pub enum CommandId {
     BooleanDifference,
     BooleanIntersection,
     BooleanExclusion,
+    Weld,
     Offset,
     Repeat,
     Skew,
@@ -422,6 +423,15 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Square the corners of the selected rectangles."
+    ),
+    command!(
+        Weld,
+        "tools.weld",
+        "Weld shapes",
+        Tools,
+        None,
+        false,
+        "Union every selected closed shape, merging the overlapping parts."
     ),
     command!(
         Offset,
