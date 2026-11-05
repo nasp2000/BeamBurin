@@ -2539,6 +2539,51 @@ fn cancel_restores_every_image_touched_by_apply_to_selected() {
 }
 
 #[test]
+fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("save_profile_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id.clone());
+    let before = app.profiles.images.len();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Wood").click_accesskit();
+    harness.run();
+    harness.get_by_label("Save as profile").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert_eq!(
+        app.profiles.images.len(),
+        before + 1,
+        "the settings were not saved as a profile"
+    );
+    let profile = app.profiles.images.last().expect("no profile was added");
+    assert!(!profile.builtin);
+    assert!(profile.name.starts_with("Image profile"));
+    assert_eq!(profile.settings.mode, crate::objects::ImageMode::Stucki);
+    assert!(
+        (profile.settings.contrast - 1.25).abs() < f32::EPSILON,
+        "the profile kept contrast {}",
+        profile.settings.contrast
+    );
+    assert_eq!(app.profile_message, "Profiles saved");
+}
+
+#[test]
 fn the_layer_menu_deletes_an_empty_layer() {
     use egui_kittest::kittest::Queryable as _;
 

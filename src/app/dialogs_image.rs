@@ -50,6 +50,7 @@ impl BeamBurinApp {
         let mut preset: Option<crate::objects::ImageSettings> = None;
         let mut auto_levels = false;
         let mut target_message: Option<String> = None;
+        let mut profile_saved: Option<String> = None;
         egui::Window::new(format!("Adjust image - {object_name}"))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -420,6 +421,35 @@ impl BeamBurinApp {
                             if ui.button("Apply to selected images").clicked() {
                                 apply_all = true;
                             }
+                            if ui
+                                .button("Save as profile")
+                                .on_hover_text(
+                                    "Store the current settings as a reusable image profile",
+                                )
+                                .clicked()
+                            {
+                                let mut index = self.profiles.images.len() + 1;
+                                let name = loop {
+                                    let candidate = format!("Image profile {index}");
+                                    if !self
+                                        .profiles
+                                        .images
+                                        .iter()
+                                        .any(|profile| profile.name == candidate)
+                                    {
+                                        break candidate;
+                                    }
+                                    index += 1;
+                                };
+                                let mut profile =
+                                    crate::profiles::ImageProfile::new(name.clone());
+                                profile.settings = image.settings;
+                                profile.meta.category = "Custom".to_string();
+                                let id = self.profiles.add_image(profile).id.clone();
+                                self.selected_image_profile = Some(id);
+                                self.save_profiles();
+                                profile_saved = Some(format!("Saved \"{name}\" as an image profile"));
+                            }
                             ui.checkbox(&mut compare, "Compare with original");
                             if ui.button("Photo").clicked() {
                                 preset = Some(crate::objects::ImageSettings {
@@ -495,6 +525,9 @@ impl BeamBurinApp {
         self.image_burn_map = burn_map;
         self.image_target_dpi = target_dpi;
         if let Some(message) = target_message {
+            self.status = message;
+        }
+        if let Some(message) = profile_saved {
             self.status = message;
         }
         self.image_target_width_mm = target_width_mm;
