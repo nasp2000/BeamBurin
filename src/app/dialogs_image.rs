@@ -57,6 +57,9 @@ impl BeamBurinApp {
             .default_size([880.0, 600.0])
             .max_height(640.0)
             .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label("Original");
@@ -500,8 +503,24 @@ impl BeamBurinApp {
             }
         }
         if cancel {
-            self.image_adjust_snapshot = None;
-            if let Some(current) = self
+            // Restore every image to the settings it had when the dialog
+            // opened: "Apply to all images" may have touched more than the
+            // edited object, and the snapshot holds the document as it was.
+            if let Some(snapshot) = self.image_adjust_snapshot.take() {
+                for object in &mut self.editor.document.objects {
+                    let Some(before) = snapshot.object(&object.id) else {
+                        continue;
+                    };
+                    let (
+                        crate::document::Shape::Image(current),
+                        crate::document::Shape::Image(original),
+                    ) = (&mut object.shape, &before.shape)
+                    else {
+                        continue;
+                    };
+                    current.settings = original.settings;
+                }
+            } else if let Some(current) = self
                 .editor
                 .document
                 .objects

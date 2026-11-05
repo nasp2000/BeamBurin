@@ -1,6 +1,15 @@
 use super::*;
 use crate::geometry::Point2;
 
+/// Whether the image object with this id has its negative switch on.
+fn image_is_negative(document: &crate::document::Document, id: &str) -> bool {
+    let object = document.object(id).expect("the image is missing");
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    image.settings.invert
+}
+
 #[test]
 fn preview_marks_burn_black() {
     let bitmap = crate::raster::RasterBitmap {
@@ -2390,6 +2399,96 @@ fn the_image_adjust_window_applies_every_preset() {
             image.settings.contrast
         );
     }
+}
+
+#[test]
+fn escape_cancels_the_image_adjustments() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("escape_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust_snapshot = Some(app.editor.document.clone());
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Negative image")
+        .click_accesskit();
+    harness.run();
+    // The dialog applies the settings live, so the document already changed.
+    let app = harness.state();
+    assert!(image_is_negative(&app.editor.document, &id));
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    let app = harness.state();
+    assert!(app.image_adjust.is_none(), "the window stayed open");
+    assert!(
+        !image_is_negative(&app.editor.document, &id),
+        "escape kept the adjustment"
+    );
+    assert!(app.image_adjust_snapshot.is_none());
+}
+
+#[test]
+fn cancel_restores_every_image_touched_by_apply_to_selected() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("cancel_all_images_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let mut document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let layer = document.layers[0].id.clone();
+    let second = crate::document::Object::new(layer, document.objects[0].shape.clone());
+    let second_id = second.id.clone();
+    document.add_object(second);
+    let first_id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.editor.selection.add(first_id.clone());
+    app.editor.selection.add(second_id.clone());
+    app.image_adjust_snapshot = Some(app.editor.document.clone());
+    app.image_adjust = Some(first_id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Negative image")
+        .click_accesskit();
+    harness.run();
+    harness
+        .get_by_label("Apply to selected images")
+        .click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert!(image_is_negative(&app.editor.document, &first_id));
+    assert!(
+        image_is_negative(&app.editor.document, &second_id),
+        "the second image was not touched"
+    );
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert!(app.image_adjust.is_none(), "the window stayed open");
+    assert!(!image_is_negative(&app.editor.document, &first_id));
+    assert!(
+        !image_is_negative(&app.editor.document, &second_id),
+        "cancel kept the settings on the second image"
+    );
 }
 
 #[test]
