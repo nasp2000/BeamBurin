@@ -644,6 +644,7 @@ fn the_arrange_menu_brings_the_selection_forward_one_step() {
         .editor
         .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
         .expect("the second rectangle was not added");
+    app.editor.selection.clear();
     app.editor.selection.add(first.clone());
     let mut harness = ui_harness(app);
     harness.run();

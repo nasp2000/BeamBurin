@@ -3590,6 +3590,7 @@ mod tests {
                 .map(|object| object.id.clone())
                 .collect::<Vec<_>>()
         };
+        editor.selection.clear();
         editor.selection.add(b.clone());
         assert_eq!(editor.raise_selection(), 1);
         assert_eq!(order(&editor), vec![a.clone(), c.clone(), b.clone()]);
