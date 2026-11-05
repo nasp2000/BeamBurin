@@ -354,7 +354,7 @@ pub fn engraving_resolution(
     target_width_mm: f64,
     target_dpi: f64,
     aspect: f64,
-) -> Option<(u32, u32, f32)> {
+) -> Option<(u32, u32, f64)> {
     if !target_width_mm.is_finite() || target_width_mm <= 0.0 {
         return None;
     }
@@ -369,7 +369,7 @@ pub fn engraving_resolution(
     if !(1.0..=20_000.0).contains(&width_px) || !(1.0..=20_000.0).contains(&height_px) {
         return None;
     }
-    let interval = (25.4 / target_dpi) as f32;
+    let interval = 25.4 / target_dpi;
     if !(0.01..=2.0).contains(&interval) {
         return None;
     }
