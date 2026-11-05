@@ -3005,7 +3005,7 @@ fn compare_with_original_shows_the_opening_settings_without_losing_the_edit() {
     harness.run();
     assert_eq!(
         mode_of(harness.state()),
-        crate::objects::ImageMode::Threshold,
+        crate::objects::ImageMode::Grayscale,
         "compare did not show the opening settings"
     );
     assert_eq!(
