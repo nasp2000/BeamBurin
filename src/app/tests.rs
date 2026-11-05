@@ -3044,6 +3044,54 @@ fn compare_with_original_shows_the_opening_settings_without_losing_the_edit() {
 }
 
 #[test]
+fn the_image_adjust_duplicates_and_deletes_a_preset() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("preset_copy_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    app.selected_image_profile = Some("builtin-photo-wood".to_string());
+    let mut harness = ui_harness(app);
+    harness.run();
+    let before = harness.state().profiles.images.len();
+    harness.get_by_label("Duplicate preset").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().profiles.images.len(),
+        before + 1,
+        "the preset was not duplicated"
+    );
+    let copy = harness
+        .state()
+        .profiles
+        .images
+        .last()
+        .expect("no profile was added");
+    assert!(!copy.builtin, "the copy is still marked built-in");
+    assert!(copy.name.contains("copy"), "the copy kept the old name");
+    harness.get_by_label("Delete preset").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().profiles.images.len(),
+        before,
+        "the copied preset was not deleted"
+    );
+}
+
+#[test]
 fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
     use egui_kittest::kittest::Queryable as _;
 

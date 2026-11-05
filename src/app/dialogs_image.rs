@@ -97,19 +97,20 @@ impl BeamBurinApp {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([880.0, 600.0])
-            .max_height(640.0)
+            .default_size([980.0, 760.0])
+            .max_height(820.0)
             .show(ctx, |ui| {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
                 }
-                ui.horizontal(|ui| {
+                let preview_width = ((ui.available_width() - 24.0) / 2.0).clamp(220.0, 420.0);
+                ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
                         ui.label("Original");
                         if let Some(texture) = &original_texture {
                             ui.add(
                                 egui::Image::new(texture)
-                                    .max_size(egui::vec2(320.0, 220.0))
+                                    .max_size(egui::vec2(preview_width, 340.0))
                                     .shrink_to_fit(),
                             );
                         } else {
@@ -144,8 +145,8 @@ impl BeamBurinApp {
                             if zoom > 0.0 {
                                 egui::ScrollArea::both()
                                     .id_salt("image_preview_zoom_scroll")
-                                    .max_width(320.0)
-                                    .max_height(220.0)
+                                    .max_width(preview_width)
+                                    .max_height(340.0)
                                     .auto_shrink([false, false])
                                     .show(ui, |ui| {
                                         ui.add(
@@ -490,11 +491,52 @@ impl BeamBurinApp {
                                 .width(180.0)
                                 .show_ui(ui, |ui| {
                                     for profile in &self.profiles.images {
-                                        if ui.selectable_label(false, &profile.name).clicked() {
+                                        let selected = self.selected_image_profile.as_deref()
+                                            == Some(profile.id.as_str());
+                                        if ui.selectable_label(selected, &profile.name).clicked() {
                                             preset = Some(profile.settings);
+                                            self.selected_image_profile =
+                                                Some(profile.id.clone());
                                         }
                                     }
                                 });
+                            let selected_profile = self.selected_image_profile.clone();
+                            if ui
+                                .add_enabled(
+                                    selected_profile.is_some(),
+                                    egui::Button::new("Duplicate preset"),
+                                )
+                                .on_hover_text("Copy the selected image profile")
+                                .clicked()
+                            {
+                                if let Some(id) = &selected_profile {
+                                    if let Some(copy) = self.profiles.duplicate_image(id) {
+                                        self.selected_image_profile = Some(copy);
+                                        self.save_profiles();
+                                        self.status = "Image profile duplicated".to_string();
+                                    }
+                                }
+                            }
+                            let removable = selected_profile
+                                .as_deref()
+                                .and_then(|id| self.profiles.image(id))
+                                .is_some_and(|profile| !profile.builtin);
+                            if ui
+                                .add_enabled(removable, egui::Button::new("Delete preset"))
+                                .on_hover_text("Remove the selected image profile")
+                                .clicked()
+                            {
+                                if let Some(id) = &selected_profile {
+                                    match self.profiles.remove_image(id) {
+                                        Ok(()) => {
+                                            self.selected_image_profile = None;
+                                            self.save_profiles();
+                                            self.status = "Image profile deleted".to_string();
+                                        }
+                                        Err(error) => self.status = error,
+                                    }
+                                }
+                            }
                             if ui.button("Reset all").clicked() {
                                 reset = true;
                             }
