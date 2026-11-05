@@ -609,7 +609,7 @@ fn paint_object(
                 let color = fill_color.unwrap_or(stroke_color);
                 let mut job = egui::text::LayoutJob::default();
                 job.append(
-                    &text.content,
+                    &text.rendered(),
                     0.0,
                     egui::TextFormat {
                         font_id: FontId::new(size, crate::textfont::family(&text.font)),

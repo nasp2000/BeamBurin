@@ -44,7 +44,8 @@ pub fn text_to_paths_with_font(text: &TextObject, data: &[u8]) -> Result<Vec<Pat
     let top = text.y + text.block_height();
     let left = text.left();
     let mut paths = Vec::new();
-    for (line_index, line) in text.lines().iter().enumerate() {
+    let lines = text.rendered_lines();
+    for (line_index, line) in lines.iter().enumerate() {
         #[allow(clippy::cast_precision_loss)]
         let baseline = top - line_index as f64 * text.line_height() - ascent;
         let mut pen = left;
@@ -181,7 +182,7 @@ pub fn text_along_path_with_font(
         return Err("the font has no units per em".to_string());
     }
     let factor = text.size / f64::from(units);
-    let line = text.lines().first().copied().unwrap_or("");
+    let line = text.rendered_lines().first().cloned().unwrap_or_default();
     if line.trim().is_empty() {
         return Err("the text has no characters on its first line".to_string());
     }
@@ -311,6 +312,25 @@ mod tests {
             content: content.to_string(),
             size: 10.0,
             ..TextObject::default()
+        }
+    }
+
+    #[test]
+    fn uppercase_switch_outlines_like_uppercase_content() {
+        let lower = TextObject {
+            content: "ab".to_string(),
+            uppercase: true,
+            ..TextObject::default()
+        };
+        let upper = TextObject {
+            content: "AB".to_string(),
+            ..TextObject::default()
+        };
+        let switched = text_to_paths(&lower).unwrap();
+        let plain = text_to_paths(&upper).unwrap();
+        assert_eq!(switched.len(), plain.len());
+        for (a, b) in switched.iter().zip(&plain) {
+            assert!((a.length() - b.length()).abs() < 1e-6);
         }
     }
 

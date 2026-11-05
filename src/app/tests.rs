@@ -623,6 +623,35 @@ fn the_arrange_menu_converts_a_rectangle_to_a_path() {
 }
 
 #[test]
+fn the_text_properties_can_force_upper_case() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_text(Point2::new(10.0, 10.0))
+        .expect("the text object was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Force upper case")
+        .click_accesskit();
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .expect("the text disappeared");
+    let crate::document::Shape::Text(text) = &object.shape else {
+        panic!("the object is not text");
+    };
+    assert!(text.uppercase, "the upper-case switch did not apply");
+}
+
+#[test]
 fn the_arrange_menu_welds_overlapping_shapes() {
     use egui_kittest::kittest::Queryable as _;
 

@@ -38,6 +38,9 @@ pub struct TextObject {
     pub line_spacing: f64,
     #[serde(default)]
     pub align: TextAlign,
+    /// Draw the content in upper case without changing what is stored.
+    #[serde(default)]
+    pub uppercase: bool,
 }
 
 fn default_line_spacing() -> f64 {
@@ -55,6 +58,7 @@ impl Default for TextObject {
             letter_spacing: 0.0,
             line_spacing: default_line_spacing(),
             align: TextAlign::Left,
+            uppercase: false,
         }
     }
 }
@@ -80,6 +84,21 @@ impl TextObject {
         self.content.split('\n').collect()
     }
 
+    /// Lines as they are drawn, applying the upper-case switch.
+    pub fn rendered_lines(&self) -> Vec<String> {
+        let content = self.rendered();
+        content.split('\n').map(str::to_string).collect()
+    }
+
+    /// The content as it is drawn, applying the upper-case switch.
+    pub fn rendered(&self) -> String {
+        if self.uppercase {
+            self.content.to_uppercase()
+        } else {
+            self.content.clone()
+        }
+    }
+
     /// Height of one line, including the extra line spacing.
     pub fn line_height(&self) -> f64 {
         self.size * self.line_spacing
@@ -97,15 +116,15 @@ impl TextObject {
 
     /// Width of the widest line.
     pub fn block_width(&self) -> f64 {
-        self.lines()
-            .into_iter()
+        self.rendered_lines()
+            .iter()
             .map(|line| self.line_width(line))
             .fold(0.0, f64::max)
     }
 
     /// Height of the whole block.
     pub fn block_height(&self) -> f64 {
-        let lines = self.lines().len();
+        let lines = self.rendered_lines().len();
         if lines == 0 {
             return 0.0;
         }
@@ -157,6 +176,19 @@ mod tests {
     #[test]
     fn valid() {
         assert!(sample().validate().is_ok());
+    }
+
+    #[test]
+    fn uppercase_is_a_drawing_switch_not_a_content_edit() {
+        let mut text = TextObject {
+            content: "ab\ncd".to_string(),
+            ..TextObject::default()
+        };
+        assert_eq!(text.rendered_lines(), vec!["ab", "cd"]);
+        text.uppercase = true;
+        assert_eq!(text.rendered(), "AB\nCD");
+        assert_eq!(text.rendered_lines(), vec!["AB", "CD"]);
+        assert_eq!(text.content, "ab\ncd");
     }
 
     #[test]

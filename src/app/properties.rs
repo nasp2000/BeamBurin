@@ -421,6 +421,9 @@ impl BeamBurinApp {
                             egui::Slider::new(&mut text.line_spacing, 0.5..=5.0).fixed_decimals(2),
                         );
                         ui.end_row();
+                        ui.label("Upper case");
+                        ui.checkbox(&mut text.uppercase, "Force upper case");
+                        ui.end_row();
                         ui.label("Align");
                         let mut align = text.align;
                         egui::ComboBox::from_id_salt("text_align")
