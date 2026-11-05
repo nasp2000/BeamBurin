@@ -116,6 +116,18 @@ pub struct ImageSettings {
     /// Input values at or above this are treated as white.
     #[serde(default = "default_white_clip")]
     pub white_clip: u8,
+    /// Weight of the red channel when the colour image becomes luminance.
+    #[serde(default = "default_gray_red")]
+    pub gray_red: f32,
+    /// Weight of the green channel when the colour image becomes luminance.
+    #[serde(default = "default_gray_green")]
+    pub gray_green: f32,
+    /// Weight of the blue channel when the colour image becomes luminance.
+    #[serde(default = "default_gray_blue")]
+    pub gray_blue: f32,
+    /// Remove single-pixel noise with a 3×3 median before the tone pipeline.
+    #[serde(default)]
+    pub despeckle: bool,
     /// Tone-curve lift for dark values, -1.0..=1.0.
     #[serde(default)]
     pub shadow_lift: f32,
@@ -133,6 +145,18 @@ fn default_white_clip() -> u8 {
 
 fn default_halftone_angle() -> f64 {
     22.5
+}
+
+fn default_gray_red() -> f32 {
+    0.299
+}
+
+fn default_gray_green() -> f32 {
+    0.587
+}
+
+fn default_gray_blue() -> f32 {
+    0.114
 }
 
 impl Default for ImageSettings {
@@ -155,6 +179,10 @@ impl Default for ImageSettings {
             enhance_amount: 0.0,
             black_clip: 0,
             white_clip: 255,
+            gray_red: default_gray_red(),
+            gray_green: default_gray_green(),
+            gray_blue: default_gray_blue(),
+            despeckle: false,
             shadow_lift: 0.0,
             midtone_shift: 0.0,
             highlight_lift: 0.0,
@@ -186,6 +214,18 @@ impl ImageSettings {
         }
         if self.black_clip >= self.white_clip {
             return Err("black clipping must be below white clipping".to_string());
+        }
+        for (value, name) in [
+            (self.gray_red, "red weight"),
+            (self.gray_green, "green weight"),
+            (self.gray_blue, "blue weight"),
+        ] {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} must be between 0 and 1"));
+            }
+        }
+        if self.gray_red + self.gray_green + self.gray_blue <= 0.0 {
+            return Err("at least one grey weight must be above zero".to_string());
         }
         if self.enhance_radius_px > 32 {
             return Err("enhancement radius must be at most 32 pixels".to_string());

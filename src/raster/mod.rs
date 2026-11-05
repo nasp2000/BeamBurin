@@ -562,7 +562,57 @@ fn prepared_luma(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
-    Ok(picture.to_luma8())
+    let mut luma = if uses_default_gray(&image.settings) {
+        picture.to_luma8()
+    } else {
+        luma_with_weights(&picture, &image.settings)
+    };
+    drop(picture);
+    if image.settings.despeckle {
+        luma = despeckle(&luma);
+    }
+    Ok(luma)
+}
+
+fn uses_default_gray(settings: &ImageSettings) -> bool {
+    (settings.gray_red - 0.299).abs() < 1e-4
+        && (settings.gray_green - 0.587).abs() < 1e-4
+        && (settings.gray_blue - 0.114).abs() < 1e-4
+}
+
+/// Convert to luminance with user weights, normalised so they need not sum to 1.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn luma_with_weights(picture: &image::DynamicImage, settings: &ImageSettings) -> image::GrayImage {
+    let rgb = picture.to_rgb8();
+    let total = (settings.gray_red + settings.gray_green + settings.gray_blue).max(f32::EPSILON);
+    image::GrayImage::from_fn(rgb.width(), rgb.height(), |x, y| {
+        let pixel = rgb.get_pixel(x, y);
+        let value = (f32::from(pixel[0]) * settings.gray_red
+            + f32::from(pixel[1]) * settings.gray_green
+            + f32::from(pixel[2]) * settings.gray_blue)
+            / total;
+        image::Luma([value.round().clamp(0.0, 255.0) as u8])
+    })
+}
+
+/// Remove single-pixel noise with a 3×3 median, leaving the border untouched.
+fn despeckle(luma: &image::GrayImage) -> image::GrayImage {
+    let (width, height) = luma.dimensions();
+    image::GrayImage::from_fn(width, height, |x, y| {
+        if x == 0 || y == 0 || x + 1 >= width || y + 1 >= height {
+            return *luma.get_pixel(x, y);
+        }
+        let mut values = [0u8; 9];
+        let mut index = 0;
+        for dy in 0..3 {
+            for dx in 0..3 {
+                values[index] = luma.get_pixel(x + dx - 1, y + dy - 1)[0];
+                index += 1;
+            }
+        }
+        values.sort_unstable();
+        image::Luma([values[4]])
+    })
 }
 
 /// Automatic black and white clip levels for the prepared image.
@@ -731,6 +781,51 @@ mod object_tests {
         // The left half is black, so every cropped pixel burns.
         assert!(bitmap.power.iter().all(|value| *value > 0));
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn gray_weights_choose_the_luminance_channel() {
+        let mut picture = image::RgbImage::new(3, 1);
+        picture.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        picture.put_pixel(1, 0, image::Rgb([0, 255, 0]));
+        picture.put_pixel(2, 0, image::Rgb([0, 0, 255]));
+        let picture = image::DynamicImage::ImageRgb8(picture);
+        let mut settings = ImageSettings {
+            gray_red: 1.0,
+            gray_green: 0.0,
+            gray_blue: 0.0,
+            ..ImageSettings::default()
+        };
+        let red = luma_with_weights(&picture, &settings);
+        assert_eq!(red.get_pixel(0, 0)[0], 255);
+        assert_eq!(red.get_pixel(1, 0)[0], 0);
+        settings.gray_red = 0.0;
+        settings.gray_green = 0.0;
+        settings.gray_blue = 1.0;
+        let blue = luma_with_weights(&picture, &settings);
+        assert_eq!(blue.get_pixel(2, 0)[0], 255);
+        assert_eq!(blue.get_pixel(0, 0)[0], 0);
+    }
+
+    #[test]
+    fn despeckle_removes_a_single_dark_pixel() {
+        let mut luma = image::GrayImage::from_pixel(5, 5, image::Luma([255]));
+        luma.put_pixel(2, 2, image::Luma([0]));
+        let clean = despeckle(&luma);
+        assert_eq!(clean.get_pixel(2, 2)[0], 255);
+        assert_eq!(clean.get_pixel(0, 0)[0], 255);
+    }
+
+    #[test]
+    fn gray_weights_must_leave_some_light() {
+        let mut settings = ImageSettings::default();
+        assert!(settings.validate().is_ok());
+        settings.gray_red = 0.0;
+        settings.gray_green = 0.0;
+        settings.gray_blue = 0.0;
+        assert!(settings.validate().is_err());
+        settings.gray_blue = 1.5;
+        assert!(settings.validate().is_err());
     }
 
     #[test]

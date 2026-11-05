@@ -303,6 +303,34 @@ impl BeamBurinApp {
                                             .fixed_decimals(2),
                                     );
                                     ui.end_row();
+                                    ui.label("Grey mix");
+                                    ui.horizontal(|ui| {
+                                        ui.add(
+                                            egui::DragValue::new(&mut image.settings.gray_red)
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .fixed_decimals(2),
+                                        )
+                                        .on_hover_text("Red weight");
+                                        ui.add(
+                                            egui::DragValue::new(&mut image.settings.gray_green)
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .fixed_decimals(2),
+                                        )
+                                        .on_hover_text("Green weight");
+                                        ui.add(
+                                            egui::DragValue::new(&mut image.settings.gray_blue)
+                                                .speed(0.01)
+                                                .range(0.0..=1.0)
+                                                .fixed_decimals(2),
+                                        )
+                                        .on_hover_text("Blue weight");
+                                    });
+                                    ui.end_row();
+                                    ui.label("Despeckle");
+                                    ui.checkbox(&mut image.settings.despeckle, "3×3 median");
+                                    ui.end_row();
                                 });
                         });
                         ui.separator();

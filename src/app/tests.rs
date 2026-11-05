@@ -2255,6 +2255,8 @@ fn the_image_adjust_window_edits_the_settings() {
         "Brightness",
         "Negative image",
         "Auto levels",
+        "Grey mix",
+        "Despeckle",
     ] {
         assert!(
             harness.query_all_by_label(label).next().is_some(),
@@ -2263,6 +2265,10 @@ fn the_image_adjust_window_edits_the_settings() {
     }
     harness
         .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Negative image")
+        .click_accesskit();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "3×3 median")
         .click_accesskit();
     harness.run();
     let object = harness
@@ -2277,6 +2283,10 @@ fn the_image_adjust_window_edits_the_settings() {
         panic!("the object is not an image");
     };
     assert!(image.settings.invert, "the negative switch did not apply");
+    assert!(
+        image.settings.despeckle,
+        "the despeckle switch did not apply"
+    );
 }
 
 #[test]
