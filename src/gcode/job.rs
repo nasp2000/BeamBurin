@@ -11,6 +11,64 @@ use crate::operations::model::OperationParams;
 use crate::operations::{Operation, OperationType};
 
 /// Job generation options that are not part of a single operation.
+/// Which point of the work area becomes the machine origin in the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+pub enum JobOrigin {
+    #[default]
+    BottomLeft,
+    BottomCentre,
+    BottomRight,
+    MiddleLeft,
+    Centre,
+    MiddleRight,
+    TopLeft,
+    TopCentre,
+    TopRight,
+}
+
+impl JobOrigin {
+    pub const ALL: [Self; 9] = [
+        Self::TopLeft,
+        Self::TopCentre,
+        Self::TopRight,
+        Self::MiddleLeft,
+        Self::Centre,
+        Self::MiddleRight,
+        Self::BottomLeft,
+        Self::BottomCentre,
+        Self::BottomRight,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BottomLeft => "Bottom left",
+            Self::BottomCentre => "Bottom centre",
+            Self::BottomRight => "Bottom right",
+            Self::MiddleLeft => "Middle left",
+            Self::Centre => "Centre",
+            Self::MiddleRight => "Middle right",
+            Self::TopLeft => "Top left",
+            Self::TopCentre => "Top centre",
+            Self::TopRight => "Top right",
+        }
+    }
+
+    /// Distance from the work-area origin to the chosen point.
+    pub fn offset(self, width: f64, height: f64) -> (f64, f64) {
+        let x = match self {
+            Self::BottomLeft | Self::MiddleLeft | Self::TopLeft => 0.0,
+            Self::BottomCentre | Self::Centre | Self::TopCentre => width / 2.0,
+            Self::BottomRight | Self::MiddleRight | Self::TopRight => width,
+        };
+        let y = match self {
+            Self::BottomLeft | Self::BottomCentre | Self::BottomRight => 0.0,
+            Self::MiddleLeft | Self::Centre | Self::MiddleRight => height / 2.0,
+            Self::TopLeft | Self::TopCentre | Self::TopRight => height,
+        };
+        (x, y)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct JobOptions {
     pub gcode: GCodeOptions,
@@ -22,6 +80,8 @@ pub struct JobOptions {
     ///
     /// Use it with a selection to engrave only that zone at the machine origin.
     pub offset_to_origin: bool,
+    /// Which point of the work area becomes (0, 0) in the file.
+    pub origin: JobOrigin,
     /// Corner-rounding radius applied to cut runs, in millimetres; 0 leaves the
     /// toolpaths exactly as generated.
     pub smooth_mm: f64,
@@ -34,6 +94,7 @@ impl Default for JobOptions {
             travel_speed_mm_min: 3000.0,
             assisted_ordering: true,
             offset_to_origin: false,
+            origin: JobOrigin::BottomLeft,
             smooth_mm: 0.0,
         }
     }
@@ -1436,6 +1497,15 @@ fn round_corners(points: &[Point2], radius: f64) -> Vec<Point2> {
 }
 
 /// Move every toolpath so the job starts at (0, 0).
+pub fn shift_by(toolpaths: &mut [Toolpath], dx: f64, dy: f64) {
+    for toolpath in toolpaths.iter_mut() {
+        for movement in &mut toolpath.moves {
+            movement.x += dx;
+            movement.y += dy;
+        }
+    }
+}
+
 pub fn shift_to_origin(toolpaths: &mut [Toolpath]) {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -1500,6 +1570,10 @@ pub fn render_job_cancellable(
     if options.offset_to_origin {
         shift_to_origin(&mut toolpaths);
     }
+    if options.origin != JobOrigin::BottomLeft {
+        let (dx, dy) = options.origin.offset(document.width_mm, document.height_mm);
+        shift_by(&mut toolpaths, -dx, -dy);
+    }
     if options.smooth_mm > 0.0 {
         smooth_toolpaths(&mut toolpaths, options.smooth_mm);
     }
@@ -1525,7 +1599,9 @@ pub fn render_job_cancellable(
     if cancel() {
         return Err(cancelled());
     }
-    warnings.extend(bounds_warnings(document, &toolpaths));
+    if options.origin == JobOrigin::BottomLeft {
+        warnings.extend(bounds_warnings(document, &toolpaths));
+    }
     let text = GCodeWriter::new(options.gcode).render(&toolpaths);
     let report = JobReport {
         lines: text.lines().count(),
@@ -1586,6 +1662,27 @@ mod tests {
         assert!(!text.contains("G1 X"));
         assert_eq!(report.paths, 0);
         assert_eq!(report.seconds, 0.0);
+    }
+
+    #[test]
+    fn the_page_origin_offsets_the_job_and_its_nine_points() {
+        assert_eq!(JobOrigin::BottomLeft.offset(100.0, 50.0), (0.0, 0.0));
+        assert_eq!(JobOrigin::Centre.offset(100.0, 50.0), (50.0, 25.0));
+        assert_eq!(JobOrigin::TopRight.offset(100.0, 50.0), (100.0, 50.0));
+        assert_eq!(JobOrigin::MiddleRight.offset(100.0, 50.0), (100.0, 25.0));
+        let document = document_with_rect();
+        let (text, _) = render_job(
+            &document,
+            &JobOptions {
+                origin: JobOrigin::Centre,
+                ..JobOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            text.contains("X-150.000") || text.contains("X-140.000"),
+            "the centre origin did not shift the rectangle"
+        );
     }
 
     #[test]

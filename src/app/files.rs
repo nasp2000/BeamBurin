@@ -61,6 +61,7 @@ impl BeamBurinApp {
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
         let offset_origin = self.export_offset_origin;
+        let origin = self.gcode_origin;
         self.export_subset = false;
         self.export_offset_origin = false;
         let document = if selection_only {
@@ -285,6 +286,7 @@ impl BeamBurinApp {
                 &document,
                 cancel,
                 offset_origin,
+                origin,
                 gcode,
                 smooth_mm,
             )))

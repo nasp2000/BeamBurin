@@ -467,6 +467,7 @@ pub struct BeamBurinApp {
     row_settings_done: bool,
     material_test_open: bool,
     gcode_dialect: crate::gcode::Dialect,
+    gcode_origin: crate::gcode::JobOrigin,
     gcode_smooth_mm: f64,
     gcode_decimals: u8,
     gcode_comments: bool,
@@ -583,6 +584,7 @@ fn run_export(
     document: &crate::document::Document,
     cancel: &std::sync::atomic::AtomicBool,
     offset_origin: bool,
+    origin: crate::gcode::JobOrigin,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {

@@ -1971,6 +1971,29 @@ fn the_cuts_window_lists_the_output_options() {
 }
 
 #[test]
+fn the_cuts_window_sets_the_job_origin() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Operations").click();
+    harness.run();
+    harness.get_by_label("Cuts / Layers...").click();
+    harness.run();
+    let radios: Vec<_> = harness
+        .get_all_by_role(egui::accesskit::Role::RadioButton)
+        .collect();
+    assert_eq!(radios.len(), 9, "the origin grid is not three by three");
+    radios[4].click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().gcode_origin,
+        crate::gcode::JobOrigin::Centre,
+        "the centre origin was not selected"
+    );
+}
+
+#[test]
 fn the_width_plus_resizes_the_object() {
     use egui_kittest::kittest::Queryable as _;
 

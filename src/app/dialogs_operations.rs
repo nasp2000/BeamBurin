@@ -82,6 +82,22 @@ impl BeamBurinApp {
                     self.export_presets_open = true;
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label("Job origin");
+                egui::Grid::new("job_origin_grid")
+                    .num_columns(3)
+                    .spacing([2.0, 2.0])
+                    .show(ui, |ui| {
+                        for (index, origin) in crate::gcode::JobOrigin::ALL.iter().enumerate() {
+                            ui.radio_value(&mut self.gcode_origin, *origin, "")
+                                .on_hover_text(origin.label());
+                            if index % 3 == 2 {
+                                ui.end_row();
+                            }
+                        }
+                    });
+                ui.weak(self.gcode_origin.label());
+            });
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label("Cut entry");

@@ -386,6 +386,9 @@ pub struct ExportPreset {
     /// Write circular runs as `G2`/`G3` arcs.
     #[serde(default)]
     pub arcs: bool,
+    /// Work-area point that becomes the file origin.
+    #[serde(default)]
+    pub origin: crate::gcode::JobOrigin,
 }
 
 /// Largest number of saved export presets.
@@ -804,6 +807,7 @@ mod tests {
             crlf: false,
             smooth_mm: 0.5,
             arcs: true,
+            origin: Default::default(),
         }
     }
 

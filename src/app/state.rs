@@ -156,6 +156,7 @@ impl BeamBurinApp {
             row_settings_done: false,
             material_test_open: false,
             gcode_dialect: crate::gcode::Dialect::default(),
+            gcode_origin: crate::gcode::JobOrigin::default(),
             gcode_smooth_mm: 0.0,
             gcode_decimals: 3,
             gcode_comments: true,

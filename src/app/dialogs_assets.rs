@@ -380,6 +380,7 @@ impl BeamBurinApp {
         self.gcode_crlf = preset.crlf;
         self.gcode_smooth_mm = preset.smooth_mm;
         self.gcode_arcs = preset.arcs;
+        self.gcode_origin = preset.origin;
     }
 
     pub(super) fn export_presets_window(&mut self, ctx: &egui::Context) {
@@ -461,6 +462,7 @@ impl BeamBurinApp {
                 crlf: self.gcode_crlf,
                 smooth_mm: self.gcode_smooth_mm,
                 arcs: self.gcode_arcs,
+                origin: self.gcode_origin,
             };
             match self.preferences.export_presets.upsert(preset) {
                 Ok(()) => {
