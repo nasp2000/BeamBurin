@@ -114,6 +114,7 @@ impl BeamBurinApp {
             image_adjust: None,
             image_adjust_snapshot: None,
             image_adjust_edit: None,
+            image_compare: false,
             image_burn_map: false,
             image_preview_zoom: 0.0,
             image_estimate_speed: 3000.0,

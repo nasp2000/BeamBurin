@@ -512,6 +512,7 @@ impl BeamBurinApp {
         };
         self.image_adjust_snapshot = Some(self.editor.document.clone());
         self.image_adjust_edit = Some(image.settings);
+        self.image_compare = false;
         self.image_adjust = Some(id);
         self.image_target_dpi = 254.0;
         self.image_target_width_mm = image.width_mm();

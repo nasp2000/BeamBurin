@@ -15,6 +15,7 @@ impl BeamBurinApp {
             .position(|object| object.id == id)
         else {
             self.image_adjust_edit = None;
+            self.image_compare = false;
             self.image_adjust = None;
             return;
         };
@@ -81,7 +82,7 @@ impl BeamBurinApp {
         let mut reset = false;
         let mut export_prepared = false;
         let mut apply_all = false;
-        let mut compare = false;
+        let mut compare = self.image_compare;
         let mut open_test_grid = false;
         let mut preset: Option<crate::objects::ImageSettings> = None;
         let mut auto_levels = false;
@@ -708,6 +709,7 @@ impl BeamBurinApp {
             self.image_adjust = None;
             return;
         }
+        self.image_compare = compare;
         let settings_changed = self.image_adjust_edit != Some(image.settings);
         self.image_adjust_edit = Some(image.settings);
         let mut document_changed = false;
@@ -755,6 +757,7 @@ impl BeamBurinApp {
                 }
             }
             self.image_adjust_edit = None;
+            self.image_compare = false;
             self.image_adjust = None;
         }
     }
