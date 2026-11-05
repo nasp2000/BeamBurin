@@ -662,6 +662,7 @@ impl BeamBurinApp {
                     self.status = format!("Sent {count} object(s) backward");
                     ui.close();
                 }
+                ui.separator();
                 if ui
                     .add_enabled(enabled, icons::widget(ui, Icon::Center, "Centre on page"))
                     .clicked()
@@ -679,241 +680,242 @@ impl BeamBurinApp {
                     self.open_position();
                     ui.close();
                 }
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::DistributeH, "Distribute on page horizontally"),
-                    )
-                    .clicked()
-                {
-                    self.editor.distribute_selection_on_page(true);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::DistributeV, "Distribute on page vertically"),
-                    )
-                    .clicked()
-                {
-                    self.editor.distribute_selection_on_page(false);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::RotateLeft, "Rotate 90° left"))
-                    .clicked()
-                {
-                    self.editor.rotate_selection(std::f64::consts::FRAC_PI_2);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::RotateRight, "Rotate 90° right"))
-                    .clicked()
-                {
-                    self.editor.rotate_selection(-std::f64::consts::FRAC_PI_2);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::FlipH, "Flip horizontal"))
-                    .clicked()
-                {
-                    self.editor.flip_selection(true);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::FlipV, "Flip vertical"))
-                    .clicked()
-                {
-                    self.editor.flip_selection(false);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::ScaleUp, "Scale up 10 %"))
-                    .clicked()
-                {
-                    self.editor.scale_selection(1.1, 1.1);
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::ScaleDown, "Scale down 10 %"))
-                    .clicked()
-                {
-                    self.editor.scale_selection(1.0 / 1.1, 1.0 / 1.1);
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() == 1,
-                        icons::widget(ui, Icon::TextOutline, "Text to outlines"),
-                    )
-                    .clicked()
-                {
-                    self.apply_text_outlines();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        enabled,
-                        icons::widget(ui, Icon::Nodes, "Convert to path"),
-                    )
-                    .clicked()
-                {
-                    let count = self.editor.convert_selection_to_paths();
-                    self.status = format!("Converted {count} shape(s) to paths");
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        enabled,
-                        icons::widget(ui, Icon::Rectangle, "Corner radius..."),
-                    )
-                    .clicked()
-                {
-                    self.open_corner_radius();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        enabled,
-                        icons::widget(ui, Icon::Rectangle, "Clear corner radius"),
-                    )
-                    .clicked()
-                {
-                    let count = self.editor.set_corner_radius(0.0);
-                    self.status = format!("Squared the corners of {count} rectangle(s)");
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() == 2,
-                        icons::widget(ui, Icon::TextOnPath, "Fit text to path"),
-                    )
-                    .clicked()
-                {
-                    self.apply_text_on_path();
-                    ui.close();
-                }
-                ui.menu_button(icons::menu_label(ui, Icon::TransformCenter, "Transform around"), |ui| {
-                    use crate::editor::state::TransformCenter;
-                    for (mode, label) in [
-                        (TransformCenter::Selection, "Selection centre"),
-                        (TransformCenter::Page, "Page centre"),
-                        (TransformCenter::Object, "Each object's centre"),
-                    ] {
-                        icons::selectable_value(
-                            ui,
-                            &mut self.editor.transform_center,
-                            mode,
-                            Icon::TransformCenter,
-                            label,
-                        );
+                ui.menu_button(icons::menu_label(ui, Icon::DistributeH, "Distribute"), |ui| {
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::DistributeH, "Horizontally"),
+                        )
+                        .clicked()
+                    {
+                        self.editor.distribute_selection_on_page(true);
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::DistributeV, "Vertically"),
+                        )
+                        .clicked()
+                    {
+                        self.editor.distribute_selection_on_page(false);
+                        ui.close();
                     }
                 });
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::Recover, "Reset transforms"))
-                    .clicked()
-                {
-                    let count = self.editor.reset_transforms();
-                    self.status = format!("Reset {count} object(s)");
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::Skew, "Skew..."))
-                    .clicked()
-                {
-                    self.skew_open = true;
-                    ui.close();
-                }
                 ui.separator();
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::GridArray, "Grid array..."))
-                    .clicked()
-                {
-                    self.grid_array_open = true;
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::Join, "Join paths"),
-                    )
-                    .clicked()
-                {
-                    self.apply_join_paths();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::ClosePath, "Close paths"))
-                    .clicked()
-                {
-                    self.apply_close_paths();
-                    ui.close();
-                }
-                ui.separator();
-                if self.editor.is_editing_nodes() {
-                    if icons::button(ui, Icon::Nodes, "Exit node editing").clicked() {
-                        self.editor.end_node_edit();
+                ui.menu_button(icons::menu_label(ui, Icon::TransformCenter, "Transform"), |ui| {
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::RotateLeft, "Rotate 90° left"))
+                        .clicked()
+                    {
+                        self.editor.rotate_selection(std::f64::consts::FRAC_PI_2);
                         ui.close();
                     }
-                    if icons::button(ui, Icon::Simplify, "Simplify path...").clicked() {
-                        self.simplify_open = true;
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::RotateRight, "Rotate 90° right"))
+                        .clicked()
+                    {
+                        self.editor.rotate_selection(-std::f64::consts::FRAC_PI_2);
                         ui.close();
                     }
-                } else if ui
-                    .add_enabled(
-                        self.editor.selection.len() == 1,
-                        icons::widget(ui, Icon::Nodes, "Edit nodes"),
-                    )
-                    .clicked()
-                {
-                    if let Some(id) = self.editor.selection.ids().first().cloned() {
-                        match self.editor.begin_node_edit(&id) {
-                            Ok(()) => {
-                                self.status = "Editing nodes: drag to move, double-click a segment to insert"
-                                    .to_string();
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::FlipH, "Flip horizontal"))
+                        .clicked()
+                    {
+                        self.editor.flip_selection(true);
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::FlipV, "Flip vertical"))
+                        .clicked()
+                    {
+                        self.editor.flip_selection(false);
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::ScaleUp, "Scale up 10 %"))
+                        .clicked()
+                    {
+                        self.editor.scale_selection(1.1, 1.1);
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::ScaleDown, "Scale down 10 %"))
+                        .clicked()
+                    {
+                        self.editor.scale_selection(1.0 / 1.1, 1.0 / 1.1);
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.menu_button(
+                        icons::menu_label(ui, Icon::TransformCenter, "Transform around"),
+                        |ui| {
+                            use crate::editor::state::TransformCenter;
+                            for (mode, label) in [
+                                (TransformCenter::Selection, "Selection centre"),
+                                (TransformCenter::Page, "Page centre"),
+                                (TransformCenter::Object, "Each object's centre"),
+                            ] {
+                                icons::selectable_value(
+                                    ui,
+                                    &mut self.editor.transform_center,
+                                    mode,
+                                    Icon::TransformCenter,
+                                    label,
+                                );
                             }
-                            Err(error) => {
-                                self.status = format!("Cannot edit nodes: {error}");
+                        },
+                    );
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Recover, "Reset transforms"))
+                        .clicked()
+                    {
+                        let count = self.editor.reset_transforms();
+                        self.status = format!("Reset {count} object(s)");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Skew, "Skew..."))
+                        .clicked()
+                    {
+                        self.skew_open = true;
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::GridArray, "Grid array..."))
+                        .clicked()
+                    {
+                        self.grid_array_open = true;
+                        ui.close();
+                    }
+                });
+                ui.menu_button(icons::menu_label(ui, Icon::TextOutline, "Convert"), |ui| {
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() == 1,
+                            icons::widget(ui, Icon::TextOutline, "Text to outlines"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_text_outlines();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Nodes, "Convert to path"))
+                        .clicked()
+                    {
+                        let count = self.editor.convert_selection_to_paths();
+                        self.status = format!("Converted {count} shape(s) to paths");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Rectangle, "Corner radius..."))
+                        .clicked()
+                    {
+                        self.open_corner_radius();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            icons::widget(ui, Icon::Rectangle, "Clear corner radius"),
+                        )
+                        .clicked()
+                    {
+                        let count = self.editor.set_corner_radius(0.0);
+                        self.status = format!("Squared the corners of {count} rectangle(s)");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() == 2,
+                            icons::widget(ui, Icon::TextOnPath, "Fit text to path"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_text_on_path();
+                        ui.close();
+                    }
+                });
+                ui.menu_button(icons::menu_label(ui, Icon::Nodes, "Paths"), |ui| {
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::Join, "Join paths"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_join_paths();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::ClosePath, "Close paths"))
+                        .clicked()
+                    {
+                        self.apply_close_paths();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if self.editor.is_editing_nodes() {
+                        if icons::button(ui, Icon::Nodes, "Exit node editing").clicked() {
+                            self.editor.end_node_edit();
+                            ui.close();
+                        }
+                        if icons::button(ui, Icon::Simplify, "Simplify path...").clicked() {
+                            self.simplify_open = true;
+                            ui.close();
+                        }
+                    } else if ui
+                        .add_enabled(
+                            self.editor.selection.len() == 1,
+                            icons::widget(ui, Icon::Nodes, "Edit nodes"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(id) = self.editor.selection.ids().first().cloned() {
+                            match self.editor.begin_node_edit(&id) {
+                                Ok(()) => {
+                                    self.status = "Editing nodes: drag to move, double-click a segment to insert"
+                                        .to_string();
+                                }
+                                Err(error) => {
+                                    self.status = format!("Cannot edit nodes: {error}");
+                                }
                             }
                         }
+                        ui.close();
                     }
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        !self.editor.selection.is_empty(),
-                        icons::widget(ui, Icon::Repeat, "Repeat..."),
-                    )
-                    .clicked()
-                {
-                    self.repeat_open = true;
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        !self.editor.selection.is_empty(),
-                        icons::widget(ui, Icon::Nest, "Nest selection..."),
-                    )
-                    .clicked()
-                {
-                    self.open_nest();
-                    ui.close();
-                }
-                ui.separator();
-                if icons::button(ui, Icon::FindDuplicates, "Find duplicates...").clicked() {
-                    self.report_duplicates();
-                    ui.close();
-                }
-                if icons::button(ui, Icon::Intersections, "Find intersections...").clicked() {
-                    self.report_intersections();
-                    ui.close();
-                }
+                    if ui
+                        .add_enabled(
+                            !self.editor.selection.is_empty(),
+                            icons::widget(ui, Icon::Repeat, "Repeat..."),
+                        )
+                        .clicked()
+                    {
+                        self.repeat_open = true;
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.editor.selection.is_empty(),
+                            icons::widget(ui, Icon::Nest, "Nest selection..."),
+                        )
+                        .clicked()
+                    {
+                        self.open_nest();
+                        ui.close();
+                    }
+                });
+                ui.menu_button(icons::menu_label(ui, Icon::FindDuplicates, "Find"), |ui| {
+                    if icons::button(ui, Icon::FindDuplicates, "Find duplicates...").clicked() {
+                        self.report_duplicates();
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::Intersections, "Find intersections...").clicked() {
+                        self.report_intersections();
+                        ui.close();
+                    }
+                });
                 ui.separator();
                 let can_combine = self.editor.selection.len() == 2;
                 ui.menu_button(icons::menu_label(ui, Icon::Boolean, "Boolean"), |ui| {
@@ -928,53 +930,58 @@ impl BeamBurinApp {
                         }
                     }
                 });
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::BooleanUnion, "Weld shapes"),
-                    )
-                    .clicked()
-                {
-                    match self.editor.weld_selection() {
-                        Ok(count) => self.status = format!("Welded into {count} contour(s)"),
-                        Err(error) => self.status = format!("Weld failed: {error}"),
+                ui.menu_button(icons::menu_label(ui, Icon::BooleanUnion, "Combine"), |ui| {
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::BooleanUnion, "Weld shapes"),
+                        )
+                        .clicked()
+                    {
+                        match self.editor.weld_selection() {
+                            Ok(count) => self.status = format!("Welded into {count} contour(s)"),
+                            Err(error) => self.status = format!("Weld failed: {error}"),
+                        }
+                        ui.close();
                     }
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::OutlineStroke, "Outline stroke"))
-                    .clicked()
-                {
-                    self.apply_outline_stroke();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::Trim, "Trim segments"),
-                    )
-                    .clicked()
-                {
-                    self.apply_trim();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        self.editor.selection.len() >= 2,
-                        icons::widget(ui, Icon::Trim, "Delete overlapping segments"),
-                    )
-                    .clicked()
-                {
-                    self.apply_delete_overlaps();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(enabled, icons::widget(ui, Icon::Offset, "Offset..."))
-                    .clicked()
-                {
-                    self.offset_open = true;
-                    ui.close();
-                }
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            icons::widget(ui, Icon::OutlineStroke, "Outline stroke"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_outline_stroke();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::Trim, "Trim segments"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_trim();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::Trim, "Delete overlapping segments"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_delete_overlaps();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Offset, "Offset..."))
+                        .clicked()
+                    {
+                        self.offset_open = true;
+                        ui.close();
+                    }
+                });
             });
             ui.menu_button(icons::menu_label(ui, Icon::View, "View"), |ui| {
                 if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {

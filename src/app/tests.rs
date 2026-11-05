@@ -608,6 +608,8 @@ fn the_arrange_menu_converts_a_rectangle_to_a_path() {
     harness.run();
     harness.get_by_label("Arrange").click_accesskit();
     harness.run();
+    harness.get_by_label("Convert").click_accesskit();
+    harness.run();
     harness.get_by_label("Convert to path").click_accesskit();
     harness.run();
     let object = harness
@@ -671,6 +673,8 @@ fn the_arrange_menu_welds_overlapping_shapes() {
     harness.run();
     harness.get_by_label("Arrange").click_accesskit();
     harness.run();
+    harness.get_by_label("Combine").click_accesskit();
+    harness.run();
     harness.get_by_label("Weld shapes").click_accesskit();
     harness.run();
     assert_eq!(
@@ -700,6 +704,8 @@ fn the_arrange_menu_sets_and_clears_the_corner_radius() {
     harness.run();
     harness.get_by_label("Arrange").click_accesskit();
     harness.run();
+    harness.get_by_label("Convert").click_accesskit();
+    harness.run();
     harness.get_by_label("Corner radius...").click_accesskit();
     harness.run();
     assert!(
@@ -726,6 +732,8 @@ fn the_arrange_menu_sets_and_clears_the_corner_radius() {
     assert!(!harness.state().corner_radius_open);
 
     harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Convert").click_accesskit();
     harness.run();
     harness
         .get_by_label("Clear corner radius")
