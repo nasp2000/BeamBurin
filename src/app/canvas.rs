@@ -43,7 +43,16 @@ impl BeamBurinApp {
                 } else {
                     ctx.input(|input| input.pointer.interact_pos())
                 };
-                let primary_pressed = !modal && ctx.input(|input| input.pointer.primary_pressed());
+                // Menus, windows and tooltips live in their own layers above the
+                // canvas. A click on one of them must not reach the canvas even
+                // when it happens to fall inside the canvas rectangle.
+                let pointer_over_window = pointer.is_some_and(|pos| {
+                    ctx.layer_id_at(pos)
+                        .is_some_and(|layer| layer.order != egui::Order::Background)
+                });
+                let primary_pressed = !modal
+                    && !pointer_over_window
+                    && ctx.input(|input| input.pointer.primary_pressed());
                 let primary_released =
                     !modal && ctx.input(|input| input.pointer.primary_released());
                 let shift = ctx.input(|input| input.modifiers.shift);
@@ -56,7 +65,8 @@ impl BeamBurinApp {
                     self.cursor_doc = Some(Point2::new(x, y));
                 }
 
-                let pointer_in_canvas = pointer.is_some_and(|pos| rect.contains(pos));
+                let pointer_in_canvas =
+                    pointer.is_some_and(|pos| rect.contains(pos) && !pointer_over_window);
                 if pointer_in_canvas {
                     let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
                     if scroll.abs() > 0.0 {
@@ -91,7 +101,9 @@ impl BeamBurinApp {
                 }
                 if self.editor.tool == Tool::Bezier && !modal {
                     if primary_pressed {
-                        if let Some(pos) = pointer.filter(|pos| rect.contains(*pos)) {
+                        if let Some(pos) =
+                            pointer.filter(|pos| rect.contains(*pos) && !pointer_over_window)
+                        {
                             let point = self.doc_point(rect, pos);
                             let tolerance = 8.0 / self.editor.canvas.zoom.max(0.01);
                             if self.pen_nodes.len() >= 2
@@ -104,7 +116,9 @@ impl BeamBurinApp {
                         }
                     } else if primary_released {
                         if let Some(start) = self.pen_drag_start.take() {
-                            if let Some(pos) = pointer.filter(|pos| rect.contains(*pos)) {
+                            if let Some(pos) =
+                                pointer.filter(|pos| rect.contains(*pos) && !pointer_over_window)
+                            {
                                 let point = self.doc_point(rect, pos);
                                 let (handle_in, handle_out) = if start.distance(point) > 0.5 {
                                     (
