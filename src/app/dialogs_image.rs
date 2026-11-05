@@ -346,6 +346,17 @@ impl BeamBurinApp {
                                             .fixed_decimals(2),
                                     );
                                     ui.end_row();
+                                    ui.label("Enhance denoise");
+                                    ui.add(
+                                        egui::DragValue::new(&mut image.settings.enhance_denoise)
+                                            .speed(0.1)
+                                            .range(0.0..=10.0)
+                                            .fixed_decimals(1),
+                                    )
+                                    .on_hover_text(
+                                        "Keep low-contrast noise in smooth areas from being sharpened",
+                                    );
+                                    ui.end_row();
                                     ui.label("Grey mix");
                                     ui.horizontal(|ui| {
                                         ui.add(

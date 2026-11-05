@@ -2270,6 +2270,7 @@ fn the_image_adjust_window_edits_the_settings() {
         "Auto levels",
         "Grey mix",
         "Despeckle",
+        "Enhance denoise",
         "Histogram",
     ] {
         assert!(

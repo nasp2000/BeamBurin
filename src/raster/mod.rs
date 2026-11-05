@@ -163,6 +163,7 @@ pub fn process_luma(
             height,
             settings.enhance_radius_px as usize,
             settings.enhance_amount,
+            settings.enhance_denoise,
         );
     }
 
@@ -398,14 +399,27 @@ fn sketch(adjusted: &[u8], width: usize, height: usize, threshold: u8) -> Vec<u8
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-fn enhance(values: &mut [u8], width: usize, height: usize, radius: usize, amount: f32) {
+fn enhance(
+    values: &mut [u8],
+    width: usize,
+    height: usize,
+    radius: usize,
+    amount: f32,
+    denoise: f32,
+) {
     if radius == 0 || amount <= 0.0 {
         return;
     }
+    // Up to 32 levels of detail are treated as noise in smooth areas.
+    let ignored = denoise.clamp(0.0, 10.0) / 10.0 * 32.0;
     let blurred = box_blur(values, width, height, radius);
     for (value, blurred) in values.iter_mut().zip(blurred) {
         let original = f32::from(*value);
-        let sharpened = original + amount * (original - f32::from(blurred));
+        let detail = original - f32::from(blurred);
+        if detail.abs() < ignored {
+            continue;
+        }
+        let sharpened = original + amount * detail;
         *value = sharpened.round().clamp(0.0, 255.0) as u8;
     }
 }
@@ -1098,6 +1112,28 @@ mod tests {
     }
 
     #[test]
+    fn enhance_denoise_spares_smooth_noise_but_keeps_edges() {
+        let mut noisy = vec![100u8; 16];
+        noisy[5] = 105;
+        let mut plain = noisy.clone();
+        enhance(&mut plain, 4, 4, 1, 1.0, 0.0);
+        assert_ne!(plain[5], 105, "the plain enhancement missed the bump");
+
+        let mut quiet = noisy.clone();
+        enhance(&mut quiet, 4, 4, 1, 1.0, 10.0);
+        assert_eq!(quiet[5], 105, "denoise sharpened the small bump");
+
+        let mut edge = vec![0u8; 16];
+        for y in 0..4 {
+            edge[y * 4 + 2] = 255;
+            edge[y * 4 + 3] = 255;
+        }
+        let before = edge.clone();
+        enhance(&mut edge, 4, 4, 1, 1.0, 10.0);
+        assert_ne!(edge, before, "denoise stopped a real edge from sharpening");
+    }
+
+    #[test]
     fn the_box_blur_preserves_flat_areas() {
         let values = [77_u8; 5 * 4];
         let blurred = box_blur(&values, 5, 4, 2);
@@ -1136,9 +1172,9 @@ mod tests {
             .map(|index: usize| u8::try_from(index * 13).unwrap())
             .collect();
         let original = values.clone();
-        enhance(&mut values, 4, 4, 2, 0.0);
+        enhance(&mut values, 4, 4, 2, 0.0, 0.0);
         assert_eq!(values, original);
-        enhance(&mut values, 4, 4, 0, 1.0);
+        enhance(&mut values, 4, 4, 0, 1.0, 0.0);
         assert_eq!(values, original);
     }
 

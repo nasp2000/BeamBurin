@@ -136,6 +136,12 @@ pub struct ImageSettings {
     /// Unsharp-mask amount; 0 disables enhancement.
     #[serde(default)]
     pub enhance_amount: f32,
+    /// How much low-contrast detail the enhancement leaves alone, 0.0..=10.0.
+    ///
+    /// Zero sharpens every detail; higher values keep noise in smooth areas
+    /// from being amplified.
+    #[serde(default)]
+    pub enhance_denoise: f32,
     /// Input values at or below this are treated as black.
     #[serde(default)]
     pub black_clip: u8,
@@ -203,6 +209,7 @@ impl Default for ImageSettings {
             halftone_angle_degrees: default_halftone_angle(),
             enhance_radius_px: 0,
             enhance_amount: 0.0,
+            enhance_denoise: 0.0,
             black_clip: 0,
             white_clip: 255,
             gray_red: default_gray_red(),
@@ -258,6 +265,9 @@ impl ImageSettings {
         }
         if !self.enhance_amount.is_finite() || !(0.0..=5.0).contains(&self.enhance_amount) {
             return Err("enhancement amount must be between 0 and 5".to_string());
+        }
+        if !self.enhance_denoise.is_finite() || !(0.0..=10.0).contains(&self.enhance_denoise) {
+            return Err("enhancement denoise must be between 0 and 10".to_string());
         }
         let has_width = self.target_width_px > 0;
         let has_height = self.target_height_px > 0;
@@ -574,7 +584,20 @@ mod tests {
         assert_eq!(image.settings.shadow_lift, 0.0);
         assert_eq!(image.settings.midtone_shift, 0.0);
         assert_eq!(image.settings.highlight_lift, 0.0);
+        assert_eq!(image.settings.enhance_denoise, 0.0);
         assert_eq!(image.effective_size_px(), (10, 5));
+    }
+
+    #[test]
+    fn enhance_denoise_is_bounded() {
+        let mut settings = ImageSettings::default();
+        assert!(settings.validate().is_ok());
+        settings.enhance_denoise = 10.0;
+        assert!(settings.validate().is_ok());
+        settings.enhance_denoise = 10.5;
+        assert!(settings.validate().is_err());
+        settings.enhance_denoise = f32::NAN;
+        assert!(settings.validate().is_err());
     }
 
     #[test]
