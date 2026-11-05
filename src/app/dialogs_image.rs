@@ -38,6 +38,7 @@ impl BeamBurinApp {
         } else {
             None
         };
+        let histogram = self.image_histogram_bins(&id, &image);
 
         let mut close = false;
         let mut cancel = false;
@@ -99,6 +100,7 @@ impl BeamBurinApp {
                         ));
                     });
                 });
+                draw_histogram(ui, &histogram);
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .id_salt("image_adjust_scroll")
@@ -551,5 +553,63 @@ impl BeamBurinApp {
             }
             self.image_adjust = None;
         }
+    }
+
+    /// Histogram of the prepared image for the image dialog, cached by settings.
+    fn image_histogram_bins(
+        &mut self,
+        id: &str,
+        image: &crate::objects::ImageObject,
+    ) -> [u64; 256] {
+        if let Some(cache) = &self.image_histogram {
+            if cache.object_id == id && cache.settings == image.settings && cache.crop == image.crop
+            {
+                return cache.bins;
+            }
+        }
+        let bins = crate::raster::histogram(std::path::Path::new(&image.path), image)
+            .unwrap_or([0u64; 256]);
+        self.image_histogram = Some(ImageHistogram {
+            object_id: id.to_string(),
+            settings: image.settings,
+            crop: image.crop,
+            bins,
+        });
+        bins
+    }
+}
+
+/// Draw the prepared-tone histogram under the previews.
+///
+/// Heights use a square-root scale so the long tail of a photo stays visible
+/// instead of collapsing under one dominant tone.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256]) {
+    ui.label("Histogram");
+    let width = ui.available_width().clamp(200.0, 720.0);
+    let (response, painter) = ui.allocate_painter(egui::vec2(width, 64.0), egui::Sense::hover());
+    let rect = response.rect;
+    let visuals = ui.visuals();
+    painter.rect_filled(rect, 2.0, visuals.extreme_bg_color);
+    let Some(max) = bins.iter().copied().max().filter(|value| *value > 0) else {
+        return;
+    };
+    let scale = (max as f64).sqrt();
+    let slot = rect.width() / 256.0;
+    let colour = visuals.selection.bg_fill;
+    for (index, count) in bins.iter().enumerate() {
+        if *count == 0 {
+            continue;
+        }
+        let height = ((*count as f64).sqrt() / scale) as f32 * rect.height();
+        let x = rect.left() + index as f32 * slot;
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(x, rect.bottom() - height),
+                egui::pos2(x + slot.max(1.0), rect.bottom()),
+            ),
+            0.0,
+            colour,
+        );
     }
 }

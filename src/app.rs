@@ -428,6 +428,7 @@ pub struct BeamBurinApp {
     image_estimate_speed: f64,
     image_target_dpi: f64,
     image_target_width_mm: f64,
+    image_histogram: Option<ImageHistogram>,
     machines: crate::machines::MachineLibrary,
     machines_path: PathBuf,
     machines_open: bool,
@@ -947,6 +948,17 @@ struct BurnPreview {
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
     texture: egui::TextureHandle,
+}
+
+/// Prepared-tone histogram of the image open in Adjust image.
+///
+/// It is cached by image and settings so dragging a slider does not decode the
+/// source repeatedly, and it never allocates one per project image.
+struct ImageHistogram {
+    object_id: String,
+    settings: crate::objects::ImageSettings,
+    crop: Option<crate::objects::ImageCrop>,
+    bins: [u64; 256],
 }
 
 impl Default for BeamBurinApp {

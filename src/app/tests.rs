@@ -2257,6 +2257,7 @@ fn the_image_adjust_window_edits_the_settings() {
         "Auto levels",
         "Grey mix",
         "Despeckle",
+        "Histogram",
     ] {
         assert!(
             harness.query_all_by_label(label).next().is_some(),

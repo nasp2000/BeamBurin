@@ -615,6 +615,27 @@ fn despeckle(luma: &image::GrayImage) -> image::GrayImage {
     })
 }
 
+/// Luminance histogram of the prepared image, before tone and dithering.
+///
+/// The 256 bins let the interface show what the tone controls act on, so the
+/// clip levels can be judged against the actual image instead of a guess.
+pub fn histogram(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+) -> Result<[u64; 256]> {
+    let luma = prepared_luma(path, image)?;
+    Ok(histogram_of(luma.as_raw()))
+}
+
+/// Count luminance values into 256 bins.
+pub fn histogram_of(luma: &[u8]) -> [u64; 256] {
+    let mut bins = [0u64; 256];
+    for value in luma {
+        bins[usize::from(*value)] += 1;
+    }
+    bins
+}
+
 /// Automatic black and white clip levels for the prepared image.
 ///
 /// The lowest and highest half-percent of the histogram are ignored, so a few
@@ -826,6 +847,28 @@ mod object_tests {
         assert!(settings.validate().is_err());
         settings.gray_blue = 1.5;
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn histogram_counts_every_prepared_value() {
+        let path = std::env::temp_dir().join("bw_raster_histogram.png");
+        let mut picture = image::GrayImage::new(8, 1);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = image::Luma([u8::try_from(x * 32).unwrap_or(255)]);
+        }
+        picture.save(&path).unwrap();
+        let object = ImageObject::new(path.to_string_lossy(), 8, 1, 96.0);
+        let bins = histogram(&path, &object).unwrap();
+        assert_eq!(bins[0], 1);
+        assert_eq!(bins[32], 1);
+        assert_eq!(bins[224], 1);
+        assert_eq!(bins.iter().sum::<u64>(), 8);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn histogram_of_an_empty_buffer_is_all_zero() {
+        assert_eq!(histogram_of(&[]), [0u64; 256]);
     }
 
     #[test]

@@ -117,6 +117,7 @@ impl BeamBurinApp {
             image_estimate_speed: 3000.0,
             image_target_dpi: 254.0,
             image_target_width_mm: 0.0,
+            image_histogram: None,
             machines,
             machines_path,
             machines_open: false,
