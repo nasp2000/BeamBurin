@@ -576,6 +576,18 @@ impl BeamBurinApp {
             }
             Action::SelectOpenShapes => self.editor.select_open_shapes(),
             Action::SetPosition => self.open_position(),
+            Action::ClosePaths => self.apply_close_paths(),
+            Action::JoinPaths => self.apply_join_paths(),
+            Action::BooleanUnion => self.apply_boolean(crate::geometry::BooleanOp::Union),
+            Action::BooleanDifference => self.apply_boolean(crate::geometry::BooleanOp::Difference),
+            Action::BooleanIntersection => {
+                self.apply_boolean(crate::geometry::BooleanOp::Intersection);
+            }
+            Action::BooleanExclusion => self.apply_boolean(crate::geometry::BooleanOp::Xor),
+            Action::Offset => self.offset_open = true,
+            Action::Repeat => self.repeat_open = true,
+            Action::Skew => self.skew_open = true,
+            Action::Nest => self.open_nest(),
             Action::BringForward => {
                 let moved = self.editor.raise_selection();
                 self.status = format!("Brought {moved} object(s) forward");

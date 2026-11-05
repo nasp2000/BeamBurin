@@ -30,6 +30,16 @@ pub enum CommandId {
     BringForward,
     SendBackward,
     SetPosition,
+    ClosePaths,
+    JoinPaths,
+    BooleanUnion,
+    BooleanDifference,
+    BooleanIntersection,
+    BooleanExclusion,
+    Offset,
+    Repeat,
+    Skew,
+    Nest,
     ZoomIn,
     ZoomOut,
     FitPage,
@@ -318,6 +328,96 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Place the bottom-left corner of the selection at an exact X and Y."
+    ),
+    command!(
+        ClosePaths,
+        "edit.close-paths",
+        "Close paths",
+        Edit,
+        None,
+        false,
+        "Close every selected open path."
+    ),
+    command!(
+        JoinPaths,
+        "edit.join-paths",
+        "Join paths",
+        Edit,
+        None,
+        false,
+        "Join selected paths whose ends meet."
+    ),
+    command!(
+        BooleanUnion,
+        "tools.boolean-union",
+        "Boolean union",
+        Tools,
+        None,
+        false,
+        "Combine the selected closed shapes into one outline."
+    ),
+    command!(
+        BooleanDifference,
+        "tools.boolean-difference",
+        "Boolean difference",
+        Tools,
+        None,
+        false,
+        "Subtract the upper shapes from the bottom one."
+    ),
+    command!(
+        BooleanIntersection,
+        "tools.boolean-intersection",
+        "Boolean intersection",
+        Tools,
+        None,
+        false,
+        "Keep only the area shared by the selected shapes."
+    ),
+    command!(
+        BooleanExclusion,
+        "tools.boolean-exclusion",
+        "Boolean exclusion",
+        Tools,
+        None,
+        false,
+        "Keep the areas covered by an odd number of shapes."
+    ),
+    command!(
+        Offset,
+        "tools.offset",
+        "Offset...",
+        Tools,
+        None,
+        false,
+        "Offset the selected closed shapes by a distance."
+    ),
+    command!(
+        Repeat,
+        "tools.repeat",
+        "Repeat selection...",
+        Tools,
+        None,
+        false,
+        "Duplicate the selection in a line, circle or grid."
+    ),
+    command!(
+        Skew,
+        "tools.skew",
+        "Skew...",
+        Tools,
+        None,
+        false,
+        "Shear the selection around its centre."
+    ),
+    command!(
+        Nest,
+        "tools.nest",
+        "Nest selection...",
+        Tools,
+        None,
+        false,
+        "Propose a compact arrangement of the selected parts."
     ),
     command!(
         ZoomIn,

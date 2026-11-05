@@ -1575,6 +1575,47 @@ fn the_command_palette_runs_the_first_match() {
 }
 
 #[test]
+fn the_palette_closes_the_selected_open_path() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let layer = app.editor.document.layers[0].id.clone();
+    let open = crate::geometry::Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], false);
+    let id = {
+        let object = crate::document::Object::new(layer, crate::document::Shape::Path(open));
+        let id = object.id.clone();
+        app.editor.document.add_object(object);
+        id
+    };
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Command palette...").click();
+    harness.run();
+    harness
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .last()
+        .expect("the palette entry field is missing")
+        .type_text("close paths");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let object = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .expect("the path disappeared");
+    assert!(
+        object.shape.to_path().is_closed(),
+        "the palette did not close the path"
+    );
+}
+
+#[test]
 fn a_broken_svg_is_rejected_without_touching_the_document() {
     use egui_kittest::kittest::Queryable as _;
 
