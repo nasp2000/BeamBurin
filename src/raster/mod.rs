@@ -611,7 +611,7 @@ pub fn auto_clip(luma: &[u8]) -> (u8, u8) {
         return (0, 255);
     }
     let black = black.min(240);
-    let white = white.max(black.saturating_add(15)).min(255);
+    let white = white.max(black.saturating_add(15));
     (black, white)
 }
 
