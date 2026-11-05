@@ -75,7 +75,11 @@ impl BeamBurinApp {
         } else {
             None
         };
-        let histogram = self.image_histogram_bins(&id, &image);
+        let mut histogram_image = image.clone();
+        if compare {
+            histogram_image.settings = original_settings;
+        }
+        let histogram = self.image_histogram_bins(&id, &histogram_image);
 
         let mut close = false;
         let mut cancel = false;
