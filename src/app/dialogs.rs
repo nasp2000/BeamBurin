@@ -64,7 +64,10 @@ impl BeamBurinApp {
                     let overwrites = path.exists()
                         && !matches!(
                             mode,
-                            FileMode::OpenProject | FileMode::ImportFile | FileMode::RelinkImage
+                            FileMode::OpenProject
+                                | FileMode::ImportFile
+                                | FileMode::ImportImage
+                                | FileMode::RelinkImage
                         );
                     if overwrites {
                         self.pending_file = Some((mode, path));

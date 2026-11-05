@@ -1376,6 +1376,9 @@ impl BeamBurinApp {
                 if icons::button(ui, Icon::Save, "Save").clicked() {
                     self.save();
                 }
+                if icons::button(ui, Icon::Image, "Import image...").clicked() {
+                    self.open_dialog(FileMode::ImportImage);
+                }
                 ui.separator();
                 let has_selection = !self.editor.selection.is_empty();
                 for (mode, icon, label) in [

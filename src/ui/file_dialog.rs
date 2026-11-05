@@ -8,6 +8,7 @@ pub enum FileMode {
     SaveProject,
     SaveArchive,
     ImportFile,
+    ImportImage,
     ExportSvg,
     ExportDxf,
     ExportHpgl,
@@ -32,6 +33,7 @@ impl FileMode {
             FileMode::SaveProject => "Save project",
             FileMode::SaveArchive => "Save project with images",
             FileMode::ImportFile => "Import SVG, DXF or image",
+            FileMode::ImportImage => "Import image",
             FileMode::ExportSvg => "Export SVG",
             FileMode::ExportDxf => "Export DXF",
             FileMode::ExportHpgl => "Export HPGL",
@@ -52,7 +54,10 @@ impl FileMode {
 
     fn action_label(self) -> &'static str {
         match self {
-            FileMode::OpenProject | FileMode::ImportFile | FileMode::PreviewGcode => "Open",
+            FileMode::OpenProject
+            | FileMode::ImportFile
+            | FileMode::ImportImage
+            | FileMode::PreviewGcode => "Open",
             FileMode::SaveProject | FileMode::SaveArchive => "Save",
             FileMode::ExportSvg
             | FileMode::ExportDxf
@@ -82,6 +87,7 @@ impl FileMode {
             FileMode::ExportPdf => "pdf",
             FileMode::ExportImage | FileMode::RelinkImage => "png",
             FileMode::OpenProject | FileMode::ImportFile | FileMode::ExportSvg => "svg",
+            FileMode::ImportImage => "png",
             FileMode::ImportProfiles
             | FileMode::ExportProfiles
             | FileMode::ImportMachines
@@ -149,6 +155,12 @@ impl FileMode {
                         | "tiff"
                         | "webp"
                         | "gif"
+                )
+            }
+            FileMode::ImportImage => {
+                matches!(
+                    extension.as_str(),
+                    "png" | "jpg" | "jpeg" | "bmp" | "tif" | "tiff" | "webp" | "gif"
                 )
             }
             FileMode::ExportSvg => extension == "svg",
@@ -589,6 +601,7 @@ impl FileDialog {
         match self.mode {
             FileMode::OpenProject
             | FileMode::ImportFile
+            | FileMode::ImportImage
             | FileMode::RelinkImage
             | FileMode::ImportProfiles
             | FileMode::ImportMachines
@@ -877,6 +890,17 @@ mod tests {
         assert!(harness.query_by_label("New folder").is_some());
         assert!(harness.query_by_label("Quick access").is_some());
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_image_import_mode_only_accepts_images() {
+        let dialog = FileDialog::new(FileMode::ImportImage, None, "");
+        assert!(dialog.mode.accepts(Path::new("photo.PNG")));
+        assert!(dialog.mode.accepts(Path::new("scan.bmp")));
+        assert!(dialog.mode.accepts(Path::new("scan.webp")));
+        assert!(!dialog.mode.accepts(Path::new("drawing.svg")));
+        assert_eq!(dialog.mode.default_extension(), "png");
+        assert_eq!(dialog.mode.action_label(), "Open");
     }
 
     #[test]

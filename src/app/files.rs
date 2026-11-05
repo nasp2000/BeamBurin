@@ -22,6 +22,7 @@ impl BeamBurinApp {
         let stem = sanitize_name(&self.editor.document.name);
         let suggested = match mode {
             FileMode::ImportFile => "drawing.svg".to_string(),
+            FileMode::ImportImage => "image.png".to_string(),
             FileMode::ExportDxf => format!("{stem}.dxf"),
             FileMode::ExportHpgl => format!("{stem}.plt"),
             FileMode::ExportEps => format!("{stem}.eps"),
@@ -69,7 +70,9 @@ impl BeamBurinApp {
             self.editor.document.clone()
         };
         match mode {
-            FileMode::OpenProject | FileMode::ImportFile => self.start_import(path),
+            FileMode::OpenProject | FileMode::ImportFile | FileMode::ImportImage => {
+                self.start_import(path);
+            }
             FileMode::PreviewGcode => self.preview_external_gcode(path),
             FileMode::ImportMaterialsCsv => self.import_materials_csv(path),
             FileMode::ExportMaterialsCsv => self.export_materials_csv(path),

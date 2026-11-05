@@ -47,7 +47,7 @@ impl BeamBurinApp {
         use crate::operations::OperationType;
 
         egui::Panel::left("layers_panel")
-            .default_size(330.0)
+            .default_size(310.0)
             .resizable(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
@@ -98,7 +98,7 @@ impl BeamBurinApp {
                             Err(error) => message = Some(error),
                         }
                     }
-                    ui.weak("Right-click a row for cut settings (OK / Cancel)");
+                    ui.weak("Right-click a row for cut settings");
                 });
 
                 // One row per layer, with the mode and the switches that matter
@@ -151,10 +151,10 @@ impl BeamBurinApp {
                 egui::Grid::new("layers_grid")
                     .num_columns(7)
                     .striped(true)
-                    .spacing([4.0, 2.0])
+                    .spacing([2.0, 2.0])
                     .show(ui, |ui| {
                         ui.allocate_ui_with_layout(
-                            egui::vec2(126.0, 18.0),
+                            egui::vec2(46.0, 18.0),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 ui.label(egui::RichText::new("Colour").strong());
@@ -163,9 +163,9 @@ impl BeamBurinApp {
                         for (header, width) in [
                             ("Mode", 98.0),
                             ("Spd/Pwr", 52.0),
-                            ("Out", 22.0),
-                            ("Show", 22.0),
-                            ("Air", 22.0),
+                            ("Out", 18.0),
+                            ("Show", 18.0),
+                            ("Air", 18.0),
                             ("Order", 34.0),
                         ] {
                             ui.allocate_ui_with_layout(
@@ -284,7 +284,7 @@ impl BeamBurinApp {
                                 .push_id(("layer_output", id), |ui| {
                                     ui.add_enabled_ui(operation.is_some(), |ui| {
                                         ui.add_sized(
-                                            [22.0, 18.0],
+                                            [18.0, 18.0],
                                             egui::Checkbox::without_text(&mut output),
                                         )
                                     })
@@ -309,7 +309,7 @@ impl BeamBurinApp {
                             let show_response = ui
                                 .push_id(("layer_show", id), |ui| {
                                     ui.add_sized(
-                                        [22.0, 18.0],
+                                        [18.0, 18.0],
                                         egui::Checkbox::without_text(&mut shown),
                                     )
                                 })
@@ -335,7 +335,7 @@ impl BeamBurinApp {
                                 .push_id(("layer_air", id), |ui| {
                                     ui.add_enabled_ui(operation.is_some(), |ui| {
                                         ui.add_sized(
-                                            [22.0, 18.0],
+                                            [18.0, 18.0],
                                             egui::Checkbox::without_text(&mut air),
                                         )
                                     })

@@ -1807,6 +1807,23 @@ fn opening_the_palette_keeps_the_selection() {
 }
 
 #[test]
+fn the_toolbar_opens_the_image_import_dialog() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Import image...").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    let dialog = app.dialog.as_ref().expect("the dialog did not open");
+    assert_eq!(dialog.mode, FileMode::ImportImage);
+    assert!(
+        harness.query_by_label_contains("PNG").is_some(),
+        "the image filter hint is missing"
+    );
+}
+
+#[test]
 fn a_broken_svg_is_rejected_without_touching_the_document() {
     use egui_kittest::kittest::Queryable as _;
 
