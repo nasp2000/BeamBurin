@@ -1105,6 +1105,11 @@ impl EditorState {
                     let area_first = polygon_area(&parts[first]);
                     let area_second = polygon_area(&parts[second]);
                     let union = boolean_contours(BooleanOp::Union, &parts[first], &parts[second]);
+                    if union.is_empty() {
+                        // The pair only touches in a way the boolean cannot
+                        // split; leave both parts alone instead of losing them.
+                        continue;
+                    }
                     let union_area: f64 = union.iter().map(|contour| polygon_area(contour)).sum();
                     if union_area < area_first + area_second - 1e-6 {
                         parts.splice(first..=second, union);
@@ -3806,10 +3811,10 @@ mod tests {
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(40.0, 20.0))
             .unwrap();
         let second = editor
-            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(60.0, 20.0))
+            .add_rectangle(Point2::new(20.0, 5.0), Point2::new(60.0, 25.0))
             .unwrap();
         let third = editor
-            .add_rectangle(Point2::new(40.0, 0.0), Point2::new(80.0, 20.0))
+            .add_rectangle(Point2::new(40.0, 10.0), Point2::new(80.0, 30.0))
             .unwrap();
         editor.selection.clear();
         editor.selection.add(first);

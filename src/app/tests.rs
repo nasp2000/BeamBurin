@@ -633,7 +633,7 @@ fn the_arrange_menu_welds_overlapping_shapes() {
         .expect("the first rectangle was not added");
     let second = app
         .editor
-        .add_rectangle(Point2::new(20.0, 0.0), Point2::new(60.0, 20.0))
+        .add_rectangle(Point2::new(20.0, 5.0), Point2::new(60.0, 25.0))
         .expect("the second rectangle was not added");
     app.editor.selection.clear();
     app.editor.selection.add(first);
