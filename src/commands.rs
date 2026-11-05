@@ -274,7 +274,7 @@ pub const ALL: &[PaletteCommand] = &[
         SetPosition,
         "arrange.move-to-position",
         "Move to position...",
-        Arrange,
+        Edit,
         None,
         false,
         "Place the bottom-left corner of the selection at an exact X and Y."
