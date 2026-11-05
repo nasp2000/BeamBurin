@@ -85,11 +85,11 @@ impl RasterStats {
     /// floating-point cast.
     pub fn coverage_text(&self) -> String {
         let total = self.width.saturating_mul(self.height);
-        let per_mille = if total == 0 {
-            0
-        } else {
-            self.burned.saturating_mul(1000) / total
-        };
+        let per_mille = self
+            .burned
+            .saturating_mul(1000)
+            .checked_div(total)
+            .unwrap_or(0);
         let runs = if self.runs == 1 {
             "1 run".to_string()
         } else {
