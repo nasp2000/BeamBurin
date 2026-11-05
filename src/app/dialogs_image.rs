@@ -100,7 +100,7 @@ impl BeamBurinApp {
                         ));
                     });
                 });
-                draw_histogram(ui, &histogram);
+                draw_histogram(ui, &histogram, &image.settings);
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .id_salt("image_adjust_scroll")
@@ -584,7 +584,7 @@ impl BeamBurinApp {
 /// Heights use a square-root scale so the long tail of a photo stays visible
 /// instead of collapsing under one dominant tone.
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256]) {
+fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256], settings: &crate::objects::ImageSettings) {
     ui.label("Histogram");
     let width = ui.available_width().clamp(200.0, 720.0);
     let (response, painter) = ui.allocate_painter(egui::vec2(width, 64.0), egui::Sense::hover());
@@ -610,6 +610,36 @@ fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256]) {
             ),
             0.0,
             colour,
+        );
+    }
+    // Shade the tones the clip window discards, so the level settings are
+    // visible against the actual histogram.
+    let position = |value: u8| rect.left() + f32::from(value) / 255.0 * rect.width();
+    if settings.black_clip > 0 {
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(position(settings.black_clip), rect.bottom()),
+            ),
+            0.0,
+            egui::Color32::from_black_alpha(96),
+        );
+    }
+    if settings.white_clip < 255 {
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(position(settings.white_clip), rect.top()),
+                rect.max,
+            ),
+            0.0,
+            egui::Color32::from_black_alpha(96),
+        );
+    }
+    for value in [settings.black_clip, settings.white_clip] {
+        let x = position(value);
+        painter.line_segment(
+            [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+            egui::Stroke::new(1.0, visuals.text_color()),
         );
     }
 }
