@@ -1524,17 +1524,36 @@ impl McpServer {
     }
 
     fn add_shape(&mut self, shape: Shape, transform: Transform2) -> Result<String> {
-        let layer_id = self
+        let (layer_id, layer_color) = self
             .editor
             .document
             .layers
             .iter()
             .find(|layer| !layer.locked)
-            .map(|layer| layer.id.clone())
+            .map(|layer| (layer.id.clone(), layer.color.clone()))
             .ok_or_else(|| BeamError::InvalidInput("no unlocked layer".to_string()))?;
         self.editor
             .record_action(&format!("Draw {}", shape.kind_name()));
-        let object = Object::new(layer_id, shape).with_transform(transform);
+        let operation = self
+            .editor
+            .document
+            .layer(&layer_id)
+            .and_then(|layer| layer.operation_id.clone())
+            .filter(|id| {
+                self.editor
+                    .document
+                    .operations
+                    .iter()
+                    .any(|entry| entry.id.as_str() == id.as_str())
+            })
+            .or_else(|| self.editor.operation_for_colour(&layer_color))
+            .unwrap_or_else(|| self.editor.ensure_operation_for_colour(&layer_color));
+        if let Some(layer) = self.editor.document.layer_mut(&layer_id) {
+            layer.operation_id = Some(operation.clone());
+        }
+        let mut object = Object::new(layer_id, shape).with_transform(transform);
+        object.color = Some(layer_color);
+        object.operation_id = Some(operation);
         let id = object.id.clone();
         self.editor.document.add_object(object);
         Ok(id)
@@ -3378,6 +3397,34 @@ mod tests {
         assert_eq!(circular["result"]["created"], 3);
         let bad = call(&mut server, "repeat", json!({"mode": "spiral"}));
         assert!(bad.get("error").is_some());
+    }
+
+    #[test]
+    fn drawing_over_mcp_creates_and_links_a_cut_entry() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 10.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let document = &server.editor.document;
+        assert_eq!(document.operations.len(), 1);
+        let entry = &document.operations[0];
+        assert_eq!(
+            entry.op_type,
+            crate::operations::OperationType::OutlineCutting
+        );
+        assert_eq!(entry.params.speed, 1000.0);
+        let object = document.object(&id).expect("the rectangle is missing");
+        assert_eq!(object.operation_id.as_deref(), Some(entry.id.as_str()));
+        assert_eq!(object.color.as_deref(), Some("#000000"));
+        assert_eq!(
+            document.layers[0].operation_id.as_deref(),
+            Some(entry.id.as_str())
+        );
     }
 
     #[test]
