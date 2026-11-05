@@ -25,6 +25,8 @@ pub enum CommandId {
     Delete,
     SelectAll,
     SelectOpenShapes,
+    BringForward,
+    SendBackward,
     SetPosition,
     ZoomIn,
     ZoomOut,
@@ -269,6 +271,24 @@ pub const ALL: &[PaletteCommand] = &[
         None,
         false,
         "Select every visible path that is not closed."
+    ),
+    command!(
+        BringForward,
+        "edit.bring-forward",
+        "Bring forward",
+        Edit,
+        None,
+        false,
+        "Move the selection one step up the drawing order."
+    ),
+    command!(
+        SendBackward,
+        "edit.send-backward",
+        "Send backward",
+        Edit,
+        None,
+        false,
+        "Move the selection one step down the drawing order."
     ),
     command!(
         SetPosition,

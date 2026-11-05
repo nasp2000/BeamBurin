@@ -632,6 +632,41 @@ fn the_arrange_menu_moves_the_selection_to_a_position() {
 }
 
 #[test]
+fn the_arrange_menu_brings_the_selection_forward_one_step() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let first = app
+        .editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+        .expect("the first rectangle was not added");
+    let second = app
+        .editor
+        .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
+        .expect("the second rectangle was not added");
+    app.editor.selection.add(first.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Bring forward").click_accesskit();
+    harness.run();
+    let ids: Vec<String> = harness
+        .state()
+        .editor
+        .document
+        .objects
+        .iter()
+        .map(|object| object.id.clone())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![second, first],
+        "the order did not change by one step"
+    );
+}
+
+#[test]
 fn toolbar_toggles_and_history_change_the_model() {
     use egui_kittest::kittest::Queryable as _;
 

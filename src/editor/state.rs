@@ -2632,6 +2632,47 @@ impl EditorState {
         self.reorder_selection(false)
     }
 
+    /// Move the selection one step up the drawing order.
+    ///
+    /// Selected neighbours keep their relative order, so raising several
+    /// objects at once behaves like one block. Returns how many objects moved.
+    pub fn raise_selection(&mut self) -> usize {
+        let mut objects = std::mem::take(&mut self.document.objects);
+        let mut moved = 0;
+        for index in (0..objects.len().saturating_sub(1)).rev() {
+            if self.selection.contains(&objects[index].id)
+                && !self.selection.contains(&objects[index + 1].id)
+            {
+                objects.swap(index, index + 1);
+                moved += 1;
+            }
+        }
+        self.document.objects = objects;
+        if moved > 0 {
+            self.record_action("Bring forward");
+        }
+        moved
+    }
+
+    /// Move the selection one step down the drawing order.
+    pub fn lower_selection(&mut self) -> usize {
+        let mut objects = std::mem::take(&mut self.document.objects);
+        let mut moved = 0;
+        for index in 1..objects.len() {
+            if self.selection.contains(&objects[index].id)
+                && !self.selection.contains(&objects[index - 1].id)
+            {
+                objects.swap(index, index - 1);
+                moved += 1;
+            }
+        }
+        self.document.objects = objects;
+        if moved > 0 {
+            self.record_action("Send backward");
+        }
+        moved
+    }
+
     fn reorder_selection(&mut self, to_front: bool) -> usize {
         if self.selection.is_empty() {
             return 0;
@@ -3527,6 +3568,46 @@ mod tests {
         let mut editor = editor();
         assert!(!editor.rotate_selection(1.0));
         assert!(!editor.flip_selection(false));
+    }
+
+    #[test]
+    fn raise_and_lower_move_one_step_and_keep_the_selected_order() {
+        let mut editor = editor();
+        let a = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        let b = editor
+            .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0))
+            .unwrap();
+        let c = editor
+            .add_rectangle(Point2::new(40.0, 0.0), Point2::new(50.0, 10.0))
+            .unwrap();
+        let order = |editor: &EditorState| {
+            editor
+                .document
+                .objects
+                .iter()
+                .map(|object| object.id.clone())
+                .collect::<Vec<_>>()
+        };
+        editor.selection.add(b.clone());
+        assert_eq!(editor.raise_selection(), 1);
+        assert_eq!(order(&editor), vec![a.clone(), c.clone(), b.clone()]);
+        assert_eq!(editor.lower_selection(), 1);
+        assert_eq!(order(&editor), vec![a.clone(), b.clone(), c.clone()]);
+        // The top object cannot rise and the bottom one cannot fall.
+        editor.selection.clear();
+        editor.selection.add(c.clone());
+        assert_eq!(editor.raise_selection(), 0);
+        editor.selection.clear();
+        editor.selection.add(a.clone());
+        assert_eq!(editor.lower_selection(), 0);
+        // A block of two moves together and keeps its internal order.
+        editor.selection.clear();
+        editor.selection.add(a.clone());
+        editor.selection.add(b.clone());
+        assert_eq!(editor.raise_selection(), 2);
+        assert_eq!(order(&editor), vec![c, a, b]);
     }
 
     #[test]

@@ -620,6 +620,22 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if ui
+                    .add_enabled(enabled, icons::widget(ui, Icon::ToFront, "Bring forward"))
+                    .clicked()
+                {
+                    let count = self.editor.raise_selection();
+                    self.status = format!("Brought {count} object(s) forward");
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(enabled, icons::widget(ui, Icon::ToBack, "Send backward"))
+                    .clicked()
+                {
+                    let count = self.editor.lower_selection();
+                    self.status = format!("Sent {count} object(s) backward");
+                    ui.close();
+                }
+                if ui
                     .add_enabled(enabled, icons::widget(ui, Icon::Center, "Centre on page"))
                     .clicked()
                 {

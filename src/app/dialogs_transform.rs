@@ -570,6 +570,14 @@ impl BeamBurinApp {
             Action::SelectAll => self.editor.select_all(),
             Action::SelectOpenShapes => self.editor.select_open_shapes(),
             Action::SetPosition => self.open_position(),
+            Action::BringForward => {
+                let moved = self.editor.raise_selection();
+                self.status = format!("Brought {moved} object(s) forward");
+            }
+            Action::SendBackward => {
+                let moved = self.editor.lower_selection();
+                self.status = format!("Sent {moved} object(s) backward");
+            }
             Action::ZoomIn => self.editor.zoom_in(),
             Action::ZoomOut => self.editor.zoom_out(),
             Action::FitPage => self.needs_fit = true,
