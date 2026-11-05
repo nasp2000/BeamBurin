@@ -110,6 +110,7 @@ impl FileMode {
             FileMode::ImportFile => {
                 "Shows .svg, .dxf, .plt, .hpgl, .pdf, .png, .jpg, .jpeg, .bmp, .tif, .tiff, .webp and .gif files"
             }
+            FileMode::ImportImage => "Shows PNG, JPEG, BMP, TIFF, WebP and GIF images",
             FileMode::ExportSvg => "Saves .svg files",
             FileMode::ExportDxf => "Saves .dxf files",
             FileMode::ExportHpgl => "Saves .plt and .hpgl files",
@@ -701,6 +702,7 @@ fn format_size(bytes: u64) -> String {
 mod tests {
     use super::{FileDialog, FileMode, file_icon, format_size};
     use crate::ui::icons::Icon;
+    use std::path::Path;
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let stamp = std::time::SystemTime::now()
