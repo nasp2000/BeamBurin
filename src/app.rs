@@ -424,6 +424,7 @@ pub struct BeamBurinApp {
     image_original_previews: std::collections::HashMap<String, egui::TextureHandle>,
     image_adjust: Option<String>,
     image_adjust_snapshot: Option<Document>,
+    image_adjust_edit: Option<crate::objects::ImageSettings>,
     image_burn_map: bool,
     image_preview_zoom: f32,
     image_estimate_speed: f64,

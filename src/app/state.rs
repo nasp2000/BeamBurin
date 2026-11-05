@@ -113,6 +113,7 @@ impl BeamBurinApp {
             image_original_previews: std::collections::HashMap::new(),
             image_adjust: None,
             image_adjust_snapshot: None,
+            image_adjust_edit: None,
             image_burn_map: false,
             image_preview_zoom: 0.0,
             image_estimate_speed: 3000.0,

@@ -2678,6 +2678,88 @@ fn the_image_preview_can_zoom() {
 }
 
 #[test]
+fn compare_with_original_shows_the_opening_settings_without_losing_the_edit() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("compare_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust_snapshot = Some(app.editor.document.clone());
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    let mode_of = |app: &BeamBurinApp| {
+        let object = app
+            .editor
+            .document
+            .object(&id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        image.settings.mode
+    };
+    harness.get_by_label("Wood").click_accesskit();
+    harness.run();
+    assert_eq!(mode_of(harness.state()), crate::objects::ImageMode::Stucki);
+
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Compare with original")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(
+        mode_of(harness.state()),
+        crate::objects::ImageMode::Threshold,
+        "compare did not show the opening settings"
+    );
+    assert_eq!(
+        harness
+            .state()
+            .image_adjust_edit
+            .expect("the edit was lost")
+            .mode,
+        crate::objects::ImageMode::Stucki
+    );
+
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Compare with original")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(
+        mode_of(harness.state()),
+        crate::objects::ImageMode::Stucki,
+        "the edit did not come back"
+    );
+
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Compare with original")
+        .click_accesskit();
+    harness.run();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    let app = harness.state();
+    assert!(app.image_adjust.is_none(), "the window stayed open");
+    assert_eq!(
+        mode_of(app),
+        crate::objects::ImageMode::Stucki,
+        "closing while comparing lost the edit"
+    );
+    assert!(app.editor.history.can_undo());
+}
+
+#[test]
 fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
     use egui_kittest::kittest::Queryable as _;
 

@@ -14,15 +14,22 @@ impl BeamBurinApp {
             .iter()
             .position(|object| object.id == id)
         else {
+            self.image_adjust_edit = None;
             self.image_adjust = None;
             return;
         };
         let crate::document::Shape::Image(image) = &self.editor.document.objects[index].shape
         else {
+            self.image_adjust_edit = None;
             self.image_adjust = None;
             return;
         };
         let mut image = image.clone();
+        // The dialog edits a working copy so "Compare with original" can show
+        // the opening settings on the canvas without losing the edits.
+        if let Some(edit) = self.image_adjust_edit {
+            image.settings = edit;
+        }
         let object_name = self.editor.document.objects[index].name.clone();
         let cut_entry = self
             .editor
@@ -44,7 +51,15 @@ impl BeamBurinApp {
                     operation.params.passes.max(1),
                 )
             });
-        let original = image.clone();
+        let original_settings = self
+            .image_adjust_snapshot
+            .as_ref()
+            .and_then(|document| document.object(&id))
+            .and_then(|object| match &object.shape {
+                crate::document::Shape::Image(image) => Some(image.settings),
+                _ => None,
+            })
+            .unwrap_or(image.settings);
         let mut burn_map = self.image_burn_map;
         let mut zoom = self.image_preview_zoom;
         let mut target_dpi = self.image_target_dpi;
@@ -686,13 +701,15 @@ impl BeamBurinApp {
                 .find(|object| object.id == id)
             {
                 if let crate::document::Shape::Image(current) = &mut current.shape {
-                    current.settings = original.settings;
+                    current.settings = original_settings;
                 }
             }
+            self.image_adjust_edit = None;
             self.image_adjust = None;
             return;
         }
-        let settings_changed = image.settings != original.settings;
+        self.image_adjust_edit = Some(image.settings);
+        let settings_changed = image.settings != original_settings;
         if let Some(current) = self
             .editor
             .document
@@ -701,8 +718,8 @@ impl BeamBurinApp {
             .find(|object| object.id == id)
         {
             if let crate::document::Shape::Image(current) = &mut current.shape {
-                current.settings = if compare {
-                    original.settings
+                current.settings = if compare && !close {
+                    original_settings
                 } else {
                     image.settings
                 };
@@ -731,6 +748,7 @@ impl BeamBurinApp {
                     self.editor.history.record(&snapshot, "Adjust image");
                 }
             }
+            self.image_adjust_edit = None;
             self.image_adjust = None;
         }
     }
