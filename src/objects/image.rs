@@ -71,6 +71,10 @@ impl ImageMode {
 }
 
 /// Non-destructive preparation settings stored with the image object.
+///
+/// The switches are independent options of one preparation pipeline, so a
+/// group of flags is the honest shape for them.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ImageSettings {
     pub mode: ImageMode,
