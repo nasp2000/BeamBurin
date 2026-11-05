@@ -1893,13 +1893,13 @@ impl EditorState {
             return 0;
         }
         let container_id = ids[0].clone();
-        let Some(container) = self.document.object(&container_id) else {
+        let Some(outer_shape) = self.document.object(&container_id) else {
             return 0;
         };
-        let Some(contour) = Self::closed_world_contour(container) else {
+        let Some(outline) = Self::closed_world_contour(outer_shape) else {
             return 0;
         };
-        let contained: Vec<String> = self
+        let inside_ids: Vec<String> = self
             .document
             .objects
             .iter()
@@ -1919,14 +1919,14 @@ impl EditorState {
                 !points.is_empty()
                     && points
                         .iter()
-                        .all(|point| point_in_polygon(point.x, point.y, &contour))
+                        .all(|point| point_in_polygon(point.x, point.y, &outline))
             })
             .map(|object| object.id.clone())
             .collect();
-        for id in &contained {
+        for id in &inside_ids {
             self.selection.add(id.clone());
         }
-        contained.len()
+        inside_ids.len()
     }
 
     /// Select every visible, unlocked object whose outline is open.
