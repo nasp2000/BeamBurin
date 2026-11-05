@@ -85,9 +85,8 @@ impl FileMode {
             FileMode::ExportHpgl => "plt",
             FileMode::ExportEps => "eps",
             FileMode::ExportPdf => "pdf",
-            FileMode::ExportImage | FileMode::RelinkImage => "png",
+            FileMode::ExportImage | FileMode::RelinkImage | FileMode::ImportImage => "png",
             FileMode::OpenProject | FileMode::ImportFile | FileMode::ExportSvg => "svg",
-            FileMode::ImportImage => "png",
             FileMode::ImportProfiles
             | FileMode::ExportProfiles
             | FileMode::ImportMachines
