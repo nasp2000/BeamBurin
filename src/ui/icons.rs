@@ -38,6 +38,7 @@ pub enum Icon {
     Export,
     Page,
     Image,
+    Folder,
     Recover,
     Exit,
     // Edit.
@@ -159,6 +160,7 @@ impl Icon {
         Icon::Export,
         Icon::Page,
         Icon::Image,
+        Icon::Folder,
         Icon::Recover,
         Icon::Exit,
         Icon::Undo,
@@ -594,6 +596,10 @@ fn prims(icon: Icon) -> Vec<Prim> {
             frame(1.8, 3.2, 14.2, 12.8, 1.3),
             disc(5.2, 6.1, 1.0),
             poly(MOUNTAIN, false, false, 1.3),
+        ],
+        Icon::Folder => vec![
+            frame(1.6, 2.6, 7.8, 5.0, 1.3),
+            frame(1.6, 4.0, 14.4, 13.6, 1.3),
         ],
         Icon::Recover => vec![
             arc(8.0, 8.0, 5.0, 1.5, 0.0, 1.5 * std::f32::consts::PI),
@@ -1045,6 +1051,13 @@ impl Icon {
                     (96, 165, 250)
                 } else {
                     (37, 99, 235)
+                }
+            }
+            Icon::Folder => {
+                if dark {
+                    (250, 204, 21)
+                } else {
+                    (202, 138, 4)
                 }
             }
             Icon::Edit

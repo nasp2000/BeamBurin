@@ -194,6 +194,8 @@ pub struct FileDialog {
     /// Folder history for the Back/Forward buttons.
     back: Vec<PathBuf>,
     forward: Vec<PathBuf>,
+    /// Row highlighted in the listing, so a second click opens it.
+    selected: Option<PathBuf>,
 }
 
 pub enum DialogResult {
@@ -231,6 +233,7 @@ impl FileDialog {
             path_text,
             back: Vec::new(),
             forward: Vec::new(),
+            selected: None,
         }
     }
 
@@ -243,11 +246,14 @@ impl FileDialog {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([780.0, 540.0])
-            .min_width(640.0)
-            .max_width(980.0)
+            .default_size([880.0, 660.0])
+            .min_width(760.0)
+            .min_height(560.0)
+            .max_width(1000.0)
             .open(&mut open)
             .show(ctx, |ui| {
+                let mut accept = false;
+                let mut cancel = false;
                 // Explorer-style address bar with history.
                 ui.horizontal(|ui| {
                     if ui
@@ -274,7 +280,7 @@ impl FileDialog {
                             self.navigate(home);
                         }
                     }
-                    let width = (ui.available_width() - 52.0).max(120.0);
+                    let width = (ui.available_width() - 170.0).max(120.0);
                     let response = ui
                         .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(width));
                     let go = ui.button("Go").clicked()
@@ -282,6 +288,13 @@ impl FileDialog {
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
                     if go {
                         self.navigate(PathBuf::from(self.path_text.trim()));
+                    }
+                    if ui
+                        .button("New folder")
+                        .on_hover_text("Create a folder in this location")
+                        .clicked()
+                    {
+                        self.create_folder();
                     }
                 });
                 ui.separator();
@@ -297,12 +310,16 @@ impl FileDialog {
                                 .show(ui, |ui| {
                                     ui.label(egui::RichText::new("Quick access").strong());
                                     for (label, path) in places() {
-                                        if ui
-                                            .selectable_label(self.directory == path, label)
-                                            .clicked()
-                                        {
-                                            target = Some(path);
-                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.add(icons::image_at(ui.ctx(), Icon::Folder, 15.0));
+                                            if ui
+                                                .selectable_label(self.directory == path, label)
+                                                .on_hover_text(path.display().to_string())
+                                                .clicked()
+                                            {
+                                                target = Some(path);
+                                            }
+                                        });
                                     }
                                 });
                         },
@@ -314,9 +331,16 @@ impl FileDialog {
                                 .id_salt("dialog_files")
                                 .max_height(300.0)
                                 .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    if let Some(path) = self.listing(ui) {
-                                        target = Some(path);
+                                .show(ui, |ui| match self.listing(ui) {
+                                    ListingAction::None => {}
+                                    ListingAction::Navigate(path) => target = Some(path),
+                                    ListingAction::Accept(path) => {
+                                        if let Some(name) =
+                                            path.file_name().and_then(|name| name.to_str())
+                                        {
+                                            self.file_name = name.to_string();
+                                        }
+                                        accept = true;
                                     }
                                 });
                         });
@@ -330,13 +354,17 @@ impl FileDialog {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("File name:");
-                    ui.add(egui::TextEdit::singleline(&mut self.file_name).desired_width(460.0));
+                    let response = ui
+                        .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0));
+                    if response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    {
+                        accept = true;
+                    }
                 });
                 if let Some(error) = &self.error {
                     ui.colored_label(egui::Color32::from_rgb(200, 60, 60), error);
                 }
-                let mut accept = false;
-                let mut cancel = false;
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.show_all_files, "Show all files");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -349,6 +377,9 @@ impl FileDialog {
                         ui.label(self.mode.filter_hint());
                     });
                 });
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
                 if accept {
                     match self.resolve() {
                         Ok(path) => result = DialogResult::Accepted(path),
@@ -376,6 +407,7 @@ impl FileDialog {
             self.directory = target;
         }
         self.path_text = self.directory.display().to_string();
+        self.selected = None;
         self.error = None;
     }
 
@@ -384,6 +416,7 @@ impl FileDialog {
             let current = std::mem::replace(&mut self.directory, previous);
             self.forward.push(current);
             self.path_text = self.directory.display().to_string();
+            self.selected = None;
             self.error = None;
         }
     }
@@ -393,7 +426,26 @@ impl FileDialog {
             let current = std::mem::replace(&mut self.directory, next);
             self.back.push(current);
             self.path_text = self.directory.display().to_string();
+            self.selected = None;
             self.error = None;
+        }
+    }
+
+    fn create_folder(&mut self) {
+        let mut candidate = self.directory.join("New folder");
+        let mut index = 2;
+        while candidate.exists() {
+            candidate = self.directory.join(format!("New folder {index}"));
+            index += 1;
+        }
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => {
+                self.selected = Some(candidate);
+                self.error = None;
+            }
+            Err(error) => {
+                self.error = Some(format!("Cannot create folder: {error}"));
+            }
         }
     }
 
@@ -410,7 +462,7 @@ impl FileDialog {
             .count()
     }
 
-    fn listing(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
+    fn listing(&mut self, ui: &mut egui::Ui) -> ListingAction {
         let entries = match std::fs::read_dir(&self.directory) {
             Ok(entries) => entries,
             Err(error) => {
@@ -418,7 +470,7 @@ impl FileDialog {
                     egui::Color32::from_rgb(200, 60, 60),
                     format!("Cannot read directory: {error}"),
                 );
-                return None;
+                return ListingAction::None;
             }
         };
         let mut directories = Vec::new();
@@ -435,9 +487,9 @@ impl FileDialog {
         files.sort();
         if directories.is_empty() && files.is_empty() {
             ui.weak("This folder is empty or has no supported files.");
-            return None;
+            return ListingAction::None;
         }
-        let mut target = None;
+        let mut action = ListingAction::None;
         egui::Grid::new("dialog_listing")
             .num_columns(3)
             .striped(true)
@@ -454,14 +506,17 @@ impl FileDialog {
                         .unwrap_or("?")
                         .to_string();
                     ui.horizontal(|ui| {
-                        let icon = icons::image_at(ui.ctx(), Icon::File, 14.0);
-                        ui.add(icon);
-                        if ui
-                            .selectable_label(false, name.as_str())
-                            .on_hover_text("Open this folder")
-                            .clicked()
-                        {
-                            target = Some(directory.clone());
+                        ui.add(icons::image_at(ui.ctx(), Icon::Folder, 16.0));
+                        let selected = self.selected.as_deref() == Some(directory.as_path());
+                        let response = ui
+                            .selectable_label(selected, name.as_str())
+                            .on_hover_text("Double-click to open this folder");
+                        if response.clicked() {
+                            self.selected = Some(directory.clone());
+                        }
+                        if response.double_clicked() {
+                            self.selected = Some(directory.clone());
+                            action = ListingAction::Navigate(directory.clone());
                         }
                     });
                     ui.label("Folder");
@@ -474,11 +529,21 @@ impl FileDialog {
                         .and_then(|value| value.to_str())
                         .unwrap_or("?");
                     ui.horizontal(|ui| {
-                        let icon = icons::image_at(ui.ctx(), Icon::Page, 14.0);
-                        ui.add(icon);
-                        if ui.selectable_label(false, name).clicked() {
+                        ui.add(icons::image_at(ui.ctx(), file_icon(&file), 16.0));
+                        let selected = self.selected.as_deref() == Some(file.as_path());
+                        let response = ui
+                            .selectable_label(selected, name)
+                            .on_hover_text("Double-click to choose this file");
+                        if response.clicked() {
+                            self.selected = Some(file.clone());
                             self.file_name = name.to_string();
                             self.error = None;
+                        }
+                        if response.double_clicked() {
+                            self.selected = Some(file.clone());
+                            self.file_name = name.to_string();
+                            self.error = None;
+                            action = ListingAction::Accept(file.clone());
                         }
                     });
                     let kind = file
@@ -492,7 +557,7 @@ impl FileDialog {
                     ui.end_row();
                 }
             });
-        target
+        action
     }
 
     fn resolve(&self) -> Result<PathBuf, String> {
@@ -556,6 +621,27 @@ impl FileDialog {
     }
 }
 
+/// What the listing asks the dialog to do after a click.
+enum ListingAction {
+    None,
+    Navigate(PathBuf),
+    Accept(PathBuf),
+}
+
+fn file_icon(path: &Path) -> Icon {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "png" | "jpg" | "jpeg" | "bmp" | "tif" | "tiff" | "webp" | "gif" => Icon::Image,
+        "bwp" | "bwpz" | "svg" | "dxf" | "plt" | "hpgl" | "eps" | "pdf" | "nc" | "gcode"
+        | "gco" | "gc" | "ngc" | "tap" | "cnc" | "mpf" | "json" | "csv" | "txt" => Icon::Page,
+        _ => Icon::File,
+    }
+}
+
 fn home_directory() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -600,7 +686,20 @@ fn format_size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileDialog, FileMode};
+    use super::{FileDialog, FileMode, file_icon, format_size};
+    use crate::ui::icons::Icon;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let path = std::env::temp_dir().join(format!(
+            "beamburin-dialog-{name}-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("the scratch folder was not created");
+        path
+    }
 
     #[test]
     fn open_accepts_projects_and_svg() {
@@ -728,6 +827,56 @@ mod tests {
         );
         assert!(FileMode::ImportProfiles.accepts(std::path::Path::new("a.json")));
         assert!(FileMode::ExportProfiles.filter_hint().contains("json"));
+    }
+
+    #[test]
+    fn the_listing_chooses_an_icon_per_file_type() {
+        assert_eq!(file_icon(std::path::Path::new("photo.PNG")), Icon::Image);
+        assert_eq!(file_icon(std::path::Path::new("drawing.svg")), Icon::Page);
+        assert_eq!(file_icon(std::path::Path::new("job.gcode")), Icon::Page);
+        assert_eq!(file_icon(std::path::Path::new("notes.xyz")), Icon::File);
+    }
+
+    #[test]
+    fn sizes_read_like_a_file_manager() {
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(2048), "2 KB");
+        assert_eq!(format_size(3 * 1024 * 1024), "3.0 MB");
+    }
+
+    #[test]
+    fn new_folders_get_a_free_name() {
+        let root = scratch("folders");
+        let mut dialog = FileDialog::new(FileMode::ExportSvg, Some(&root), "a.svg");
+        dialog.create_folder();
+        assert!(root.join("New folder").is_dir());
+        dialog.create_folder();
+        assert!(root.join("New folder 2").is_dir());
+        assert_eq!(
+            dialog.selected.as_deref(),
+            Some(root.join("New folder 2").as_path())
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_dialog_shows_the_system_style_actions() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let root = scratch("actions");
+        let dialog = FileDialog::new(FileMode::ImportFile, Some(&root), "");
+        let mut harness = egui_kittest::Harness::new_ui_state(
+            |ui, dialog: &mut FileDialog| {
+                let _ = dialog.show(ui.ctx());
+            },
+            dialog,
+        );
+        harness.run();
+        assert!(harness.query_by_label("Cancel").is_some());
+        assert!(harness.query_by_label("Open").is_some());
+        assert!(harness.query_by_label("New folder").is_some());
+        assert!(harness.query_by_label("Quick access").is_some());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
