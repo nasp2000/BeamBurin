@@ -1589,24 +1589,12 @@ fn the_palette_closes_the_selected_open_path() {
     };
     app.editor.selection.clear();
     app.editor.selection.add(id.clone());
+    app.palette_open = true;
+    app.palette_focus = true;
+    app.palette_query.clear();
     let mut harness = ui_harness(app);
     harness.run();
-    assert_eq!(
-        harness.state().editor.selection.len(),
-        1,
-        "the selection was lost before the palette opened: {}",
-        harness.state().status
-    );
-    harness.get_by_label("View").click();
-    harness.run();
-    harness.get_by_label("Command palette...").click();
-    harness.run();
-    assert_eq!(
-        harness.state().editor.selection.len(),
-        1,
-        "the selection was lost when the palette opened: {}",
-        harness.state().status
-    );
+    assert_eq!(harness.state().editor.selection.len(), 1);
     harness
         .get_all_by_role(egui::accesskit::Role::TextInput)
         .last()
@@ -1622,12 +1610,6 @@ fn the_palette_closes_the_selected_open_path() {
     harness.key_press(egui::Key::Enter);
     harness.run();
     let app = harness.state();
-    assert_eq!(
-        app.editor.selection.len(),
-        1,
-        "the selection was lost before the palette ran: {}",
-        app.status
-    );
     let object = app
         .editor
         .document
@@ -1637,6 +1619,32 @@ fn the_palette_closes_the_selected_open_path() {
         object.shape.to_path().is_closed(),
         "the palette did not close the path: {}",
         app.status
+    );
+}
+
+#[test]
+fn opening_the_palette_keeps_the_selection() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        .expect("the rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Command palette...").click();
+    harness.run();
+    assert!(harness.state().palette_open, "the palette did not open");
+    assert_eq!(
+        harness.state().editor.selection.len(),
+        1,
+        "opening the palette cleared the selection: {}",
+        harness.state().status
     );
 }
 
