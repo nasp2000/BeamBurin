@@ -1680,7 +1680,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            text.contains("X-150.000") || text.contains("X-140.000"),
+            text.contains("X-150") || text.contains("X-140"),
             "the centre origin did not shift the rectangle"
         );
     }

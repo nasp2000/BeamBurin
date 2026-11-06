@@ -807,7 +807,7 @@ mod tests {
             crlf: false,
             smooth_mm: 0.5,
             arcs: true,
-            origin: Default::default(),
+            origin: crate::gcode::JobOrigin::default(),
         }
     }
 
