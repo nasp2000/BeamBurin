@@ -64,6 +64,8 @@ pub fn export_dxf_with_report_options(
     let area = super::export_area(document, options.area, "DXF")?;
     let mut out = String::new();
     let mut report = DxfReport::default();
+    // Declare millimetres so readers do not have to guess the drawing unit.
+    out.push_str("0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n");
     out.push_str("0\nSECTION\n2\nENTITIES\n");
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -170,7 +172,9 @@ mod tests {
     #[test]
     fn empty_document_has_header_and_footer() {
         let text = export_dxf(&Document::default()).unwrap();
-        assert!(text.starts_with("0\nSECTION\n2\nENTITIES\n"));
+        assert!(text.starts_with("0\nSECTION\n2\nHEADER\n"));
+        assert!(text.contains("9\n$INSUNITS\n70\n4\n"));
+        assert!(text.contains("0\nSECTION\n2\nENTITIES\n"));
         assert!(text.ends_with("0\nENDSEC\n0\nEOF\n"));
     }
 
