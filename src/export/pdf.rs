@@ -29,7 +29,7 @@ pub fn export_pdf(document: &Document) -> Result<String> {
 
 /// Export the document as a PDF, optionally cropped to a page region.
 ///
-/// The MediaBox becomes the region and every coordinate is shifted by its
+/// The `MediaBox` becomes the region and every coordinate is shifted by its
 /// origin, so the page shows exactly the requested part of the drawing.
 #[allow(clippy::cast_precision_loss)]
 pub fn export_pdf_with_options(document: &Document, options: &PdfOptions) -> Result<String> {

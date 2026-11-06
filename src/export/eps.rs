@@ -28,7 +28,7 @@ pub fn export_eps(document: &Document) -> Result<String> {
 
 /// Export the document as EPS, optionally cropped to a page region.
 ///
-/// The BoundingBox becomes the region and every coordinate is shifted by its
+/// The `BoundingBox` becomes the region and every coordinate is shifted by its
 /// origin.
 #[allow(clippy::cast_possible_truncation)]
 pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Result<String> {
