@@ -233,6 +233,7 @@ pub fn run(cli: Cli) -> Result<()> {
             let options = crate::export::PngOptions {
                 dpi,
                 transparent: false,
+                area: None,
             };
             let report = crate::export::export_png(&document, &output, &options)?;
             println!(

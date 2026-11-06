@@ -301,8 +301,8 @@ impl BeamBurinApp {
                 &document,
                 cancel,
                 offset_origin,
-                png_area,
                 origin,
+                png_area,
                 gcode,
                 smooth_mm,
             )))

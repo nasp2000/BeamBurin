@@ -702,6 +702,7 @@ mod tests {
             let options = PngOptions {
                 dpi,
                 transparent: false,
+                area: None,
             };
             let (_, width, height, _) = render_rgba(&document, &options).unwrap();
             assert_eq!(
