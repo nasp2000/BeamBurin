@@ -72,7 +72,7 @@ pub fn export_dxf_with_report_options(
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
     for layer in layers {
-        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
+        if !layer.visible || !super::layer_included(&layer.id, options.layer_ids.as_deref()) {
             continue;
         }
         let (red, green, blue) = layer.rgb();

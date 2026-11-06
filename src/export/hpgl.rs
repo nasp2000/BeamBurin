@@ -42,7 +42,7 @@ pub fn export_hpgl_with_options(document: &Document, options: &HpglOptions) -> R
     layers.sort_by_key(|layer| layer.order);
     let mut pen = 0;
     for layer in layers {
-        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
+        if !layer.visible || !super::layer_included(&layer.id, options.layer_ids.as_deref()) {
             continue;
         }
         pen = pen % 8 + 1;

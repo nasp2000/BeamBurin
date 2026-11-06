@@ -71,9 +71,8 @@ pub struct VectorNotes {
 }
 
 /// Whether a layer passes the optional export layer filter.
-pub(crate) fn layer_included(layer_id: &str, ids: &Option<Vec<String>>) -> bool {
-    ids.as_ref()
-        .is_none_or(|ids| ids.iter().any(|id| id == layer_id))
+pub(crate) fn layer_included(layer_id: &str, ids: Option<&[String]>) -> bool {
+    ids.is_none_or(|ids| ids.iter().any(|id| id == layer_id))
 }
 
 /// Paths to write for one object in a path-only vector exporter.
