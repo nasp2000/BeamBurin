@@ -308,7 +308,7 @@ impl BeamBurinApp {
         self.status = "Importing...".to_string();
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
     pub(super) fn start_export(
         &mut self,
         mode: FileMode,

@@ -610,7 +610,7 @@ pub struct BeamBurinApp {
 ///
 /// Runs on a worker thread; `cancel` is checked before writing so a cancelled
 /// export never creates or replaces a file.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 fn run_export(
     mode: FileMode,
     path: &Path,

@@ -63,6 +63,7 @@ pub fn export_dxf_with_report(document: &Document) -> Result<(String, DxfReport)
 ///
 /// The optional area only moves the origin: DXF has no page or clipping box,
 /// so a selection export starts at 0,0 instead of its page position.
+#[allow(clippy::too_many_lines)]
 pub fn export_dxf_with_report_options(
     document: &Document,
     options: &DxfOptions,
