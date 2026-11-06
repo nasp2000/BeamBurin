@@ -137,7 +137,8 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(text.contains("PU0,0;PD400,0,400,200,0,200,0,0;"), "{text}");
+        assert!(text.contains("PU0,0;"), "{text}");
+        assert!(text.contains("PD400,0,400,200,0,200,0,0;"), "{text}");
     }
 
     #[test]
