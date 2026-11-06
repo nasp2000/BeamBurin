@@ -624,7 +624,7 @@ impl BeamBurinApp {
             self.open_dialog(FileMode::RelinkImage);
         }
         if reload_request {
-            match self.editor.reload_image(&id) {
+            match self.editor.reload_image(id) {
                 Ok((width, height)) => {
                     self.status = format!("Reloaded the image: {width} x {height} px");
                 }
