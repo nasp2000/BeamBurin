@@ -48,8 +48,6 @@ impl Default for PngOptions {
             width_px: None,
             height_px: None,
             area: None,
-            width_px: None,
-            height_px: None,
         }
     }
 }
