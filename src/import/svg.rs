@@ -118,6 +118,7 @@ pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Re
             &mut warnings,
             &ids,
             0,
+            dpi,
         );
     }
 
@@ -309,6 +310,7 @@ fn process_node(
     warnings: &mut Vec<String>,
     ids: &HashMap<String, &Node>,
     depth: usize,
+    dpi: f64,
 ) {
     let local = node
         .attr("transform")
@@ -321,7 +323,7 @@ fn process_node(
         "g" | "a" | "svg" => {
             for child in &node.children {
                 process_node(
-                    child, transform, &style, doc, layer_id, warnings, ids, depth,
+                    child, transform, &style, doc, layer_id, warnings, ids, depth, dpi,
                 );
             }
         }
@@ -359,6 +361,7 @@ fn process_node(
                                         warnings,
                                         ids,
                                         depth + 1,
+                                        dpi,
                                     );
                                 }
                             }
@@ -371,6 +374,7 @@ fn process_node(
                                 warnings,
                                 ids,
                                 depth + 1,
+                                dpi,
                             ),
                         }
                     }
@@ -389,7 +393,7 @@ fn process_node(
         "polygon" => import_poly(node, transform, &style, doc, layer_id, true, warnings),
         "path" => import_path(node, transform, &style, doc, layer_id, warnings),
         "text" => import_text(node, transform, &style, doc, layer_id),
-        "image" => import_image(node, transform, &style, doc, layer_id),
+        "image" => import_image(node, transform, &style, doc, layer_id, dpi),
         other => warnings.push(format!("unsupported SVG element: <{other}>")),
     }
 }
@@ -613,6 +617,7 @@ fn import_image(
     style: &SvgStyle,
     doc: &mut Document,
     layer_id: &str,
+    dpi: f64,
 ) {
     let Some(href) = node.attr("href").map(str::to_string) else {
         return;
@@ -629,9 +634,9 @@ fn import_image(
     let height_mm = height * scale;
     let image = ImageObject::new(
         href,
-        (width_mm * DPI / 25.4).round().max(1.0) as u32,
-        (height_mm * DPI / 25.4).round().max(1.0) as u32,
-        DPI,
+        (width_mm * dpi / 25.4).round().max(1.0) as u32,
+        (height_mm * dpi / 25.4).round().max(1.0) as u32,
+        dpi,
     );
     let world = transform.apply(Point2::new(x, y));
     let object = Object::new(layer_id, Shape::Image(image))
