@@ -609,7 +609,7 @@ fn run_export(
     offset_origin: bool,
     origin: crate::gcode::JobOrigin,
     png_options: crate::export::PngOptions,
-    svg_options: crate::export::SvgOptions,
+    svg_options: &crate::export::SvgOptions,
     vector_area: Option<crate::export::Area>,
     dxf_text_as_paths: bool,
     vector_text_as_paths: bool,
@@ -734,7 +734,7 @@ fn run_export(
                 .with_warnings(report.warnings))
         }
         FileMode::ExportSvg => {
-            let svg = crate::export::export_svg_with_options(document, &svg_options)
+            let svg = crate::export::export_svg_with_options(document, svg_options)
                 .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, svg).map_err(|error| error.to_string())?;

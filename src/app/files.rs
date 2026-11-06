@@ -332,7 +332,7 @@ impl BeamBurinApp {
                 offset_origin,
                 origin,
                 png_options,
-                svg_options,
+                &svg_options,
                 vector_area,
                 dxf_text_as_paths,
                 vector_text_as_paths,
