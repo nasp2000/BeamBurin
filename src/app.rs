@@ -645,25 +645,31 @@ fn run_export(
             let eps = crate::export::export_eps(document).map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, eps).map_err(|error| error.to_string())?;
+            let notes = crate::export::vector_notes(document);
             Ok(FileReport::new("Export EPS", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
-                .with_summary("Format", "Encapsulated PostScript"))
+                .with_summary("Format", "Encapsulated PostScript")
+                .with_warnings(notes.warnings))
         }
         FileMode::ExportPdf => {
             let pdf = crate::export::export_pdf(document).map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, pdf.as_bytes()).map_err(|error| error.to_string())?;
+            let notes = crate::export::vector_notes(document);
             Ok(FileReport::new("Export PDF", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
-                .with_summary("Format", "single-page vector"))
+                .with_summary("Format", "single-page vector")
+                .with_warnings(notes.warnings))
         }
         FileMode::ExportHpgl => {
             let hpgl = crate::export::export_hpgl(document).map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, hpgl).map_err(|error| error.to_string())?;
+            let notes = crate::export::vector_notes(document);
             Ok(FileReport::new("Export HPGL", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
-                .with_summary("Units", "40 per mm"))
+                .with_summary("Units", "40 per mm")
+                .with_warnings(notes.warnings))
         }
         FileMode::ExportGcode => {
             cancelled()?;
