@@ -4,9 +4,17 @@ use crate::document::Document;
 use crate::errors::Result;
 
 use super::paths::{flatten, fmt_num};
+use super::png::Area;
 
 /// Millimetres per PostScript point.
 const MM_PER_POINT: f64 = 25.4 / 72.0;
+
+/// EPS output settings (§14.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct EpsOptions {
+    /// Page region to write; `None` writes the whole page.
+    pub area: Option<Area>,
+}
 
 /// Export the document as an Encapsulated PostScript file.
 ///
@@ -14,10 +22,19 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 /// and every visible object becomes a stroked subpath in its layer colour. Curves
 /// are flattened; text and images are not written, like the other vector
 /// exporters.
-#[allow(clippy::cast_possible_truncation)]
 pub fn export_eps(document: &Document) -> Result<String> {
-    let width = (document.width_mm / MM_PER_POINT).ceil().max(1.0) as i64;
-    let height = (document.height_mm / MM_PER_POINT).ceil().max(1.0) as i64;
+    export_eps_with_options(document, &EpsOptions::default())
+}
+
+/// Export the document as EPS, optionally cropped to a page region.
+///
+/// The BoundingBox becomes the region and every coordinate is shifted by its
+/// origin.
+#[allow(clippy::cast_possible_truncation)]
+pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Result<String> {
+    let area = super::export_area(document, options.area, "EPS")?;
+    let width = (area.width / MM_PER_POINT).ceil().max(1.0) as i64;
+    let height = (area.height / MM_PER_POINT).ceil().max(1.0) as i64;
     let mut out = String::new();
     out.push_str("%!PS-Adobe-3.0 EPSF-3.0\n");
     out.push_str("%%Creator: BeamBurin\n");
@@ -50,9 +67,19 @@ pub fn export_eps(document: &Document) -> Result<String> {
             );
             out.push_str("0.25 setlinewidth\n");
             let first = points[0];
-            let _ = writeln!(out, "newpath {} {} moveto", point(first.0), point(first.1));
+            let _ = writeln!(
+                out,
+                "newpath {} {} moveto",
+                point(first.0 - area.x),
+                point(first.1 - area.y)
+            );
             for entry in &points[1..] {
-                let _ = writeln!(out, "{} {} lineto", point(entry.0), point(entry.1));
+                let _ = writeln!(
+                    out,
+                    "{} {} lineto",
+                    point(entry.0 - area.x),
+                    point(entry.1 - area.y)
+                );
             }
             if path.closed {
                 out.push_str("closepath\n");
@@ -70,9 +97,11 @@ fn point(mm: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::export_eps;
+    use super::{EpsOptions, export_eps, export_eps_with_options};
     use crate::document::Document;
     use crate::document::model::{Object, Shape};
+    use crate::export::Area;
+    use crate::geometry::Transform2;
 
     fn rectangle(width: f64, height: f64) -> Object {
         Object::new(
@@ -92,6 +121,34 @@ mod tests {
         // 300 x 200 mm in points, rounded up.
         assert!(text.contains("%%BoundingBox: 0 0 851 567"), "{text}");
         assert!(text.ends_with("%%EOF\n"));
+    }
+
+    #[test]
+    fn an_area_changes_the_bounding_box_and_shifts_the_path() {
+        let mut document = Document {
+            width_mm: 20.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = document.layers[0].id.clone();
+        let mut object = rectangle(10.0, 5.0);
+        object.layer_id = layer_id;
+        document.add_object(object.with_transform(Transform2::translate(5.0, 4.0)));
+        let text = export_eps_with_options(
+            &document,
+            &EpsOptions {
+                area: Some(Area {
+                    x: 5.0,
+                    y: 4.0,
+                    width: 10.0,
+                    height: 5.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(text.contains("%%BoundingBox: 0 0 29 15"), "{text}");
+        assert!(text.contains("newpath 0 0 moveto"), "{text}");
+        assert!(text.contains("28.346457 0 lineto"), "{text}");
     }
 
     #[test]

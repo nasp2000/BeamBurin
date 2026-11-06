@@ -2582,6 +2582,10 @@ fn exporting_the_selection_as_pdf_writes_only_the_selected_object() {
     wait_for_task(&mut harness);
     let path = directory.join("untitled.pdf");
     let text = std::fs::read_to_string(&path).expect("cannot read the PDF");
+    assert!(
+        text.contains("/MediaBox [0 0 28.346457 19.84252]"),
+        "the PDF page should match the selection: {text}"
+    );
     assert_eq!(
         text.matches("S\n").count(),
         1,

@@ -602,6 +602,7 @@ fn run_export(
     origin: crate::gcode::JobOrigin,
     png_options: crate::export::PngOptions,
     svg_options: crate::export::SvgOptions,
+    vector_area: Option<crate::export::Area>,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -643,7 +644,11 @@ fn run_export(
                 .with_warnings(report.warnings))
         }
         FileMode::ExportEps => {
-            let eps = crate::export::export_eps(document).map_err(|error| error.to_string())?;
+            let eps = crate::export::export_eps_with_options(
+                document,
+                &crate::export::EpsOptions { area: vector_area },
+            )
+            .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, eps).map_err(|error| error.to_string())?;
             let notes = crate::export::vector_notes(document);
@@ -653,7 +658,11 @@ fn run_export(
                 .with_warnings(notes.warnings))
         }
         FileMode::ExportPdf => {
-            let pdf = crate::export::export_pdf(document).map_err(|error| error.to_string())?;
+            let pdf = crate::export::export_pdf_with_options(
+                document,
+                &crate::export::PdfOptions { area: vector_area },
+            )
+            .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, pdf.as_bytes()).map_err(|error| error.to_string())?;
             let notes = crate::export::vector_notes(document);
@@ -663,7 +672,11 @@ fn run_export(
                 .with_warnings(notes.warnings))
         }
         FileMode::ExportHpgl => {
-            let hpgl = crate::export::export_hpgl(document).map_err(|error| error.to_string())?;
+            let hpgl = crate::export::export_hpgl_with_options(
+                document,
+                &crate::export::HpglOptions { area: vector_area },
+            )
+            .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, hpgl).map_err(|error| error.to_string())?;
             let notes = crate::export::vector_notes(document);

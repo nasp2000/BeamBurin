@@ -25,40 +25,12 @@ pub fn export_svg(doc: &Document) -> Result<String> {
 
 /// Export visible document content as SVG, optionally cropped to a page region.
 pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<String> {
-    let view = match options.area {
-        Some(area) => {
-            let finite = area.x.is_finite()
-                && area.y.is_finite()
-                && area.width.is_finite()
-                && area.height.is_finite();
-            if !finite || area.width <= 0.0 || area.height <= 0.0 {
-                return Err(crate::errors::BeamError::InvalidInput(
-                    "the SVG area must have a positive finite size".to_string(),
-                ));
-            }
-            let epsilon = 1e-6;
-            if area.x < -epsilon
-                || area.y < -epsilon
-                || area.x + area.width > doc.width_mm + epsilon
-                || area.y + area.height > doc.height_mm + epsilon
-            {
-                return Err(crate::errors::BeamError::InvalidInput(
-                    "the SVG area must lie inside the page".to_string(),
-                ));
-            }
-            View {
-                x: area.x,
-                y: area.y,
-                width: area.width,
-                height: area.height,
-            }
-        }
-        None => View {
-            x: 0.0,
-            y: 0.0,
-            width: doc.width_mm,
-            height: doc.height_mm,
-        },
+    let area = super::export_area(doc, options.area, "SVG")?;
+    let view = View {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: area.height,
     };
     let mut out = String::new();
     let _ = writeln!(

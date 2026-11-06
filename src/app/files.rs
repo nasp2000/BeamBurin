@@ -150,6 +150,7 @@ impl BeamBurinApp {
                     offset_origin,
                     png_options,
                     svg_options,
+                    export_area,
                 );
             }
             FileMode::RelinkImage => self.relink_image(path),
@@ -281,6 +282,7 @@ impl BeamBurinApp {
         self.status = "Importing...".to_string();
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn start_export(
         &mut self,
         mode: FileMode,
@@ -289,6 +291,7 @@ impl BeamBurinApp {
         offset_origin: bool,
         png_options: crate::export::PngOptions,
         svg_options: crate::export::SvgOptions,
+        vector_area: Option<crate::export::Area>,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -321,6 +324,7 @@ impl BeamBurinApp {
                 origin,
                 png_options,
                 svg_options,
+                vector_area,
                 gcode,
                 smooth_mm,
             )))

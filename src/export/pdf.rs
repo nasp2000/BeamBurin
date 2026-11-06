@@ -4,9 +4,17 @@ use crate::document::Document;
 use crate::errors::Result;
 
 use super::paths::{flatten, fmt_num};
+use super::png::Area;
 
 /// Millimetres per PDF point (1 pt = 1/72 inch).
 const MM_PER_POINT: f64 = 25.4 / 72.0;
+
+/// PDF output settings (§14.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PdfOptions {
+    /// Page region to write; `None` writes the whole page.
+    pub area: Option<Area>,
+}
 
 /// Export the document as a single-page vector PDF.
 ///
@@ -15,8 +23,17 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 /// layer colour; curves are flattened. Text and images are not written, matching
 /// the other vector exporters. The file is self-contained: no fonts, no
 /// compression, no external resources.
-#[allow(clippy::cast_precision_loss)]
 pub fn export_pdf(document: &Document) -> Result<String> {
+    export_pdf_with_options(document, &PdfOptions::default())
+}
+
+/// Export the document as a PDF, optionally cropped to a page region.
+///
+/// The MediaBox becomes the region and every coordinate is shifted by its
+/// origin, so the page shows exactly the requested part of the drawing.
+#[allow(clippy::cast_precision_loss)]
+pub fn export_pdf_with_options(document: &Document, options: &PdfOptions) -> Result<String> {
+    let area = super::export_area(document, options.area, "PDF")?;
     let mut content = String::new();
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -47,15 +64,15 @@ pub fn export_pdf(document: &Document) -> Result<String> {
             let _ = writeln!(
                 content,
                 "{} {} m",
-                fmt_num(first.0 / MM_PER_POINT),
-                fmt_num(first.1 / MM_PER_POINT)
+                fmt_num((first.0 - area.x) / MM_PER_POINT),
+                fmt_num((first.1 - area.y) / MM_PER_POINT)
             );
             for point in &points[1..] {
                 let _ = writeln!(
                     content,
                     "{} {} l",
-                    fmt_num(point.0 / MM_PER_POINT),
-                    fmt_num(point.1 / MM_PER_POINT)
+                    fmt_num((point.0 - area.x) / MM_PER_POINT),
+                    fmt_num((point.1 - area.y) / MM_PER_POINT)
                 );
             }
             if path.closed {
@@ -65,8 +82,8 @@ pub fn export_pdf(document: &Document) -> Result<String> {
         }
     }
 
-    let width = document.width_mm / MM_PER_POINT;
-    let height = document.height_mm / MM_PER_POINT;
+    let width = area.width / MM_PER_POINT;
+    let height = area.height / MM_PER_POINT;
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
@@ -104,9 +121,11 @@ pub fn export_pdf(document: &Document) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::export_pdf;
+    use super::{PdfOptions, export_pdf, export_pdf_with_options};
     use crate::document::Document;
     use crate::document::model::{Object, Shape};
+    use crate::export::Area;
+    use crate::geometry::Transform2;
 
     fn rectangle(width: f64, height: f64) -> Object {
         Object::new(
@@ -130,6 +149,37 @@ mod tests {
             text.contains("/MediaBox [0 0 850.393701 566.929134]"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn an_area_changes_the_media_box_and_shifts_the_path() {
+        let mut document = Document {
+            width_mm: 20.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = document.layers[0].id.clone();
+        let mut object = rectangle(10.0, 5.0);
+        object.layer_id = layer_id;
+        document.add_object(object.with_transform(Transform2::translate(5.0, 4.0)));
+        let text = export_pdf_with_options(
+            &document,
+            &PdfOptions {
+                area: Some(Area {
+                    x: 5.0,
+                    y: 4.0,
+                    width: 10.0,
+                    height: 5.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(
+            text.contains("/MediaBox [0 0 28.346457 14.173228]"),
+            "{text}"
+        );
+        assert!(text.contains("0 0 m"), "{text}");
+        assert!(text.contains("28.346457 0 l"), "{text}");
     }
 
     #[test]

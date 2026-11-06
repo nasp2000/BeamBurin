@@ -7,9 +7,9 @@ pub mod png;
 pub mod svg;
 
 pub use dxf::{DxfReport, export_dxf, export_dxf_with_report};
-pub use eps::export_eps;
-pub use hpgl::export_hpgl;
-pub use pdf::export_pdf;
+pub use eps::{EpsOptions, export_eps, export_eps_with_options};
+pub use hpgl::{HpglOptions, export_hpgl, export_hpgl_with_options};
+pub use pdf::{PdfOptions, export_pdf, export_pdf_with_options};
 pub use png::{
     Area, PngArea, PngOptions, PngReport, export_png, export_png_cancellable, render_rgba,
     render_rgba_cancellable,
@@ -17,7 +17,41 @@ pub use png::{
 pub use svg::{SvgOptions, export_svg, export_svg_with_options};
 
 use crate::document::{Document, Shape};
+use crate::errors::{BeamError, Result};
 use crate::geometry::path::Segment;
+
+/// Validate an optional export region and return the rectangle to write.
+///
+/// `None` means the whole page. A region must be finite, positive and inside
+/// the document; `label` names the format in the error message.
+pub(crate) fn export_area(document: &Document, area: Option<Area>, label: &str) -> Result<Area> {
+    let area = area.unwrap_or(Area {
+        x: 0.0,
+        y: 0.0,
+        width: document.width_mm,
+        height: document.height_mm,
+    });
+    let finite = area.x.is_finite()
+        && area.y.is_finite()
+        && area.width.is_finite()
+        && area.height.is_finite();
+    if !finite || area.width <= 0.0 || area.height <= 0.0 {
+        return Err(BeamError::InvalidInput(format!(
+            "the {label} area must have a positive finite size"
+        )));
+    }
+    let epsilon = 1e-6;
+    if area.x < -epsilon
+        || area.y < -epsilon
+        || area.x + area.width > document.width_mm + epsilon
+        || area.y + area.height > document.height_mm + epsilon
+    {
+        return Err(BeamError::InvalidInput(format!(
+            "the {label} area must lie inside the page"
+        )));
+    }
+    Ok(area)
+}
 
 /// What the path-only vector exporters (EPS, PDF, HPGL) cannot represent.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
