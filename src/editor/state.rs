@@ -2241,7 +2241,7 @@ impl EditorState {
         for id in &ids {
             self.selection.add(id.clone());
         }
-        Ok(ids.len())
+        Ok(bars.len())
     }
 
     /// Move the selection so its bounding-box minimum corner is at (x, y).
