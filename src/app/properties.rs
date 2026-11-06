@@ -125,6 +125,7 @@ impl BeamBurinApp {
 
     pub(super) fn object_properties(&mut self, ui: &mut Ui, id: &str) {
         let mut relink_request = false;
+        let mut reload_request = false;
         let mut select_same_color: Option<String> = None;
         let layers: Vec<(String, String)> = self
             .editor
@@ -450,6 +451,13 @@ impl BeamBurinApp {
                     if ui.button("Relink...").clicked() {
                         relink_request = true;
                     }
+                    if ui
+                        .button("Reload")
+                        .on_hover_text("Re-read the image dimensions from the file")
+                        .clicked()
+                    {
+                        reload_request = true;
+                    }
                 });
                 ui.weak(format!(
                     "{:.1} x {:.1} mm, source {} x {} px at {:.0} dpi",
@@ -614,6 +622,14 @@ impl BeamBurinApp {
         if relink_request {
             self.relink_target = Some(id.to_string());
             self.open_dialog(FileMode::RelinkImage);
+        }
+        if reload_request {
+            match self.editor.reload_image(&id) {
+                Ok((width, height)) => {
+                    self.status = format!("Reloaded the image: {width} x {height} px");
+                }
+                Err(error) => self.status = format!("Cannot reload the image: {error}"),
+            }
         }
     }
 

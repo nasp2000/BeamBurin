@@ -2152,6 +2152,46 @@ impl EditorState {
         convertible.len()
     }
 
+    /// Re-read an image file after it changed on disk.
+    ///
+    /// The source dimensions follow the file; the preparation settings are
+    /// kept, and a crop that no longer fits the new size is dropped. Records one
+    /// undo step and returns the new pixel size.
+    pub fn reload_image(&mut self, id: &str) -> std::result::Result<(u32, u32), String> {
+        let path = {
+            let object = self
+                .document
+                .object(id)
+                .ok_or_else(|| "the image is missing".to_string())?;
+            let Shape::Image(image) = &object.shape else {
+                return Err("the object is not an image".to_string());
+            };
+            image.path.clone()
+        };
+        let (width, height) = crate::raster::image_dimensions(std::path::Path::new(&path))
+            .map_err(|error| error.to_string())?;
+        if width == 0 || height == 0 {
+            return Err("the image has no pixels".to_string());
+        }
+        self.record_action("Reload image");
+        if let Some(object) = self.document.object_mut(id) {
+            if let Shape::Image(image) = &mut object.shape {
+                image.width_px = width;
+                image.height_px = height;
+                if let Some(crop) = image.crop {
+                    if crop.x >= width
+                        || crop.y >= height
+                        || crop.x + crop.width > width
+                        || crop.y + crop.height > height
+                    {
+                        image.crop = None;
+                    }
+                }
+            }
+        }
+        Ok((width, height))
+    }
+
     /// Insert a Code 39 barcode as a group of bar rectangles.
     ///
     /// The bars use the active layer, colour and cut entry, are grouped so they
@@ -4019,6 +4059,51 @@ mod tests {
             editor.document.object(&rect).unwrap().shape,
             Shape::Rect { .. }
         ));
+    }
+
+    #[test]
+    fn reload_image_follows_the_file_and_drops_a_crop_that_no_longer_fits() {
+        let path = std::env::temp_dir().join("bw_reload_image.png");
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([0, 0, 0, 255]))
+            .save(&path)
+            .unwrap();
+        let document = crate::import::raster::import_raster(&path).unwrap();
+        let mut editor = editor();
+        editor.set_document(document);
+        let id = editor.document.objects[0].id.clone();
+        if let Shape::Image(image) = &mut editor.document.objects[0].shape {
+            image.settings.mode = crate::objects::ImageMode::Stucki;
+            image.crop = Some(crate::objects::ImageCrop {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            });
+        }
+        image::RgbaImage::from_pixel(12, 6, image::Rgba([0, 0, 0, 255]))
+            .save(&path)
+            .unwrap();
+        assert_eq!(editor.reload_image(&id).unwrap(), (12, 6));
+        let Shape::Image(image) = &editor.document.objects[0].shape else {
+            panic!("the object is not an image");
+        };
+        assert_eq!((image.width_px, image.height_px), (12, 6));
+        assert_eq!(image.settings.mode, crate::objects::ImageMode::Stucki);
+        assert!(image.crop.is_some());
+        image::RgbaImage::from_pixel(3, 3, image::Rgba([0, 0, 0, 255]))
+            .save(&path)
+            .unwrap();
+        assert_eq!(editor.reload_image(&id).unwrap(), (3, 3));
+        let Shape::Image(image) = &editor.document.objects[0].shape else {
+            panic!("the object is not an image");
+        };
+        assert!(image.crop.is_none(), "the stale crop survived");
+        assert!(editor.undo().is_some());
+        let Shape::Image(image) = &editor.document.objects[0].shape else {
+            panic!("the object is not an image");
+        };
+        assert_eq!((image.width_px, image.height_px), (12, 6));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

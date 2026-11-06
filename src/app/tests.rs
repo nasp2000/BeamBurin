@@ -1807,6 +1807,33 @@ fn opening_the_palette_keeps_the_selection() {
 }
 
 #[test]
+fn the_image_properties_can_reload_the_file() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("reload_image_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Reload").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().status.contains("Reloaded the image"),
+        "the reload did not run: {}",
+        harness.state().status
+    );
+}
+
+#[test]
 fn the_toolbar_opens_the_image_import_dialog() {
     use egui_kittest::kittest::Queryable as _;
 
