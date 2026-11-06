@@ -60,17 +60,21 @@ impl BeamBurinApp {
             return;
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
-        let png_area = if selection_only {
-            self.editor
-                .selected_bounds()
-                .map(|(min, max)| crate::export::PngArea {
-                    x: min.x,
-                    y: min.y,
-                    width: (max.x - min.x).max(0.01),
-                    height: (max.y - min.y).max(0.01),
-                })
-        } else {
-            None
+        let png_options = crate::export::PngOptions {
+            dpi: self.export_image_dpi,
+            transparent: self.export_image_transparent,
+            area: if selection_only {
+                self.editor
+                    .selected_bounds()
+                    .map(|(min, max)| crate::export::PngArea {
+                        x: min.x,
+                        y: min.y,
+                        width: (max.x - min.x).max(0.01),
+                        height: (max.y - min.y).max(0.01),
+                    })
+            } else {
+                None
+            },
         };
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
