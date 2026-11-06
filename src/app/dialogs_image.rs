@@ -3,24 +3,37 @@
 use super::*;
 
 impl BeamBurinApp {
+    fn drawing_area_mm(&self) -> Option<(f64, f64)> {
+        let (min, max) = self.editor.visible_bounds()?;
+        let x = min.x.max(0.0);
+        let y = min.y.max(0.0);
+        let max_x = max.x.min(self.editor.document.width_mm);
+        let max_y = max.y.min(self.editor.document.height_mm);
+        (max_x > x && max_y > y).then_some((max_x - x, max_y - y))
+    }
+
+    fn image_area_mm(&self) -> (f64, f64) {
+        if self.export_image_selection {
+            if let Some((min, max)) = self.editor.selected_bounds() {
+                return (max.x - min.x, max.y - min.y);
+            }
+        }
+        if self.export_image_drawing {
+            if let Some(size) = self.drawing_area_mm() {
+                return size;
+            }
+        }
+        (
+            self.editor.document.width_mm,
+            self.editor.document.height_mm,
+        )
+    }
+
     /// Open the PNG export options; `selection` preselects the crop.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(super) fn open_export_image(&mut self, selection: bool) {
         self.export_image_selection = selection && !self.editor.selection.is_empty();
-        let (width_mm, height_mm) = if self.export_image_selection {
-            self.editor.selected_bounds().map_or(
-                (
-                    self.editor.document.width_mm,
-                    self.editor.document.height_mm,
-                ),
-                |(min, max)| (max.x - min.x, max.y - min.y),
-            )
-        } else {
-            (
-                self.editor.document.width_mm,
-                self.editor.document.height_mm,
-            )
-        };
+        let (width_mm, height_mm) = self.image_area_mm();
         let scale = self.export_image_dpi / 25.4;
         let margin = self.export_image_margin_mm.max(0.0);
         self.export_image_width_px = (((width_mm + margin * 2.0) * scale).round()).max(1.0) as u32;
@@ -35,21 +48,9 @@ impl BeamBurinApp {
         let mut start = false;
         let mut cancel = false;
         let has_selection = !self.editor.selection.is_empty();
+        let drawing_available = self.drawing_area_mm().is_some();
         let dpi = self.export_image_dpi;
-        let (width_mm, height_mm) = if self.export_image_selection && has_selection {
-            self.editor.selected_bounds().map_or(
-                (
-                    self.editor.document.width_mm,
-                    self.editor.document.height_mm,
-                ),
-                |(min, max)| (max.x - min.x, max.y - min.y),
-            )
-        } else {
-            (
-                self.editor.document.width_mm,
-                self.editor.document.height_mm,
-            )
-        };
+        let (width_mm, height_mm) = self.image_area_mm();
         let margin = self.export_image_margin_mm.max(0.0);
         let frame_width_mm = width_mm + margin * 2.0;
         let frame_height_mm = height_mm + margin * 2.0;
@@ -157,7 +158,16 @@ impl BeamBurinApp {
                         ui.end_row();
                         ui.label("Area");
                         ui.horizontal(|ui| {
-                            ui.radio_value(&mut self.export_image_selection, false, "Whole page");
+                            if ui
+                                .radio(
+                                    !self.export_image_selection && !self.export_image_drawing,
+                                    "Whole page",
+                                )
+                                .clicked()
+                            {
+                                self.export_image_selection = false;
+                                self.export_image_drawing = false;
+                            }
                             if ui
                                 .add_enabled(
                                     has_selection,
@@ -169,12 +179,29 @@ impl BeamBurinApp {
                                 .clicked()
                             {
                                 self.export_image_selection = true;
+                                self.export_image_drawing = false;
+                            }
+                            if ui
+                                .add_enabled(
+                                    drawing_available,
+                                    egui::RadioButton::new(
+                                        self.export_image_drawing && drawing_available,
+                                        "Drawing",
+                                    ),
+                                )
+                                .clicked()
+                            {
+                                self.export_image_drawing = true;
+                                self.export_image_selection = false;
                             }
                         });
                         ui.end_row();
                     });
                 if self.export_image_selection && !has_selection {
                     self.export_image_selection = false;
+                }
+                if self.export_image_drawing && !drawing_available {
+                    self.export_image_drawing = false;
                 }
                 ui.weak(format!(
                     "{frame_width_mm:.1} x {frame_height_mm:.1} mm, {width_px} x {height_px} px"

@@ -69,6 +69,19 @@ impl BeamBurinApp {
                     width: (max.x - min.x).max(0.01),
                     height: (max.y - min.y).max(0.01),
                 })
+        } else if mode == FileMode::ExportImage && self.export_image_drawing {
+            self.editor.visible_bounds().and_then(|(min, max)| {
+                let x = min.x.max(0.0);
+                let y = min.y.max(0.0);
+                let max_x = max.x.min(self.editor.document.width_mm);
+                let max_y = max.y.min(self.editor.document.height_mm);
+                (max_x > x && max_y > y).then_some(crate::export::Area {
+                    x,
+                    y,
+                    width: max_x - x,
+                    height: max_y - y,
+                })
+            })
         } else {
             None
         };

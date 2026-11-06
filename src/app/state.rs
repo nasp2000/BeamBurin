@@ -283,6 +283,7 @@ impl BeamBurinApp {
             export_image_dpi: 96.0,
             export_image_transparent: false,
             export_image_selection: false,
+            export_image_drawing: false,
             export_image_custom_size: false,
             export_image_width_px: 1000,
             export_image_height_px: 1000,

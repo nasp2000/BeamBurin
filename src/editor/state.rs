@@ -2947,6 +2947,33 @@ impl EditorState {
         bounds
     }
 
+    /// Bounding box of every visible object on a visible layer.
+    pub fn visible_bounds(&self) -> Option<(Point2, Point2)> {
+        let mut bounds: Option<(Point2, Point2)> = None;
+        for object in &self.document.objects {
+            if !object.visible
+                || !self
+                    .document
+                    .layers
+                    .iter()
+                    .any(|layer| layer.id == object.layer_id && layer.visible)
+            {
+                continue;
+            }
+            let Some((min, max)) = object.bounds() else {
+                continue;
+            };
+            bounds = Some(match bounds {
+                None => (min, max),
+                Some((bmin, bmax)) => (
+                    Point2::new(bmin.x.min(min.x), bmin.y.min(min.y)),
+                    Point2::new(bmax.x.max(max.x), bmax.y.max(max.y)),
+                ),
+            });
+        }
+        bounds
+    }
+
     /// Move the selected objects to the top of the drawing order.
     pub fn bring_selection_to_front(&mut self) -> usize {
         self.reorder_selection(true)

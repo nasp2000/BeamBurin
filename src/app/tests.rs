@@ -2991,6 +2991,41 @@ fn the_image_export_options_add_a_margin() {
 }
 
 #[test]
+fn the_image_export_options_fit_the_drawing() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("png_drawing_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.export_image_dpi = 10.0;
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let hidden = app.editor.document.add_layer("Hidden").id.clone();
+    app.editor.document.layer_mut(&hidden).unwrap().visible = false;
+    app.editor.active_layer_id = hidden;
+    app.editor
+        .add_rectangle(Point2::new(100.0, 100.0), Point2::new(200.0, 180.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+    harness.get_by_label("Drawing").click();
+    harness.run();
+    assert!(harness.state().export_image_drawing);
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.png");
+    let picture = image::open(&path).expect("cannot read the PNG");
+    assert_eq!((picture.width(), picture.height()), (8, 6));
+}
+
+#[test]
 fn the_command_palette_filters_by_query() {
     use egui_kittest::kittest::Queryable as _;
 
