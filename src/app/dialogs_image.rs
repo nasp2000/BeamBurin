@@ -17,13 +17,13 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let dpi = self.export_image_dpi;
         let (width_mm, height_mm) = if self.export_image_selection && has_selection {
-            self.editor
-                .selected_bounds()
-                .map(|(min, max)| (max.x - min.x, max.y - min.y))
-                .unwrap_or((
+            self.editor.selected_bounds().map_or(
+                (
                     self.editor.document.width_mm,
                     self.editor.document.height_mm,
-                ))
+                ),
+                |(min, max)| (max.x - min.x, max.y - min.y),
+            )
         } else {
             (
                 self.editor.document.width_mm,
