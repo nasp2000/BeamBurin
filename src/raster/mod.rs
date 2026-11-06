@@ -4,6 +4,16 @@ use crate::objects::{ImageMode, ImageSettings};
 /// Maximum number of pixels accepted from an imported image.
 pub const MAX_PIXELS: u64 = 50_000_000;
 
+/// Largest side processed for an on-screen preview.
+///
+/// The canvas texture is much smaller than the source, so damping the preview
+/// before the tone and dithering passes keeps slider changes responsive without
+/// affecting the full-resolution job path.
+pub const PREVIEW_MAX_SIDE: u32 = 512;
+
+/// Largest side processed before vectorizing or tracing a photo.
+pub const TRACE_MAX_SIDE: u32 = 1024;
+
 /// Power map produced from an image and its settings.
 ///
 /// Most modes are binary and store only 0 or 255; grayscale engraving stores the
@@ -540,7 +550,24 @@ pub fn process_object(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<RasterBitmap> {
-    let luma = prepared_luma(path, image)?;
+    let luma = prepared_luma(path, image, None)?;
+    let width = usize::try_from(luma.width()).unwrap_or(0);
+    let height = usize::try_from(luma.height()).unwrap_or(0);
+    process_luma(luma.as_raw(), width, height, &image.settings)
+}
+
+/// Process an image at a bounded preview resolution.
+///
+/// Source files, crops and rotations are still read at full size, but the
+/// luminance buffer passed to the tone and dithering pipeline is limited to
+/// `max_side` pixels on its longer edge. This is for previews and tracing only;
+/// [`process_object`] keeps the full resolution for the job.
+pub fn process_object_preview(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+) -> Result<RasterBitmap> {
+    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
     let width = usize::try_from(luma.width()).unwrap_or(0);
     let height = usize::try_from(luma.height()).unwrap_or(0);
     process_luma(luma.as_raw(), width, height, &image.settings)
@@ -550,6 +577,7 @@ pub fn process_object(
 fn prepared_luma(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
+    max_side: Option<u32>,
 ) -> Result<image::GrayImage> {
     image.validate().map_err(BeamError::InvalidInput)?;
     // Check the source header before decoding: crop, rotation and a smaller
@@ -588,6 +616,11 @@ fn prepared_luma(
             image.settings.target_height_px,
             image::imageops::FilterType::Nearest,
         );
+    }
+    if let Some(max_side) = max_side {
+        if picture.width() > max_side || picture.height() > max_side {
+            picture = picture.resize(max_side, max_side, image::imageops::FilterType::Triangle);
+        }
     }
     let pixels = u64::from(picture.width()) * u64::from(picture.height());
     if pixels > MAX_PIXELS {
@@ -656,7 +689,17 @@ pub fn histogram(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<[u64; 256]> {
-    let luma = prepared_luma(path, image)?;
+    let luma = prepared_luma(path, image, None)?;
+    Ok(histogram_of(luma.as_raw()))
+}
+
+/// Histogram of a bounded preview, for the image dialog.
+pub fn histogram_preview(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+) -> Result<[u64; 256]> {
+    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
     Ok(histogram_of(luma.as_raw()))
 }
 
@@ -678,7 +721,17 @@ pub fn auto_levels(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<(u8, u8)> {
-    let luma = prepared_luma(path, image)?;
+    let luma = prepared_luma(path, image, None)?;
+    Ok(auto_clip(luma.as_raw()))
+}
+
+/// Automatic clip levels from a bounded preview.
+pub fn auto_levels_preview(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+) -> Result<(u8, u8)> {
+    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
     Ok(auto_clip(luma.as_raw()))
 }
 
@@ -765,6 +818,28 @@ mod object_tests {
         }
         picture.save(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn preview_processing_caps_the_long_side() {
+        let path = write_image("bw_raster_preview.png", 200, 100);
+        let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        let preview = process_object_preview(&path, &object, 64).unwrap();
+        assert_eq!((preview.width, preview.height), (64, 32));
+        let full = process_object(&path, &object).unwrap();
+        assert_eq!((full.width, full.height), (200, 100));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn preview_histogram_uses_the_capped_buffer() {
+        let path = write_image("bw_raster_preview_histogram.png", 200, 100);
+        let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        let bins = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(bins.iter().sum::<u64>(), 64 * 32);
+        let (black, white) = auto_levels_preview(&path, &object, 64).unwrap();
+        assert!(black <= white);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

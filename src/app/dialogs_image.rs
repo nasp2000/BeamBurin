@@ -998,7 +998,11 @@ impl BeamBurinApp {
             image.settings = crate::objects::ImageSettings::default();
         }
         if auto_levels {
-            match crate::raster::auto_levels(std::path::Path::new(&image.path), &image) {
+            match crate::raster::auto_levels_preview(
+                std::path::Path::new(&image.path),
+                &image,
+                crate::raster::PREVIEW_MAX_SIDE,
+            ) {
                 Ok((black, white)) => {
                     image.settings.black_clip = black;
                     image.settings.white_clip = white;
@@ -1109,8 +1113,12 @@ impl BeamBurinApp {
                 return cache.bins;
             }
         }
-        let bins = crate::raster::histogram(std::path::Path::new(&image.path), image)
-            .unwrap_or([0u64; 256]);
+        let bins = crate::raster::histogram_preview(
+            std::path::Path::new(&image.path),
+            image,
+            crate::raster::PREVIEW_MAX_SIDE,
+        )
+        .unwrap_or([0u64; 256]);
         self.image_histogram = Some(ImageHistogram {
             object_id: id.to_string(),
             settings: image.settings,

@@ -1104,9 +1104,11 @@ impl BeamBurinApp {
             if self.image_previews.contains_key(&id) {
                 continue;
             }
-            let Ok(bitmap) =
-                crate::raster::process_object(std::path::Path::new(&image.path), &image)
-            else {
+            let Ok(bitmap) = crate::raster::process_object_preview(
+                std::path::Path::new(&image.path),
+                &image,
+                crate::raster::PREVIEW_MAX_SIDE,
+            ) else {
                 continue;
             };
             let path = image.path.clone();

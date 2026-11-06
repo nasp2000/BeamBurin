@@ -292,7 +292,11 @@ impl BeamBurinApp {
         let Some((min, max)) = object.bounds() else {
             return;
         };
-        let bitmap = match crate::raster::process_object(std::path::Path::new(&image.path), image) {
+        let bitmap = match crate::raster::process_object_preview(
+            std::path::Path::new(&image.path),
+            image,
+            crate::raster::TRACE_MAX_SIDE,
+        ) {
             Ok(bitmap) => bitmap,
             Err(error) => {
                 self.status = format!("Cannot read the image: {error}");
@@ -381,7 +385,11 @@ impl BeamBurinApp {
         let Some((min, max)) = object.bounds() else {
             return;
         };
-        let bitmap = match crate::raster::process_object(std::path::Path::new(&image.path), image) {
+        let bitmap = match crate::raster::process_object_preview(
+            std::path::Path::new(&image.path),
+            image,
+            crate::raster::TRACE_MAX_SIDE,
+        ) {
             Ok(bitmap) => bitmap,
             Err(error) => {
                 self.status = format!("Cannot read the image: {error}");
@@ -475,8 +483,12 @@ impl BeamBurinApp {
                 && preview.crop == image.crop
         });
         if !current {
-            let bitmap =
-                crate::raster::process_object(std::path::Path::new(&image.path), image).ok()?;
+            let bitmap = crate::raster::process_object_preview(
+                std::path::Path::new(&image.path),
+                image,
+                crate::raster::PREVIEW_MAX_SIDE,
+            )
+            .ok()?;
             let texture = ctx.load_texture(
                 format!("burn-preview-{id}"),
                 preview_color_image(&bitmap, true),
@@ -506,8 +518,12 @@ impl BeamBurinApp {
                 && preview.crop == image.crop
         });
         if !current {
-            let bitmap =
-                crate::raster::process_object(std::path::Path::new(&image.path), image).ok()?;
+            let bitmap = crate::raster::process_object_preview(
+                std::path::Path::new(&image.path),
+                image,
+                crate::raster::PREVIEW_MAX_SIDE,
+            )
+            .ok()?;
             let texture = ctx.load_texture(
                 format!("invert-preview-{id}"),
                 invert_color_image(preview_color_image(&bitmap, false)),
