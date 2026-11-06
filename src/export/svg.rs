@@ -109,6 +109,7 @@ impl View {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn write_object(
     out: &mut String,
     object: &Object,
@@ -136,7 +137,7 @@ fn write_object(
                         if d.is_empty() {
                             continue;
                         }
-                        let _ = writeln!(out, "    <path d=\"{}\"/>", d);
+                        let _ = writeln!(out, "    <path d=\"{d}\"/>");
                     }
                     return;
                 }
@@ -508,6 +509,7 @@ mod tests {
                     width: 5.0,
                     height: 5.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap_err();
