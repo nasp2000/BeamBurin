@@ -209,7 +209,7 @@ mod tests {
                 width_px: 1,
                 height_px: 1,
                 dpi: 96.0,
-                settings: Default::default(),
+                settings: crate::objects::ImageSettings::default(),
                 crop: None,
             }),
         ));
