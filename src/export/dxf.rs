@@ -5,6 +5,14 @@ use crate::errors::Result;
 use crate::geometry::path::Segment;
 
 use super::paths::{flatten, fmt_num};
+use super::png::Area;
+
+/// DXF output settings (§14.2).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct DxfOptions {
+    /// Region whose origin becomes the drawing origin; `None` keeps page zero.
+    pub area: Option<Area>,
+}
 
 /// What the DXF export wrote and what it had to leave out (§14.2).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -33,8 +41,25 @@ pub fn export_dxf(document: &Document) -> Result<String> {
     export_dxf_with_report(document).map(|(text, _)| text)
 }
 
+/// Export the document with options.
+pub fn export_dxf_with_options(document: &Document, options: &DxfOptions) -> Result<String> {
+    export_dxf_with_report_options(document, options).map(|(text, _)| text)
+}
+
 /// Export the document and describe what the subset could not represent.
 pub fn export_dxf_with_report(document: &Document) -> Result<(String, DxfReport)> {
+    export_dxf_with_report_options(document, &DxfOptions::default())
+}
+
+/// Export the document with options and describe what was left out.
+///
+/// The optional area only moves the origin: DXF has no page or clipping box,
+/// so a selection export starts at 0,0 instead of its page position.
+pub fn export_dxf_with_report_options(
+    document: &Document,
+    options: &DxfOptions,
+) -> Result<(String, DxfReport)> {
+    let area = super::export_area(document, options.area, "DXF")?;
     let mut out = String::new();
     let mut report = DxfReport::default();
     out.push_str("0\nSECTION\n2\nENTITIES\n");
@@ -90,8 +115,8 @@ pub fn export_dxf_with_report(document: &Document) -> Result<(String, DxfReport)
             let _ = writeln!(out, "90\n{}", points.len());
             let _ = writeln!(out, "70\n{}", u32::from(path.closed));
             for (x, y) in points {
-                let _ = writeln!(out, "10\n{}", fmt_num(x));
-                let _ = writeln!(out, "20\n{}", fmt_num(y));
+                let _ = writeln!(out, "10\n{}", fmt_num(x - area.x));
+                let _ = writeln!(out, "20\n{}", fmt_num(y - area.y));
             }
             report.entities += 1;
         }
@@ -167,6 +192,36 @@ mod tests {
         document.add_object(object);
         let text = export_dxf(&document).unwrap();
         assert!(text.contains("10\n100\n20\n50\n"));
+    }
+
+    #[test]
+    fn an_area_moves_the_drawing_to_the_origin() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        let object = Object::new(
+            layer_id,
+            Shape::Rect {
+                width: 10.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        )
+        .with_transform(Transform2::translate(5.0, 4.0));
+        document.add_object(object);
+        let text = export_dxf_with_options(
+            &document,
+            &DxfOptions {
+                area: Some(crate::export::Area {
+                    x: 5.0,
+                    y: 4.0,
+                    width: 10.0,
+                    height: 5.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(text.contains("10\n0\n20\n0\n"), "{text}");
+        assert!(text.contains("10\n10\n20\n5\n"), "{text}");
     }
 
     #[test]

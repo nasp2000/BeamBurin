@@ -634,8 +634,11 @@ fn run_export(
                 .with_warnings(warnings))
         }
         FileMode::ExportDxf => {
-            let (dxf, report) = crate::export::export_dxf_with_report(document)
-                .map_err(|error| error.to_string())?;
+            let (dxf, report) = crate::export::export_dxf_with_report_options(
+                document,
+                &crate::export::DxfOptions { area: vector_area },
+            )
+            .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, dxf).map_err(|error| error.to_string())?;
             Ok(FileReport::new("Export DXF", path.display().to_string())

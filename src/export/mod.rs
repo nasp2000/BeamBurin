@@ -6,7 +6,10 @@ pub mod pdf;
 pub mod png;
 pub mod svg;
 
-pub use dxf::{DxfReport, export_dxf, export_dxf_with_report};
+pub use dxf::{
+    DxfOptions, DxfReport, export_dxf, export_dxf_with_options, export_dxf_with_report,
+    export_dxf_with_report_options,
+};
 pub use eps::{EpsOptions, export_eps, export_eps_with_options};
 pub use hpgl::{HpglOptions, export_hpgl, export_hpgl_with_options};
 pub use pdf::{PdfOptions, export_pdf, export_pdf_with_options};
