@@ -22,8 +22,10 @@ impl BeamBurinApp {
             )
         };
         let scale = self.export_image_dpi / 25.4;
-        self.export_image_width_px = ((width_mm * scale).round()).max(1.0) as u32;
-        self.export_image_height_px = ((height_mm * scale).round()).max(1.0) as u32;
+        let margin = self.export_image_margin_mm.max(0.0);
+        self.export_image_width_px = (((width_mm + margin * 2.0) * scale).round()).max(1.0) as u32;
+        self.export_image_height_px =
+            (((height_mm + margin * 2.0) * scale).round()).max(1.0) as u32;
         self.export_image_open = true;
     }
 
@@ -48,8 +50,11 @@ impl BeamBurinApp {
                 self.editor.document.height_mm,
             )
         };
-        let auto_width_px = ((width_mm * dpi / 25.4).round()).max(1.0) as u32;
-        let auto_height_px = ((height_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let margin = self.export_image_margin_mm.max(0.0);
+        let frame_width_mm = width_mm + margin * 2.0;
+        let frame_height_mm = height_mm + margin * 2.0;
+        let auto_width_px = ((frame_width_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let auto_height_px = ((frame_height_mm * dpi / 25.4).round()).max(1.0) as u32;
         let (width_px, height_px) = if self.export_image_custom_size {
             (
                 self.export_image_width_px.max(1),
@@ -82,6 +87,14 @@ impl BeamBurinApp {
                         ui.end_row();
                         ui.label("Background");
                         ui.checkbox(&mut self.export_image_transparent, "Transparent");
+                        ui.end_row();
+                        ui.label("Margin");
+                        ui.add(
+                            egui::DragValue::new(&mut self.export_image_margin_mm)
+                                .speed(0.5)
+                                .range(0.0..=100.0)
+                                .suffix(" mm"),
+                        );
                         ui.end_row();
                         ui.label("Size");
                         ui.horizontal(|ui| {
@@ -146,7 +159,7 @@ impl BeamBurinApp {
                     self.export_image_selection = false;
                 }
                 ui.weak(format!(
-                    "{width_mm:.1} x {height_mm:.1} mm, {width_px} x {height_px} px"
+                    "{frame_width_mm:.1} x {frame_height_mm:.1} mm, {width_px} x {height_px} px"
                 ));
                 ui.horizontal(|ui| {
                     if ui.button("Export").clicked() {

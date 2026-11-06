@@ -2963,6 +2963,34 @@ fn the_image_export_options_use_an_explicit_size() {
 }
 
 #[test]
+fn the_image_export_options_add_a_margin() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("png_margin_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor.document.width_mm = 10.0;
+    app.editor.document.height_mm = 10.0;
+    app.export_image_dpi = 10.0;
+    app.export_image_margin_mm = 1.0;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.png");
+    let picture = image::open(&path).expect("cannot read the PNG");
+    assert_eq!((picture.width(), picture.height()), (12, 12));
+}
+
+#[test]
 fn the_command_palette_filters_by_query() {
     use egui_kittest::kittest::Queryable as _;
 

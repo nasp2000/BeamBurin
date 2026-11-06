@@ -26,6 +26,8 @@ pub struct PngOptions {
     pub width_px: Option<u32>,
     /// Explicit output height in pixels.
     pub height_px: Option<u32>,
+    /// Blank margin around the chosen region, in millimetres.
+    pub margin_mm: f64,
 }
 
 /// A rectangle of the page, in millimetres from the bottom-left corner.
@@ -47,6 +49,7 @@ impl Default for PngOptions {
             transparent: false,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         }
     }
@@ -62,6 +65,11 @@ impl PngOptions {
         if self.width_px == Some(0) || self.height_px == Some(0) {
             return Err(crate::errors::BeamError::InvalidInput(
                 "the PNG size must be at least 1 pixel".to_string(),
+            ));
+        }
+        if !self.margin_mm.is_finite() || self.margin_mm < 0.0 {
+            return Err(crate::errors::BeamError::InvalidInput(
+                "the PNG margin must be a finite value of zero or more".to_string(),
             ));
         }
         if let Some(area) = self.area {
@@ -126,6 +134,11 @@ impl Canvas {
             }
             None => (0.0, 0.0, document.width_mm, document.height_mm),
         };
+        let margin = options.margin_mm;
+        let origin_x = origin_x - margin;
+        let origin_y = origin_y - margin;
+        let width_mm = width_mm + margin * 2.0;
+        let height_mm = height_mm + margin * 2.0;
         let (width, height) = match (options.width_px, options.height_px) {
             (Some(width), Some(height)) => (f64::from(width), f64::from(height)),
             (Some(width), None) => (
@@ -181,7 +194,7 @@ impl Canvas {
             scale_x,
             scale_y,
             origin: (origin_x, origin_y),
-            height_mm: height_mm.min(document.height_mm),
+            height_mm,
             stretched,
         })
     }
@@ -499,6 +512,7 @@ mod tests {
             transparent: false,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -516,6 +530,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -530,6 +545,7 @@ mod tests {
             transparent: true,
             width_px: Some(20),
             height_px: Some(10),
+            margin_mm: 0.0,
             area: None,
         };
         let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -548,6 +564,7 @@ mod tests {
             transparent: true,
             width_px: Some(20),
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -566,10 +583,45 @@ mod tests {
             transparent: true,
             width_px: Some(0),
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let error = render_rgba(&document, &options).unwrap_err();
         assert!(error.to_string().contains("at least 1 pixel"), "{error}");
+    }
+
+    #[test]
+    fn a_margin_adds_blank_space_around_the_page() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            width_px: None,
+            height_px: None,
+            margin_mm: 1.0,
+            area: None,
+        };
+        let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (12, 12));
+        assert_eq!(pixels[3], 0, "the corner margin is not blank");
+        let inside = (width as usize + 1) * 4;
+        assert_eq!(&pixels[inside..inside + 4], &[255, 0, 0, 255]);
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn a_negative_margin_is_rejected() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: false,
+            width_px: None,
+            height_px: None,
+            margin_mm: -1.0,
+            area: None,
+        };
+        let error = render_rgba(&document, &options).unwrap_err();
+        assert!(error.to_string().contains("margin"), "{error}");
     }
 
     #[test]
@@ -581,6 +633,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -595,6 +648,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -610,6 +664,7 @@ mod tests {
             transparent: false,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         assert!(render_rgba(&document, &options).is_err());
@@ -624,6 +679,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: None,
         };
         let (pixels, width, ..) = render_rgba(&document, &options).unwrap();
@@ -640,6 +696,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: Some(PngArea {
                 x: 2.0,
                 y: 2.0,
@@ -667,6 +724,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: Some(PngArea {
                 x: 5.0,
                 y: 5.0,
@@ -681,6 +739,7 @@ mod tests {
             transparent: true,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -700,6 +759,7 @@ mod tests {
             transparent: false,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: Some(PngArea {
                 x: 8.0,
                 y: 8.0,
@@ -714,6 +774,7 @@ mod tests {
             transparent: false,
             width_px: None,
             height_px: None,
+            margin_mm: 0.0,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -822,6 +883,7 @@ mod tests {
                 transparent: false,
                 width_px: None,
                 height_px: None,
+                margin_mm: 0.0,
                 area: None,
             };
             let (_, width, height, _) = render_rgba(&document, &options).unwrap();
