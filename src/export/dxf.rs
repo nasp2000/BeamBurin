@@ -14,6 +14,8 @@ pub struct DxfOptions {
     pub area: Option<Area>,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
+    /// Write only these layers; `None` writes every visible layer.
+    pub layer_ids: Option<Vec<String>>,
 }
 
 /// What the DXF export wrote and what it had to leave out (§14.2).
@@ -70,7 +72,7 @@ pub fn export_dxf_with_report_options(
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
     for layer in layers {
-        if !layer.visible {
+        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
             continue;
         }
         let (red, green, blue) = layer.rgb();
@@ -241,6 +243,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -266,6 +269,7 @@ mod tests {
             &DxfOptions {
                 area: None,
                 text_as_paths: false,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -276,12 +280,47 @@ mod tests {
             &DxfOptions {
                 area: None,
                 text_as_paths: true,
+                layer_ids: None,
             },
         )
         .unwrap();
         assert!(outlined.contains("LWPOLYLINE"), "{outlined}");
         assert_eq!(report.text_omitted, 0);
         assert!(report.entities > 0);
+    }
+
+    #[test]
+    fn only_chosen_layers_are_written() {
+        let mut document = Document::default();
+        let first = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            first,
+            Shape::Rect {
+                width: 1.0,
+                height: 1.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let second = document.add_layer("Second").id.clone();
+        document.add_object(Object::new(
+            second.clone(),
+            Shape::Rect {
+                width: 2.0,
+                height: 2.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let text = export_dxf_with_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: Some(vec![second]),
+            },
+        )
+        .unwrap();
+        assert!(text.contains("8\nSecond\n"), "{text}");
+        assert!(!text.contains("8\nLayer 1\n"), "{text}");
     }
 
     #[test]

@@ -70,6 +70,12 @@ pub struct VectorNotes {
     pub warnings: Vec<String>,
 }
 
+/// Whether a layer passes the optional export layer filter.
+pub(crate) fn layer_included(layer_id: &str, ids: &Option<Vec<String>>) -> bool {
+    ids.as_ref()
+        .is_none_or(|ids| ids.iter().any(|id| id == layer_id))
+}
+
 /// Paths to write for one object in a path-only vector exporter.
 ///
 /// Text is outlined when `text_as_paths` is set. Text that cannot be outlined

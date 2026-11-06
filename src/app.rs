@@ -592,10 +592,12 @@ pub struct BeamBurinApp {
     export_dxf_open: bool,
     export_dxf_selection: bool,
     export_dxf_text_paths: bool,
+    export_dxf_layer_ids: Vec<String>,
     export_vector_open: bool,
     export_vector_mode: FileMode,
     export_vector_selection: bool,
     export_vector_text_paths: bool,
+    export_vector_layer_ids: Vec<String>,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
@@ -618,9 +620,15 @@ fn run_export(
     vector_area: Option<crate::export::Area>,
     dxf_text_as_paths: bool,
     vector_text_as_paths: bool,
+    layer_ids: Vec<String>,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
+    let layer_ids = if layer_ids.is_empty() {
+        None
+    } else {
+        Some(layer_ids)
+    };
     let cancelled = || {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             Err("Cancelled".to_string())
@@ -654,6 +662,7 @@ fn run_export(
                 &crate::export::DxfOptions {
                     area: vector_area,
                     text_as_paths: dxf_text_as_paths,
+                    layer_ids: layer_ids.clone(),
                 },
             )
             .map_err(|error| error.to_string())?;
@@ -670,6 +679,7 @@ fn run_export(
                 &crate::export::EpsOptions {
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
+                    layer_ids: layer_ids.clone(),
                 },
             )
             .map_err(|error| error.to_string())?;
@@ -687,6 +697,7 @@ fn run_export(
                 &crate::export::PdfOptions {
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
+                    layer_ids: layer_ids.clone(),
                 },
             )
             .map_err(|error| error.to_string())?;
@@ -704,6 +715,7 @@ fn run_export(
                 &crate::export::HpglOptions {
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
+                    layer_ids: layer_ids.clone(),
                 },
             )
             .map_err(|error| error.to_string())?;

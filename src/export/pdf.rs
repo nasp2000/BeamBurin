@@ -16,6 +16,8 @@ pub struct PdfOptions {
     pub area: Option<Area>,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
+    /// Write only these layers; `None` writes every visible layer.
+    pub layer_ids: Option<Vec<String>>,
 }
 
 /// Export the document as a single-page vector PDF.
@@ -40,7 +42,7 @@ pub fn export_pdf_with_options(document: &Document, options: &PdfOptions) -> Res
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
     for layer in layers {
-        if !layer.visible {
+        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
             continue;
         }
         let (red, green, blue) = layer.rgb();
@@ -178,6 +180,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -187,6 +190,30 @@ mod tests {
         );
         assert!(text.contains("0 0 m"), "{text}");
         assert!(text.contains("28.346457 0 l"), "{text}");
+    }
+
+    #[test]
+    fn only_chosen_layers_are_written() {
+        let mut document = Document::default();
+        let first = document.layers[0].id.clone();
+        let mut first_object = rectangle(10.0, 5.0);
+        first_object.layer_id = first;
+        document.add_object(first_object);
+        let second = document.add_layer("Second").id.clone();
+        let mut second_object = rectangle(10.0, 5.0);
+        second_object.layer_id = second.clone();
+        document.add_object(second_object.with_transform(Transform2::translate(50.0, 50.0)));
+        let text = export_pdf_with_options(
+            &document,
+            &PdfOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: Some(vec![second]),
+            },
+        )
+        .unwrap();
+        assert!(!text.contains("0 0 m"), "{text}");
+        assert!(text.contains("141.732283 141.732283 m"), "{text}");
     }
 
     #[test]
@@ -209,6 +236,7 @@ mod tests {
             &PdfOptions {
                 area: None,
                 text_as_paths: true,
+                layer_ids: None,
             },
         )
         .unwrap();

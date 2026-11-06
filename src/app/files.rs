@@ -93,6 +93,14 @@ impl BeamBurinApp {
                 Some(self.export_svg_layer_ids.clone())
             },
         };
+        let export_layer_ids = match mode {
+            FileMode::ExportSvg => self.export_svg_layer_ids.clone(),
+            FileMode::ExportDxf => self.export_dxf_layer_ids.clone(),
+            FileMode::ExportPdf | FileMode::ExportEps | FileMode::ExportHpgl => {
+                self.export_vector_layer_ids.clone()
+            }
+            _ => Vec::new(),
+        };
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
         self.export_offset_origin = false;
@@ -165,6 +173,7 @@ impl BeamBurinApp {
                     export_area,
                     self.export_dxf_text_paths,
                     self.export_vector_text_paths,
+                    export_layer_ids,
                 );
             }
             FileMode::RelinkImage => self.relink_image(path),
@@ -308,6 +317,7 @@ impl BeamBurinApp {
         vector_area: Option<crate::export::Area>,
         dxf_text_as_paths: bool,
         vector_text_as_paths: bool,
+        layer_ids: Vec<String>,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -343,6 +353,7 @@ impl BeamBurinApp {
                 vector_area,
                 dxf_text_as_paths,
                 vector_text_as_paths,
+                layer_ids,
                 gcode,
                 smooth_mm,
             )))

@@ -16,6 +16,8 @@ pub struct EpsOptions {
     pub area: Option<Area>,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
+    /// Write only these layers; `None` writes every visible layer.
+    pub layer_ids: Option<Vec<String>>,
 }
 
 /// Export the document as an Encapsulated PostScript file.
@@ -46,7 +48,7 @@ pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Res
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
     for layer in layers {
-        if !layer.visible {
+        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
             continue;
         }
         let (red, green, blue) = layer.rgb();
@@ -150,6 +152,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -178,6 +181,7 @@ mod tests {
             &EpsOptions {
                 area: None,
                 text_as_paths: true,
+                layer_ids: None,
             },
         )
         .unwrap();

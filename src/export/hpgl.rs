@@ -16,6 +16,8 @@ pub struct HpglOptions {
     pub area: Option<Area>,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
+    /// Write only these layers; `None` writes every visible layer.
+    pub layer_ids: Option<Vec<String>>,
 }
 
 /// Export the document as HPGL for a pen plotter.
@@ -40,7 +42,7 @@ pub fn export_hpgl_with_options(document: &Document, options: &HpglOptions) -> R
     layers.sort_by_key(|layer| layer.order);
     let mut pen = 0;
     for layer in layers {
-        if !layer.visible {
+        if !layer.visible || !super::layer_included(&layer.id, &options.layer_ids) {
             continue;
         }
         pen = pen % 8 + 1;
@@ -141,6 +143,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -168,6 +171,7 @@ mod tests {
             &HpglOptions {
                 area: None,
                 text_as_paths: true,
+                layer_ids: None,
             },
         )
         .unwrap();
