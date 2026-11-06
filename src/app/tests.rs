@@ -2972,7 +2972,7 @@ fn the_image_export_options_add_a_margin() {
     app.preferences.general.default_directory = directory.display().to_string();
     app.editor.document.width_mm = 10.0;
     app.editor.document.height_mm = 10.0;
-    app.export_image_dpi = 10.0;
+    app.export_image_dpi = 25.4;
     app.export_image_margin_mm = 1.0;
     let mut harness = ui_harness(app);
     harness.run();

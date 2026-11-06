@@ -594,7 +594,7 @@ mod tests {
     fn a_margin_adds_blank_space_around_the_page() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
-            dpi: 10.0,
+            dpi: 25.4,
             transparent: true,
             width_px: None,
             height_px: None,
