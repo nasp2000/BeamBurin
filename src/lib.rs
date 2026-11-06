@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod assistant;
+pub mod barcode;
 pub mod bridge;
 pub mod centerline;
 pub mod checkpoints;

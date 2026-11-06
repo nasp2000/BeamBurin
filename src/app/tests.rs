@@ -1824,6 +1824,33 @@ fn the_toolbar_opens_the_image_import_dialog() {
 }
 
 #[test]
+fn the_draw_menu_inserts_a_barcode() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Draw").click_accesskit();
+    harness.run();
+    harness.get_by_label("Barcode...").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().barcode_open,
+        "the barcode window did not open"
+    );
+    harness.get_by_label("Insert").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().editor.document.objects.len() > 10,
+        "the barcode did not create bars"
+    );
+    assert!(
+        !harness.state().barcode_open,
+        "the barcode window stayed open"
+    );
+    assert!(harness.state().editor.document.operations.len() >= 1);
+}
+
+#[test]
 fn a_broken_svg_is_rejected_without_touching_the_document() {
     use egui_kittest::kittest::Queryable as _;
 

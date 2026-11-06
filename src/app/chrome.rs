@@ -521,6 +521,11 @@ impl BeamBurinApp {
                         ui.close();
                     }
                 }
+                ui.separator();
+                if icons::button(ui, Icon::Text, "Barcode...").clicked() {
+                    self.barcode_open = true;
+                    ui.close();
+                }
             });
             ui.menu_button(icons::menu_label(ui, Icon::Operations, "Operations"), |ui| {
                 if icons::button(ui, Icon::Intersections, "Registration marks...").clicked() {

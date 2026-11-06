@@ -86,6 +86,72 @@ impl BeamBurinApp {
         }
     }
 
+    pub(super) fn barcode_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.barcode_open;
+        let mut insert = false;
+        let mut cancel = false;
+        egui::Window::new("Barcode")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                    insert = true;
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Text");
+                    ui.add(egui::TextEdit::singleline(&mut self.barcode_text).desired_width(240.0));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Module (mm)");
+                    ui.add(
+                        egui::DragValue::new(&mut self.barcode_module_mm)
+                            .speed(0.05)
+                            .range(0.1..=5.0)
+                            .fixed_decimals(2),
+                    );
+                    ui.label("Height (mm)");
+                    ui.add(
+                        egui::DragValue::new(&mut self.barcode_height_mm)
+                            .speed(0.5)
+                            .range(1.0..=200.0)
+                            .fixed_decimals(1),
+                    );
+                });
+                ui.weak("Code 39: A-Z, 0-9, space and - . $ / + %. Lower case becomes upper case.");
+                ui.horizontal(|ui| {
+                    if ui.button("Insert").clicked() {
+                        insert = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if insert {
+            match self.editor.insert_barcode(
+                &self.barcode_text,
+                self.barcode_module_mm,
+                self.barcode_height_mm,
+            ) {
+                Ok(count) => {
+                    self.status = format!("Inserted a barcode with {count} bars");
+                    self.barcode_open = false;
+                }
+                Err(error) => self.status = format!("Barcode failed: {error}"),
+            }
+        } else if cancel {
+            self.barcode_open = false;
+        } else {
+            self.barcode_open = open;
+        }
+    }
+
     pub(super) fn position_window(&mut self, ctx: &egui::Context) {
         let mut open = self.position_open;
         let mut apply = false;

@@ -2152,6 +2152,72 @@ impl EditorState {
         convertible.len()
     }
 
+    /// Insert a Code 39 barcode as a group of bar rectangles.
+    ///
+    /// The bars use the active layer, colour and cut entry, are grouped so they
+    /// move together, and the whole insertion is one undo step. Returns the
+    /// number of bars.
+    pub fn insert_barcode(
+        &mut self,
+        text: &str,
+        module_mm: f64,
+        height_mm: f64,
+    ) -> std::result::Result<usize, String> {
+        let bars = crate::barcode::bars(text, module_mm, height_mm)?;
+        if self.active_layer_id.is_empty() {
+            self.active_layer_id = self
+                .document
+                .layers
+                .first()
+                .map(|layer| layer.id.clone())
+                .ok_or_else(|| "the document has no layer".to_string())?;
+        }
+        let active = self.active_layer_id.clone();
+        let layer = self
+            .document
+            .layer(&active)
+            .ok_or_else(|| "the active layer is missing".to_string())?;
+        if layer.locked || !layer.visible {
+            return Err("the active layer is locked or hidden".to_string());
+        }
+        let colour = layer.color.clone();
+        let layer_operation = layer
+            .operation_id
+            .clone()
+            .filter(|id| self.document.operations.iter().any(|entry| entry.id == *id));
+        let operation = layer_operation
+            .or_else(|| self.operation_for_colour(&colour))
+            .unwrap_or_else(|| self.ensure_operation_for_colour(&colour));
+        if let Some(layer) = self.document.layer_mut(&active) {
+            layer.operation_id = Some(operation.clone());
+        }
+        self.record_action("Insert barcode");
+        let group = uuid::Uuid::new_v4().to_string();
+        let mut ids = Vec::with_capacity(bars.len());
+        for (x, width) in &bars {
+            let mut object = Object::new(
+                active.clone(),
+                Shape::Rect {
+                    width: *width,
+                    height: height_mm,
+                    corner_radius: 0.0,
+                },
+            )
+            .with_transform(Transform2::translate(*x, 0.0));
+            object.name = "Barcode bar".to_string();
+            object.color = Some(colour.clone());
+            object.operation_id = Some(operation.clone());
+            object.group_id = Some(group.clone());
+            ids.push(object.id.clone());
+            self.document.add_object(object);
+        }
+        self.selection.clear();
+        for id in &ids {
+            self.selection.add(id.clone());
+        }
+        Ok(ids.len())
+    }
+
     /// Move the selection so its bounding-box minimum corner is at (x, y).
     ///
     /// Records one undo step. Returns `false` when nothing is selected or the
@@ -3927,6 +3993,37 @@ mod tests {
             editor.document.object(&rect).unwrap().shape,
             Shape::Rect { .. }
         ));
+    }
+
+    #[test]
+    fn a_barcode_is_one_grouped_undo_step() {
+        let mut editor = editor();
+        let count = editor.insert_barcode("AB", 0.5, 10.0).unwrap();
+        assert_eq!(count, 20);
+        assert_eq!(editor.document.objects.len(), 20);
+        let group = editor.document.objects[0].group_id.clone();
+        assert!(group.is_some());
+        assert!(
+            editor
+                .document
+                .objects
+                .iter()
+                .all(|object| object.group_id == group)
+        );
+        assert!(
+            editor
+                .document
+                .objects
+                .iter()
+                .all(|object| object.operation_id.is_some())
+        );
+        assert_eq!(editor.selection.len(), 20);
+        let (min, max) = editor.selected_bounds().unwrap();
+        assert!((min.x).abs() < 1e-9);
+        assert!((max.y - 10.0).abs() < 1e-9);
+        assert!((max.x - crate::barcode::width_mm("AB", 0.5).unwrap()).abs() < 1e-6);
+        assert!(editor.undo().is_some());
+        assert!(editor.document.objects.is_empty());
     }
 
     #[test]
