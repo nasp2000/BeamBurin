@@ -13,8 +13,8 @@ pub struct SvgOptions {
     pub area: Option<Area>,
     /// Convert text to outline paths instead of writing `<text>` elements.
     pub text_as_paths: bool,
-    /// Write only this layer; `None` writes every visible layer.
-    pub layer_id: Option<String>,
+    /// Write only these layers; `None` writes every visible layer.
+    pub layer_ids: Option<Vec<String>>,
 }
 
 /// Export visible document content as SVG.
@@ -45,7 +45,11 @@ pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<S
         if !layer.visible {
             continue;
         }
-        if options.layer_id.as_deref().is_some_and(|id| id != layer.id) {
+        if options
+            .layer_ids
+            .as_ref()
+            .is_some_and(|ids| !ids.iter().any(|id| id == &layer.id))
+        {
             continue;
         }
         let _ = writeln!(
@@ -405,7 +409,7 @@ mod tests {
                     height: 3.0,
                 }),
                 text_as_paths: false,
-                layer_id: None,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -442,7 +446,7 @@ mod tests {
                     height: 3.0,
                 }),
                 text_as_paths: false,
-                layer_id: None,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -469,7 +473,7 @@ mod tests {
             &SvgOptions {
                 area: None,
                 text_as_paths: true,
-                layer_id: None,
+                layer_ids: None,
             },
         )
         .unwrap();
@@ -490,7 +494,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
-                layer_id: None,
+                layer_ids: None,
             },
         )
         .unwrap_err();
@@ -503,7 +507,7 @@ mod tests {
                 height: 5.0,
             }),
             text_as_paths: false,
-            layer_id: None,
+            layer_ids: None,
         };
         assert!(export_svg_with_options(&doc, &empty).is_err());
     }
@@ -534,13 +538,57 @@ mod tests {
             &SvgOptions {
                 area: None,
                 text_as_paths: false,
-                layer_id: Some(second.clone()),
+                layer_ids: Some(vec![second.clone()]),
             },
         )
         .unwrap();
         assert!(svg.contains(&format!("id=\"{second}\"")), "{svg}");
         assert!(!svg.contains(&format!("id=\"{first}\"")), "{svg}");
         assert!(svg.contains("M0 200 L2 200"), "{svg}");
+    }
+
+    #[test]
+    fn more_than_one_layer_can_be_chosen() {
+        let mut doc = Document::default();
+        let first = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            first.clone(),
+            Shape::Rect {
+                width: 1.0,
+                height: 1.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let second = doc.add_layer("Second").id.clone();
+        doc.add_object(Object::new(
+            second.clone(),
+            Shape::Rect {
+                width: 2.0,
+                height: 2.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let third = doc.add_layer("Third").id.clone();
+        doc.add_object(Object::new(
+            third.clone(),
+            Shape::Rect {
+                width: 3.0,
+                height: 3.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let svg = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: Some(vec![first.clone(), second.clone()]),
+            },
+        )
+        .unwrap();
+        assert!(svg.contains(&format!("id=\"{first}\"")), "{svg}");
+        assert!(svg.contains(&format!("id=\"{second}\"")), "{svg}");
+        assert!(!svg.contains(&format!("id=\"{third}\"")), "{svg}");
     }
 
     #[test]

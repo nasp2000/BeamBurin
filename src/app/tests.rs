@@ -2575,10 +2575,11 @@ fn exporting_svg_from_only_the_active_layer() {
     harness.run();
     harness.get_by_label("Export SVG...").click();
     harness.run();
-    harness.get_by_label("Active (Second)").click();
+    harness.get_by_label("Only active").click();
     harness.run();
-    assert!(
-        harness.state().export_svg_active_layer,
+    assert_eq!(
+        harness.state().export_svg_layer_ids,
+        vec![second.clone()],
         "the active-layer choice did not apply"
     );
     harness.get_by_label("Export").click();

@@ -86,10 +86,10 @@ impl BeamBurinApp {
         let svg_options = crate::export::SvgOptions {
             area: export_area,
             text_as_paths: self.export_svg_text_paths,
-            layer_id: if self.export_svg_active_layer {
-                Some(self.editor.active_layer_id.clone())
-            } else {
+            layer_ids: if self.export_svg_layer_ids.is_empty() {
                 None
+            } else {
+                Some(self.export_svg_layer_ids.clone())
             },
         };
         let offset_origin = self.export_offset_origin;

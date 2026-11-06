@@ -554,6 +554,18 @@ impl BeamBurinApp {
     /// Open the SVG export options; `selection` preselects the crop.
     pub(super) fn open_export_svg(&mut self, selection: bool) {
         self.export_svg_selection = selection && !self.editor.selection.is_empty();
+        let existing: Vec<String> = self
+            .editor
+            .document
+            .layers
+            .iter()
+            .map(|layer| layer.id.clone())
+            .collect();
+        self.export_svg_layer_ids
+            .retain(|id| existing.iter().any(|value| value == id));
+        if self.export_svg_layer_ids.is_empty() {
+            self.export_svg_layer_ids = existing;
+        }
         self.export_svg_open = true;
     }
 
@@ -562,12 +574,15 @@ impl BeamBurinApp {
         let mut start = false;
         let mut cancel = false;
         let has_selection = !self.editor.selection.is_empty();
-        let active_layer_name = self
+        let layers: Vec<(String, String, bool)> = self
             .editor
             .document
-            .layer(&self.editor.active_layer_id)
-            .map(|layer| layer.name.clone())
-            .unwrap_or_default();
+            .layers
+            .iter()
+            .map(|layer| (layer.id.clone(), layer.name.clone(), layer.visible))
+            .collect();
+        let all_layer_ids: Vec<String> = layers.iter().map(|(id, _, _)| id.clone()).collect();
+        let active_layer_id = self.editor.active_layer_id.clone();
         let (width_mm, height_mm) = if self.export_svg_selection && has_selection {
             self.editor.selected_bounds().map_or(
                 (
@@ -613,28 +628,51 @@ impl BeamBurinApp {
                 }
                 ui.label("Layers");
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.export_svg_active_layer, false, "All visible");
+                    if ui.small_button("All").clicked() {
+                        self.export_svg_layer_ids = all_layer_ids.clone();
+                    }
                     if ui
                         .add_enabled(
-                            !active_layer_name.is_empty(),
-                            egui::RadioButton::new(
-                                self.export_svg_active_layer && !active_layer_name.is_empty(),
-                                format!("Active ({active_layer_name})"),
-                            ),
+                            !active_layer_id.is_empty(),
+                            egui::Button::new("Only active").small(),
                         )
                         .clicked()
                     {
-                        self.export_svg_active_layer = true;
+                        self.export_svg_layer_ids = vec![active_layer_id.clone()];
                     }
                 });
-                if active_layer_name.is_empty() {
-                    self.export_svg_active_layer = false;
-                }
+                egui::ScrollArea::vertical()
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        for (id, name, visible) in &layers {
+                            let mut checked =
+                                self.export_svg_layer_ids.iter().any(|value| value == id);
+                            let label = if *visible {
+                                name.clone()
+                            } else {
+                                format!("{name} (hidden)")
+                            };
+                            if ui.checkbox(&mut checked, label).changed() {
+                                if checked {
+                                    self.export_svg_layer_ids.push(id.clone());
+                                } else {
+                                    self.export_svg_layer_ids.retain(|value| value != id);
+                                }
+                            }
+                        }
+                    });
                 ui.checkbox(&mut self.export_svg_text_paths, "Text as paths");
                 ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
-                ui.weak("Visible layers only; curves are flattened.");
+                ui.weak("Selected layers only; hidden layers are skipped.");
+                let can_export = !self.export_svg_layer_ids.is_empty();
+                if !can_export {
+                    ui.weak("Select at least one layer.");
+                }
                 ui.horizontal(|ui| {
-                    if ui.button("Export").clicked() {
+                    if ui
+                        .add_enabled(can_export, egui::Button::new("Export"))
+                        .clicked()
+                    {
                         start = true;
                     }
                     if ui.button("Cancel").clicked() {

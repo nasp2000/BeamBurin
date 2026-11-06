@@ -587,7 +587,7 @@ pub struct BeamBurinApp {
     export_svg_open: bool,
     export_svg_selection: bool,
     export_svg_text_paths: bool,
-    export_svg_active_layer: bool,
+    export_svg_layer_ids: Vec<String>,
     export_dxf_open: bool,
     export_dxf_selection: bool,
     export_dxf_text_paths: bool,
