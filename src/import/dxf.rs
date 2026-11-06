@@ -119,7 +119,7 @@ pub fn import_dxf_report(src: &str) -> Result<DxfImport> {
         warnings.push(format!("unsupported DXF entity skipped: {entity}"));
     }
     let (unit_scale, unit_name) = dxf_unit_scale(&pairs);
-    if unit_scale != 1.0 {
+    if (unit_scale - 1.0).abs() > 1e-9 {
         for object in &mut document.objects {
             object.transform = Transform2::scale(unit_scale, unit_scale).compose(&object.transform);
         }
