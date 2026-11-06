@@ -576,6 +576,10 @@ pub struct BeamBurinApp {
     zoom_to_selection_request: bool,
     export_subset: bool,
     export_offset_origin: bool,
+    export_image_open: bool,
+    export_image_dpi: f64,
+    export_image_transparent: bool,
+    export_image_selection: bool,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
@@ -593,7 +597,7 @@ fn run_export(
     cancel: &std::sync::atomic::AtomicBool,
     offset_origin: bool,
     origin: crate::gcode::JobOrigin,
-    png_area: Option<crate::export::PngArea>,
+    png_options: crate::export::PngOptions,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -607,12 +611,9 @@ fn run_export(
     match mode {
         FileMode::ExportImage => {
             cancelled()?;
-            let options = crate::export::PngOptions {
-                area: png_area,
-                ..crate::export::PngOptions::default()
-            };
-            let (data, width, height, warnings) = crate::export::render_rgba(document, &options)
-                .map_err(|error| error.to_string())?;
+            let (data, width, height, warnings) =
+                crate::export::render_rgba(document, &png_options)
+                    .map_err(|error| error.to_string())?;
             let picture = image::RgbaImage::from_raw(width, height, data)
                 .ok_or_else(|| "cannot build the image buffer".to_string())?;
             picture.save(path).map_err(|error| error.to_string())?;

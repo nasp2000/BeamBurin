@@ -2611,6 +2611,12 @@ fn exporting_an_image_from_the_dialog_writes_a_png() {
     harness.run();
     harness.get_by_label("Export image...").click();
     harness.run();
+    assert!(
+        harness.state().export_image_open,
+        "the image export options did not open"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
     harness.get_by_label("Export").click();
     harness.step();
     wait_for_task(&mut harness);
@@ -2644,6 +2650,12 @@ fn exporting_the_selection_as_an_image_crops_to_it() {
     harness.run();
     harness.get_by_label("As image...").click();
     harness.run();
+    assert!(
+        harness.state().export_image_selection,
+        "the selection area was not preselected"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
     harness.get_by_label("Export").click();
     harness.step();
     wait_for_task(&mut harness);
@@ -2654,6 +2666,44 @@ fn exporting_the_selection_as_an_image_crops_to_it() {
     assert!(
         (75..=77).contains(&width) && (56..=58).contains(&height),
         "the PNG is {width} x {height} px instead of the selection size"
+    );
+}
+
+#[test]
+fn the_image_export_options_make_a_transparent_png() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("png_transparent_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let id = app.editor.document.objects[0].id.clone();
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Transparent")
+        .click_accesskit();
+    harness.run();
+    assert!(harness.state().export_image_transparent);
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.png");
+    let picture = image::open(&path).expect("cannot read the PNG").to_rgba8();
+    assert_eq!(
+        picture.get_pixel(0, 0)[3],
+        0,
+        "the background is not transparent"
     );
 }
 

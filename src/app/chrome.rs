@@ -269,7 +269,7 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export image...").clicked() {
-                    self.open_dialog(FileMode::ExportImage);
+                    self.open_export_image(false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export G-code...").clicked() {
@@ -298,8 +298,7 @@ impl BeamBurinApp {
                         .add_enabled(enabled, icons::widget(ui, Icon::Export, "As image..."))
                         .clicked()
                     {
-                        self.export_subset = true;
-                        self.open_dialog(FileMode::ExportImage);
+                        self.open_export_image(true);
                         ui.close();
                     }
                     if ui

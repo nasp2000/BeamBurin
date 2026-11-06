@@ -134,7 +134,7 @@ impl BeamBurinApp {
             | FileMode::ExportPdf
             | FileMode::ExportGcode
             | FileMode::ExportSvg => {
-                self.start_export(mode, path, document, offset_origin, png_area);
+                self.start_export(mode, path, document, offset_origin, png_options);
             }
             FileMode::RelinkImage => self.relink_image(path),
         }
@@ -271,7 +271,7 @@ impl BeamBurinApp {
         path: &Path,
         document: crate::document::Document,
         offset_origin: bool,
-        png_area: Option<crate::export::PngArea>,
+        png_options: crate::export::PngOptions,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -302,7 +302,7 @@ impl BeamBurinApp {
                 cancel,
                 offset_origin,
                 origin,
-                png_area,
+                png_options,
                 gcode,
                 smooth_mm,
             )))

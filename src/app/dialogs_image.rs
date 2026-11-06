@@ -3,6 +3,104 @@
 use super::*;
 
 impl BeamBurinApp {
+    /// Open the PNG export options; `selection` preselects the crop.
+    pub(super) fn open_export_image(&mut self, selection: bool) {
+        self.export_image_selection = selection && !self.editor.selection.is_empty();
+        self.export_image_open = true;
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub(super) fn export_image_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.export_image_open;
+        let mut start = false;
+        let mut cancel = false;
+        let has_selection = !self.editor.selection.is_empty();
+        let dpi = self.export_image_dpi;
+        let (width_mm, height_mm) = if self.export_image_selection && has_selection {
+            self.editor
+                .selected_bounds()
+                .map(|(min, max)| (max.x - min.x, max.y - min.y))
+                .unwrap_or((
+                    self.editor.document.width_mm,
+                    self.editor.document.height_mm,
+                ))
+        } else {
+            (
+                self.editor.document.width_mm,
+                self.editor.document.height_mm,
+            )
+        };
+        let width_px = ((width_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let height_px = ((height_mm * dpi / 25.4).round()).max(1.0) as u32;
+        egui::Window::new("Export image")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                egui::Grid::new("export_image_options")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Resolution");
+                        ui.add(
+                            egui::DragValue::new(&mut self.export_image_dpi)
+                                .speed(1.0)
+                                .range(10.0..=2400.0)
+                                .suffix(" dpi"),
+                        );
+                        ui.end_row();
+                        ui.label("Background");
+                        ui.checkbox(&mut self.export_image_transparent, "Transparent");
+                        ui.end_row();
+                        ui.label("Area");
+                        ui.horizontal(|ui| {
+                            ui.radio_value(&mut self.export_image_selection, false, "Whole page");
+                            if ui
+                                .add_enabled(
+                                    has_selection,
+                                    egui::RadioButton::new(
+                                        self.export_image_selection && has_selection,
+                                        "Selection",
+                                    ),
+                                )
+                                .clicked()
+                            {
+                                self.export_image_selection = true;
+                            }
+                        });
+                        ui.end_row();
+                    });
+                if self.export_image_selection && !has_selection {
+                    self.export_image_selection = false;
+                }
+                ui.weak(format!(
+                    "{width_mm:.1} x {height_mm:.1} mm, {width_px} x {height_px} px"
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Export").clicked() {
+                        start = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if start {
+            self.export_image_open = false;
+            self.export_subset = self.export_image_selection && has_selection;
+            self.open_dialog(FileMode::ExportImage);
+        } else if cancel {
+            self.export_image_open = false;
+        } else {
+            self.export_image_open = open;
+        }
+    }
+
     pub(super) fn image_adjust_window(&mut self, ctx: &egui::Context) {
         let Some(id) = self.image_adjust.clone() else {
             return;
