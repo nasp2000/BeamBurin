@@ -580,8 +580,7 @@ impl BeamBurinApp {
             ContextAction::VectorizeImage => self.vectorize_selected_image(),
             ContextAction::CenterlineImage => self.centerline_selected_image(),
             ContextAction::ExportSvg => {
-                self.export_subset = true;
-                self.open_dialog(FileMode::ExportSvg);
+                self.open_export_svg(true);
             }
             ContextAction::ExportDxf => {
                 self.export_subset = true;

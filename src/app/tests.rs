@@ -2493,6 +2493,12 @@ fn exporting_svg_from_the_dialog_writes_the_file() {
     harness.run();
     harness.get_by_label("Export SVG...").click();
     harness.run();
+    assert!(
+        harness.state().export_svg_open,
+        "the SVG export options did not open"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
     harness.get_by_label("Export").click();
     harness.step();
     wait_for_task(&mut harness);
@@ -2500,6 +2506,44 @@ fn exporting_svg_from_the_dialog_writes_the_file() {
     assert!(path.is_file(), "the SVG export did not write the file");
     let text = std::fs::read_to_string(&path).expect("cannot read the SVG");
     assert!(text.contains("<svg"), "the export is not an SVG");
+}
+
+#[test]
+fn exporting_the_selection_as_svg_crops_the_viewbox() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("svg_selection_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let id = app.editor.document.objects[0].id.clone();
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export selection ⏵").click();
+    harness.run();
+    harness.get_by_label("As SVG...").click();
+    harness.run();
+    assert!(
+        harness.state().export_svg_selection,
+        "the selection area was not preselected"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.svg");
+    let text = std::fs::read_to_string(&path).expect("cannot read the SVG");
+    assert!(
+        text.contains("width=\"20mm\" height=\"15mm\" viewBox=\"0 0 20 15\""),
+        "the viewBox does not match the selection: {text}"
+    );
 }
 
 #[test]

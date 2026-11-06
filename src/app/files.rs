@@ -60,22 +60,24 @@ impl BeamBurinApp {
             return;
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
+        let export_area = if selection_only {
+            self.editor
+                .selected_bounds()
+                .map(|(min, max)| crate::export::Area {
+                    x: min.x,
+                    y: min.y,
+                    width: (max.x - min.x).max(0.01),
+                    height: (max.y - min.y).max(0.01),
+                })
+        } else {
+            None
+        };
         let png_options = crate::export::PngOptions {
             dpi: self.export_image_dpi,
             transparent: self.export_image_transparent,
-            area: if selection_only {
-                self.editor
-                    .selected_bounds()
-                    .map(|(min, max)| crate::export::PngArea {
-                        x: min.x,
-                        y: min.y,
-                        width: (max.x - min.x).max(0.01),
-                        height: (max.y - min.y).max(0.01),
-                    })
-            } else {
-                None
-            },
+            area: export_area,
         };
+        let svg_options = crate::export::SvgOptions { area: export_area };
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
         self.export_offset_origin = false;
@@ -138,7 +140,14 @@ impl BeamBurinApp {
             | FileMode::ExportPdf
             | FileMode::ExportGcode
             | FileMode::ExportSvg => {
-                self.start_export(mode, path, document, offset_origin, png_options);
+                self.start_export(
+                    mode,
+                    path,
+                    document,
+                    offset_origin,
+                    png_options,
+                    svg_options,
+                );
             }
             FileMode::RelinkImage => self.relink_image(path),
         }
@@ -276,6 +285,7 @@ impl BeamBurinApp {
         document: crate::document::Document,
         offset_origin: bool,
         png_options: crate::export::PngOptions,
+        svg_options: crate::export::SvgOptions,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -307,6 +317,7 @@ impl BeamBurinApp {
                 offset_origin,
                 origin,
                 png_options,
+                svg_options,
                 gcode,
                 smooth_mm,
             )))

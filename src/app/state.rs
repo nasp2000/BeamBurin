@@ -283,6 +283,8 @@ impl BeamBurinApp {
             export_image_dpi: 96.0,
             export_image_transparent: false,
             export_image_selection: false,
+            export_svg_open: false,
+            export_svg_selection: false,
             recover_next: false,
             pen_nodes: Vec::new(),
             pen_drag_start: None,

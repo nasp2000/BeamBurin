@@ -4,17 +4,66 @@ use crate::document::{Document, Object, Shape, Style};
 use crate::errors::Result;
 use crate::geometry::{Path, Point2, Transform2, path::Segment};
 
+use super::png::Area;
+
+/// SVG output settings (§14.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct SvgOptions {
+    /// Page region to write; `None` writes the whole page.
+    pub area: Option<Area>,
+}
+
 /// Export visible document content as SVG.
 ///
 /// Internal coordinates are millimetres with `y` up; SVG uses `y` down, so
 /// geometry is flipped around the page height while it is written.
 pub fn export_svg(doc: &Document) -> Result<String> {
+    export_svg_with_options(doc, &SvgOptions::default())
+}
+
+/// Export visible document content as SVG, optionally cropped to a page region.
+pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<String> {
+    let view = match options.area {
+        Some(area) => {
+            let finite = area.x.is_finite()
+                && area.y.is_finite()
+                && area.width.is_finite()
+                && area.height.is_finite();
+            if !finite || area.width <= 0.0 || area.height <= 0.0 {
+                return Err(crate::errors::BeamError::InvalidInput(
+                    "the SVG area must have a positive finite size".to_string(),
+                ));
+            }
+            let epsilon = 1e-6;
+            if area.x < -epsilon
+                || area.y < -epsilon
+                || area.x + area.width > doc.width_mm + epsilon
+                || area.y + area.height > doc.height_mm + epsilon
+            {
+                return Err(crate::errors::BeamError::InvalidInput(
+                    "the SVG area must lie inside the page".to_string(),
+                ));
+            }
+            View {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: area.height,
+            }
+        }
+        None => View {
+            x: 0.0,
+            y: 0.0,
+            width: doc.width_mm,
+            height: doc.height_mm,
+        },
+    };
     let mut out = String::new();
     let _ = writeln!(
         out,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}mm\" height=\"{h}mm\" viewBox=\"0 0 {w} {h}\">",
-        w = fmt_num(doc.width_mm),
-        h = fmt_num(doc.height_mm)
+        w = fmt_num(view.width),
+        h = fmt_num(view.height)
     );
     for layer in &doc.layers {
         if !layer.visible {
@@ -31,7 +80,7 @@ pub fn export_svg(doc: &Document) -> Result<String> {
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            write_object(&mut out, object, layer.rgb(), doc.height_mm);
+            write_object(&mut out, object, layer.rgb(), view);
         }
         out.push_str("  </g>\n");
     }
@@ -39,7 +88,26 @@ pub fn export_svg(doc: &Document) -> Result<String> {
     Ok(out)
 }
 
-fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page_height: f64) {
+/// Page region in millimetres with the bottom-left corner as origin.
+#[derive(Debug, Clone, Copy)]
+struct View {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl View {
+    fn x(self, value: f64) -> f64 {
+        value - self.x
+    }
+
+    fn y(self, value: f64) -> f64 {
+        self.y + self.height - value
+    }
+}
+
+fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), view: View) {
     let style = &object.style;
     let (stroke, fill) = effective_colors(object, style, layer_rgb);
     match &object.shape {
@@ -56,8 +124,8 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
                 let _ = writeln!(
                     out,
                     "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">{}</text>",
-                    fmt_num(world.x),
-                    fmt_num(page_height - world.y),
+                    fmt_num(view.x(world.x)),
+                    fmt_num(view.y(world.y)),
                     escape(&text.font),
                     fmt_num(text.size * scale),
                     fill,
@@ -71,8 +139,8 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
                 let _ = write!(
                     out,
                     "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">",
-                    fmt_num(world.x),
-                    fmt_num(page_height - world.y),
+                    fmt_num(view.x(world.x)),
+                    fmt_num(view.y(world.y)),
                     escape(&text.font),
                     fmt_num(text.size * scale),
                     fill,
@@ -86,14 +154,14 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
                         let _ = write!(
                             out,
                             "<tspan x=\"{}\" dy=\"0\">{}</tspan>",
-                            fmt_num(world.x),
+                            fmt_num(view.x(world.x)),
                             escape(line)
                         );
                     } else {
                         let _ = write!(
                             out,
                             "<tspan x=\"{}\" dy=\"{}\">{}</tspan>",
-                            fmt_num(world.x),
+                            fmt_num(view.x(world.x)),
                             fmt_num(text.line_height() * scale),
                             escape(line)
                         );
@@ -110,8 +178,8 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
                 out,
                 "    <image href=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
                 escape(&image.path),
-                fmt_num(min.x),
-                fmt_num(page_height - max.y),
+                fmt_num(view.x(min.x)),
+                fmt_num(view.y(max.y)),
                 fmt_num(max.x - min.x),
                 fmt_num(max.y - min.y)
             );
@@ -122,8 +190,8 @@ fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), page
                 b: 0.0,
                 c: 0.0,
                 d: -1.0,
-                tx: 0.0,
-                ty: page_height,
+                tx: -view.x,
+                ty: view.y + view.height,
             };
             let path = object.world_path().transform(&flip);
             let d = path_to_svg(&path);
@@ -299,6 +367,102 @@ mod tests {
         assert!(svg.contains("<tspan"));
         assert!(svg.contains(">A</tspan>"));
         assert!(svg.contains(">B</tspan>"));
+    }
+
+    #[test]
+    fn an_area_crops_the_viewbox_and_shifts_geometry() {
+        let mut doc = Document {
+            width_mm: 20.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = doc.layers[0].id.clone();
+        doc.add_object(
+            Object::new(
+                layer_id,
+                Shape::Rect {
+                    width: 4.0,
+                    height: 3.0,
+                    corner_radius: 0.0,
+                },
+            )
+            .with_transform(Transform2::translate(5.0, 4.0)),
+        );
+        let svg = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: Some(Area {
+                    x: 5.0,
+                    y: 4.0,
+                    width: 4.0,
+                    height: 3.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(svg.contains("width=\"4mm\" height=\"3mm\" viewBox=\"0 0 4 3\""));
+        assert!(svg.contains("M0 3"), "{svg}");
+        assert!(svg.contains("L4 3"), "{svg}");
+        assert!(svg.contains("L4 0"), "{svg}");
+    }
+
+    #[test]
+    fn an_area_shifts_text_and_images() {
+        let mut doc = Document {
+            width_mm: 20.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 5.0,
+                y: 4.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let svg = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: Some(Area {
+                    x: 5.0,
+                    y: 4.0,
+                    width: 4.0,
+                    height: 3.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(svg.contains("<text x=\"0\" y=\"3\""), "{svg}");
+    }
+
+    #[test]
+    fn an_area_outside_the_page_is_refused() {
+        let doc = Document::default();
+        let error = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: Some(Area {
+                    x: 299.0,
+                    y: 199.0,
+                    width: 5.0,
+                    height: 5.0,
+                }),
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("inside the page"), "{error}");
+        let empty = SvgOptions {
+            area: Some(Area {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 5.0,
+            }),
+        };
+        assert!(export_svg_with_options(&doc, &empty).is_err());
     }
 
     #[test]

@@ -1,9 +1,27 @@
 use std::fmt::Write as _;
 
-use crate::document::Document;
+use crate::document::{Document, Shape};
 use crate::errors::Result;
+use crate::geometry::path::Segment;
 
 use super::paths::{flatten, fmt_num};
+
+/// What the DXF export wrote and what it had to leave out (§14.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DxfReport {
+    /// Polylines written.
+    pub entities: usize,
+    /// Text objects that were not written.
+    pub text_omitted: usize,
+    /// Images that were not written.
+    pub images_omitted: usize,
+    /// Paths that contained curves and were flattened.
+    pub curves_flattened: usize,
+    /// Filled paths written as outlines only.
+    pub fills_outlined: usize,
+    /// Human-readable notes for the export report.
+    pub warnings: Vec<String>,
+}
 
 /// Export the document as DXF, aiming at the widely supported R12 `ENTITIES`
 /// subset.
@@ -12,7 +30,13 @@ use super::paths::{flatten, fmt_num};
 /// vertices. Bézier segments are flattened. Layers are written as entity layer
 /// names and colours; no layer table is emitted.
 pub fn export_dxf(document: &Document) -> Result<String> {
+    export_dxf_with_report(document).map(|(text, _)| text)
+}
+
+/// Export the document and describe what the subset could not represent.
+pub fn export_dxf_with_report(document: &Document) -> Result<(String, DxfReport)> {
     let mut out = String::new();
+    let mut report = DxfReport::default();
     out.push_str("0\nSECTION\n2\nENTITIES\n");
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -26,10 +50,39 @@ pub fn export_dxf(document: &Document) -> Result<String> {
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
+            match &object.shape {
+                Shape::Text(_) => {
+                    report.text_omitted += 1;
+                    report.warnings.push(format!(
+                        "text '{}' was omitted; convert it to paths first",
+                        object.name
+                    ));
+                    continue;
+                }
+                Shape::Image(_) => {
+                    report.images_omitted += 1;
+                    report.warnings.push(format!(
+                        "image '{}' was omitted; DXF carries vector geometry only",
+                        object.name
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
             let path = object.world_path();
             let points = flatten(&path, 16);
             if points.len() < 2 {
                 continue;
+            }
+            if path
+                .segments
+                .iter()
+                .any(|segment| matches!(segment, Segment::Cubic(_)))
+            {
+                report.curves_flattened += 1;
+            }
+            if object.style.fill.is_some() {
+                report.fills_outlined += 1;
             }
             out.push_str("0\nLWPOLYLINE\n");
             let _ = writeln!(out, "8\n{}", layer.name);
@@ -40,10 +93,23 @@ pub fn export_dxf(document: &Document) -> Result<String> {
                 let _ = writeln!(out, "10\n{}", fmt_num(x));
                 let _ = writeln!(out, "20\n{}", fmt_num(y));
             }
+            report.entities += 1;
         }
     }
+    if report.curves_flattened > 0 {
+        report.warnings.push(format!(
+            "{} path(s) contain curves; the DXF uses straight segments",
+            report.curves_flattened
+        ));
+    }
+    if report.fills_outlined > 0 {
+        report.warnings.push(format!(
+            "{} filled shape(s) were written as outlines; this DXF subset has no fill",
+            report.fills_outlined
+        ));
+    }
     out.push_str("0\nENDSEC\n0\nEOF\n");
-    Ok(out)
+    Ok((out, report))
 }
 
 /// Pack an RGB colour as a DXF true-colour value.
@@ -123,6 +189,64 @@ mod tests {
         document.add_object(Object::new(layer_id, Shape::Ellipse { rx: 4.0, ry: 2.0 }));
         let text = export_dxf(&document).unwrap();
         assert!(text.contains("90\n64\n"));
+    }
+
+    #[test]
+    fn the_report_names_omitted_text_images_fills_and_curves() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id.clone(),
+            Shape::Text(crate::objects::TextObject {
+                content: "hello".to_string(),
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        document.add_object(Object::new(
+            layer_id.clone(),
+            Shape::Image(crate::objects::ImageObject {
+                path: "missing.png".to_string(),
+                width_px: 1,
+                height_px: 1,
+                dpi: 96.0,
+                settings: Default::default(),
+                crop: None,
+            }),
+        ));
+        let mut filled = Object::new(layer_id.clone(), Shape::Ellipse { rx: 4.0, ry: 2.0 });
+        filled.style.fill = Some("#ff0000".to_string());
+        document.add_object(filled);
+        let (text, report) = export_dxf_with_report(&document).unwrap();
+        assert!(text.contains("LWPOLYLINE"));
+        assert_eq!(report.entities, 1);
+        assert_eq!(report.text_omitted, 1);
+        assert_eq!(report.images_omitted, 1);
+        assert_eq!(report.fills_outlined, 1);
+        assert_eq!(report.curves_flattened, 1);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("text 'Text'"))
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("DXF carries vector geometry only"))
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("no fill"))
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("straight segments"))
+        );
     }
 
     #[test]

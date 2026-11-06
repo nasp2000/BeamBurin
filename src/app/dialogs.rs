@@ -49,6 +49,9 @@ impl BeamBurinApp {
         if self.export_image_open {
             self.export_image_window(ctx);
         }
+        if self.export_svg_open {
+            self.export_svg_window(ctx);
+        }
         if self.regmarks_open {
             self.registration_marks_window(ctx);
         }

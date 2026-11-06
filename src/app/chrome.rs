@@ -249,7 +249,7 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export SVG...").clicked() {
-                    self.open_dialog(FileMode::ExportSvg);
+                    self.open_export_svg(false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export DXF...").clicked() {
@@ -282,8 +282,7 @@ impl BeamBurinApp {
                         .add_enabled(enabled, icons::widget(ui, Icon::Export, "As SVG..."))
                         .clicked()
                     {
-                        self.export_subset = true;
-                        self.open_dialog(FileMode::ExportSvg);
+                        self.open_export_svg(true);
                         ui.close();
                     }
                     if ui

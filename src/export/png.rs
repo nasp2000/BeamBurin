@@ -25,12 +25,15 @@ pub struct PngOptions {
 
 /// A rectangle of the page, in millimetres from the bottom-left corner.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PngArea {
+pub struct Area {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
 }
+
+/// Earlier name of [`Area`], kept for the PNG call sites.
+pub type PngArea = Area;
 
 impl Default for PngOptions {
     fn default() -> Self {

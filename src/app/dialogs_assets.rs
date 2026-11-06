@@ -383,6 +383,82 @@ impl BeamBurinApp {
         self.gcode_origin = preset.origin;
     }
 
+    /// Open the SVG export options; `selection` preselects the crop.
+    pub(super) fn open_export_svg(&mut self, selection: bool) {
+        self.export_svg_selection = selection && !self.editor.selection.is_empty();
+        self.export_svg_open = true;
+    }
+
+    pub(super) fn export_svg_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.export_svg_open;
+        let mut start = false;
+        let mut cancel = false;
+        let has_selection = !self.editor.selection.is_empty();
+        let (width_mm, height_mm) = if self.export_svg_selection && has_selection {
+            self.editor.selected_bounds().map_or(
+                (
+                    self.editor.document.width_mm,
+                    self.editor.document.height_mm,
+                ),
+                |(min, max)| (max.x - min.x, max.y - min.y),
+            )
+        } else {
+            (
+                self.editor.document.width_mm,
+                self.editor.document.height_mm,
+            )
+        };
+        egui::Window::new("Export SVG")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                ui.label("Area");
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.export_svg_selection, false, "Whole page");
+                    if ui
+                        .add_enabled(
+                            has_selection,
+                            egui::RadioButton::new(
+                                self.export_svg_selection && has_selection,
+                                "Selection",
+                            ),
+                        )
+                        .clicked()
+                    {
+                        self.export_svg_selection = true;
+                    }
+                });
+                if self.export_svg_selection && !has_selection {
+                    self.export_svg_selection = false;
+                }
+                ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
+                ui.weak("Visible layers only; geometry is written as paths.");
+                ui.horizontal(|ui| {
+                    if ui.button("Export").clicked() {
+                        start = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if start {
+            self.export_svg_open = false;
+            self.export_subset = self.export_svg_selection && has_selection;
+            self.open_dialog(FileMode::ExportSvg);
+        } else if cancel {
+            self.export_svg_open = false;
+        } else {
+            self.export_svg_open = open;
+        }
+    }
+
     pub(super) fn export_presets_window(&mut self, ctx: &egui::Context) {
         let mut open = self.export_presets_open;
         let mut save = false;

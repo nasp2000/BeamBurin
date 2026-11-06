@@ -580,6 +580,8 @@ pub struct BeamBurinApp {
     export_image_dpi: f64,
     export_image_transparent: bool,
     export_image_selection: bool,
+    export_svg_open: bool,
+    export_svg_selection: bool,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
@@ -598,6 +600,7 @@ fn run_export(
     offset_origin: bool,
     origin: crate::gcode::JobOrigin,
     png_options: crate::export::PngOptions,
+    svg_options: crate::export::SvgOptions,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -629,12 +632,14 @@ fn run_export(
                 .with_warnings(warnings))
         }
         FileMode::ExportDxf => {
-            let dxf = crate::export::export_dxf(document).map_err(|error| error.to_string())?;
+            let (dxf, report) = crate::export::export_dxf_with_report(document)
+                .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, dxf).map_err(|error| error.to_string())?;
             Ok(FileReport::new("Export DXF", path.display().to_string())
-                .with_summary("Objects", document.objects.len().to_string())
-                .with_summary("Format", "LWPOLYLINE subset"))
+                .with_summary("Objects", report.entities.to_string())
+                .with_summary("Format", "LWPOLYLINE subset")
+                .with_warnings(report.warnings))
         }
         FileMode::ExportEps => {
             let eps = crate::export::export_eps(document).map_err(|error| error.to_string())?;
@@ -684,7 +689,8 @@ fn run_export(
                 .with_warnings(report.warnings))
         }
         FileMode::ExportSvg => {
-            let svg = crate::export::export_svg(document).map_err(|error| error.to_string())?;
+            let svg = crate::export::export_svg_with_options(document, &svg_options)
+                .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, svg).map_err(|error| error.to_string())?;
             Ok(FileReport::new("Export SVG", path.display().to_string())
