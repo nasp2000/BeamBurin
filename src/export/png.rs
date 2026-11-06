@@ -28,6 +28,10 @@ pub struct PngOptions {
     pub height_px: Option<u32>,
     /// Blank margin around the chosen region, in millimetres.
     pub margin_mm: f64,
+    /// Horizontal shift of the captured region, in millimetres.
+    pub offset_x_mm: f64,
+    /// Vertical shift of the captured region, in millimetres.
+    pub offset_y_mm: f64,
 }
 
 /// A rectangle of the page, in millimetres from the bottom-left corner.
@@ -50,6 +54,8 @@ impl Default for PngOptions {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         }
     }
@@ -70,6 +76,11 @@ impl PngOptions {
         if !self.margin_mm.is_finite() || self.margin_mm < 0.0 {
             return Err(crate::errors::BeamError::InvalidInput(
                 "the PNG margin must be a finite value of zero or more".to_string(),
+            ));
+        }
+        if !self.offset_x_mm.is_finite() || !self.offset_y_mm.is_finite() {
+            return Err(crate::errors::BeamError::InvalidInput(
+                "the PNG offset must be finite".to_string(),
             ));
         }
         if let Some(area) = self.area {
@@ -135,8 +146,8 @@ impl Canvas {
             None => (0.0, 0.0, document.width_mm, document.height_mm),
         };
         let margin = options.margin_mm;
-        let origin_x = origin_x - margin;
-        let origin_y = origin_y - margin;
+        let origin_x = origin_x - margin + options.offset_x_mm;
+        let origin_y = origin_y - margin + options.offset_y_mm;
         let width_mm = width_mm + margin * 2.0;
         let height_mm = height_mm + margin * 2.0;
         let (width, height) = match (options.width_px, options.height_px) {
@@ -513,6 +524,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -531,6 +544,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -546,6 +561,8 @@ mod tests {
             width_px: Some(20),
             height_px: Some(10),
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -565,6 +582,8 @@ mod tests {
             width_px: Some(20),
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -584,6 +603,8 @@ mod tests {
             width_px: Some(0),
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let error = render_rgba(&document, &options).unwrap_err();
@@ -599,6 +620,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 1.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -610,6 +633,42 @@ mod tests {
     }
 
     #[test]
+    fn an_offset_moves_the_region() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 25.4,
+            transparent: true,
+            width_px: None,
+            height_px: None,
+            margin_mm: 0.0,
+            offset_x_mm: -2.0,
+            offset_y_mm: 0.0,
+            area: None,
+        };
+        let (pixels, width, _height, _warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!(pixels[3], 0, "the left edge should be blank");
+        let first_red = 2 * width as usize * 4;
+        assert_eq!(&pixels[first_red..first_red + 4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn a_non_finite_offset_is_rejected() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: false,
+            width_px: None,
+            height_px: None,
+            margin_mm: 0.0,
+            offset_x_mm: f64::NAN,
+            offset_y_mm: 0.0,
+            area: None,
+        };
+        let error = render_rgba(&document, &options).unwrap_err();
+        assert!(error.to_string().contains("offset"), "{error}");
+    }
+
+    #[test]
     fn a_negative_margin_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
@@ -618,6 +677,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: -1.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let error = render_rgba(&document, &options).unwrap_err();
@@ -634,6 +695,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -649,6 +712,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -665,6 +730,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         assert!(render_rgba(&document, &options).is_err());
@@ -680,6 +747,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: None,
         };
         let (pixels, width, ..) = render_rgba(&document, &options).unwrap();
@@ -697,6 +766,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: Some(PngArea {
                 x: 2.0,
                 y: 2.0,
@@ -725,6 +796,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: Some(PngArea {
                 x: 5.0,
                 y: 5.0,
@@ -740,6 +813,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -760,6 +835,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: Some(PngArea {
                 x: 8.0,
                 y: 8.0,
@@ -775,6 +852,8 @@ mod tests {
             width_px: None,
             height_px: None,
             margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -884,6 +963,8 @@ mod tests {
                 width_px: None,
                 height_px: None,
                 margin_mm: 0.0,
+                offset_x_mm: 0.0,
+                offset_y_mm: 0.0,
                 area: None,
             };
             let (_, width, height, _) = render_rgba(&document, &options).unwrap();

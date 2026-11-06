@@ -236,6 +236,8 @@ pub fn run(cli: Cli) -> Result<()> {
                 width_px: None,
                 height_px: None,
                 margin_mm: 0.0,
+                offset_x_mm: 0.0,
+                offset_y_mm: 0.0,
                 area: None,
             };
             let report = crate::export::export_png(&document, &output, &options)?;

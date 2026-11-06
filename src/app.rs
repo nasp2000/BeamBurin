@@ -585,6 +585,8 @@ pub struct BeamBurinApp {
     export_image_height_px: u32,
     export_image_keep_aspect: bool,
     export_image_margin_mm: f64,
+    export_image_offset_x_mm: f64,
+    export_image_offset_y_mm: f64,
     export_svg_open: bool,
     export_svg_selection: bool,
     export_svg_text_paths: bool,

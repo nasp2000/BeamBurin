@@ -288,6 +288,8 @@ impl BeamBurinApp {
             export_image_height_px: 1000,
             export_image_keep_aspect: true,
             export_image_margin_mm: 0.0,
+            export_image_offset_x_mm: 0.0,
+            export_image_offset_y_mm: 0.0,
             export_svg_open: false,
             export_svg_selection: false,
             export_svg_text_paths: false,

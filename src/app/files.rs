@@ -83,6 +83,8 @@ impl BeamBurinApp {
                 .export_image_custom_size
                 .then_some(self.export_image_height_px),
             margin_mm: self.export_image_margin_mm,
+            offset_x_mm: self.export_image_offset_x_mm,
+            offset_y_mm: self.export_image_offset_y_mm,
         };
         let svg_options = crate::export::SvgOptions {
             area: export_area,

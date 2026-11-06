@@ -96,6 +96,24 @@ impl BeamBurinApp {
                                 .suffix(" mm"),
                         );
                         ui.end_row();
+                        ui.label("Offset");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::DragValue::new(&mut self.export_image_offset_x_mm)
+                                    .speed(0.5)
+                                    .range(-1000.0..=1000.0)
+                                    .prefix("X ")
+                                    .suffix(" mm"),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut self.export_image_offset_y_mm)
+                                    .speed(0.5)
+                                    .range(-1000.0..=1000.0)
+                                    .prefix("Y ")
+                                    .suffix(" mm"),
+                            );
+                        });
+                        ui.end_row();
                         ui.label("Size");
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut self.export_image_custom_size, "Custom");
@@ -161,6 +179,7 @@ impl BeamBurinApp {
                 ui.weak(format!(
                     "{frame_width_mm:.1} x {frame_height_mm:.1} mm, {width_px} x {height_px} px"
                 ));
+                ui.weak("Positive offsets move the frame right and up; the drawing moves left and down.");
                 ui.horizontal(|ui| {
                     if ui.button("Export").clicked() {
                         start = true;
