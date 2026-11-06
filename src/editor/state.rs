@@ -2162,8 +2162,25 @@ impl EditorState {
         text: &str,
         module_mm: f64,
         height_mm: f64,
+        label: bool,
     ) -> std::result::Result<usize, String> {
         let bars = crate::barcode::bars(text, module_mm, height_mm)?;
+        let label_paths = if label {
+            let width = crate::barcode::width_mm(text, module_mm)?;
+            let size = (height_mm * 0.2).clamp(2.0, 12.0);
+            let label_text = crate::objects::TextObject {
+                content: text.trim().to_ascii_uppercase(),
+                size,
+                x: width / 2.0,
+                y: -(size * 1.6),
+                align: crate::objects::TextAlign::Center,
+                ..crate::objects::TextObject::default()
+            };
+            crate::objects::text_to_paths(&label_text)
+                .map_err(|error| format!("cannot outline the barcode text: {error}"))?
+        } else {
+            Vec::new()
+        };
         if self.active_layer_id.is_empty() {
             self.active_layer_id = self
                 .document
@@ -2193,7 +2210,7 @@ impl EditorState {
         }
         self.record_action("Insert barcode");
         let group = uuid::Uuid::new_v4().to_string();
-        let mut ids = Vec::with_capacity(bars.len());
+        let mut ids = Vec::with_capacity(bars.len() + label_paths.len());
         for (x, width) in &bars {
             let mut object = Object::new(
                 active.clone(),
@@ -2205,6 +2222,15 @@ impl EditorState {
             )
             .with_transform(Transform2::translate(*x, 0.0));
             object.name = "Barcode bar".to_string();
+            object.color = Some(colour.clone());
+            object.operation_id = Some(operation.clone());
+            object.group_id = Some(group.clone());
+            ids.push(object.id.clone());
+            self.document.add_object(object);
+        }
+        for path in label_paths {
+            let mut object = Object::new(active.clone(), Shape::Path(path));
+            object.name = "Barcode text".to_string();
             object.color = Some(colour.clone());
             object.operation_id = Some(operation.clone());
             object.group_id = Some(group.clone());
@@ -3998,7 +4024,7 @@ mod tests {
     #[test]
     fn a_barcode_is_one_grouped_undo_step() {
         let mut editor = editor();
-        let count = editor.insert_barcode("AB", 0.5, 10.0).unwrap();
+        let count = editor.insert_barcode("AB", 0.5, 10.0, false).unwrap();
         assert_eq!(count, 20);
         assert_eq!(editor.document.objects.len(), 20);
         let group = editor.document.objects[0].group_id.clone();
@@ -4022,6 +4048,33 @@ mod tests {
         assert!((min.x).abs() < 1e-9);
         assert!((max.y - 10.0).abs() < 1e-9);
         assert!((max.x - crate::barcode::width_mm("AB", 0.5).unwrap()).abs() < 1e-6);
+        assert!(editor.undo().is_some());
+        assert!(editor.document.objects.is_empty());
+    }
+
+    #[test]
+    fn a_barcode_label_is_outlined_and_grouped_with_the_bars() {
+        let mut editor = editor();
+        let bars = editor.insert_barcode("AB", 0.5, 10.0, true).unwrap();
+        assert_eq!(bars, 20);
+        let objects = editor.document.objects.len();
+        assert!(objects > bars, "the label did not add outlines");
+        let text_objects = editor
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.name == "Barcode text")
+            .count();
+        assert!(text_objects > 0);
+        let group = editor.document.objects[0].group_id.clone();
+        assert!(group.is_some());
+        assert!(
+            editor
+                .document
+                .objects
+                .iter()
+                .all(|object| object.group_id == group)
+        );
         assert!(editor.undo().is_some());
         assert!(editor.document.objects.is_empty());
     }

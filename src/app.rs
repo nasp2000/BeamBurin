@@ -528,6 +528,7 @@ pub struct BeamBurinApp {
     barcode_text: String,
     barcode_module_mm: f64,
     barcode_height_mm: f64,
+    barcode_label: bool,
     skew_x: f64,
     skew_y: f64,
     simplify_open: bool,

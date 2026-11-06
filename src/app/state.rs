@@ -225,6 +225,7 @@ impl BeamBurinApp {
             barcode_text: "ABC".to_string(),
             barcode_module_mm: 0.5,
             barcode_height_mm: 10.0,
+            barcode_label: true,
             skew_x: 0.0,
             skew_y: 0.0,
             simplify_open: false,

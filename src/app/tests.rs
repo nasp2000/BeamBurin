@@ -1851,6 +1851,16 @@ fn the_draw_menu_inserts_a_barcode() {
         harness.state().editor.document.operations.as_slice(),
         [_, ..]
     ));
+    assert!(
+        harness
+            .state()
+            .editor
+            .document
+            .objects
+            .iter()
+            .any(|object| object.name == "Barcode text"),
+        "the human-readable label is missing"
+    );
 }
 
 #[test]

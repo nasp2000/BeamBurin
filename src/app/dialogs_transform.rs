@@ -138,6 +138,7 @@ impl BeamBurinApp {
                 &self.barcode_text,
                 self.barcode_module_mm,
                 self.barcode_height_mm,
+                self.barcode_label,
             ) {
                 Ok(count) => {
                     self.status = format!("Inserted a barcode with {count} bars");
