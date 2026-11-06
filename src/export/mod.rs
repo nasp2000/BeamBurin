@@ -138,9 +138,10 @@ mod tests {
             layers: document
                 .layers
                 .iter()
-                .map(|layer| crate::document::Layer {
-                    visible: false,
-                    ..layer.clone()
+                .map(|layer| {
+                    let mut hidden = layer.clone();
+                    hidden.visible = false;
+                    hidden
                 })
                 .collect(),
             ..document.clone()
