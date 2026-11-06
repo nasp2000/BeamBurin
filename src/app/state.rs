@@ -286,6 +286,7 @@ impl BeamBurinApp {
             export_svg_open: false,
             export_svg_selection: false,
             export_svg_text_paths: false,
+            export_svg_active_layer: false,
             export_dxf_open: false,
             export_dxf_selection: false,
             export_dxf_text_paths: false,

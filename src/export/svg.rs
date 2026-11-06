@@ -7,12 +7,14 @@ use crate::geometry::{Path, Point2, Transform2, path::Segment};
 use super::png::Area;
 
 /// SVG output settings (§14.1).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SvgOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
     /// Convert text to outline paths instead of writing `<text>` elements.
     pub text_as_paths: bool,
+    /// Write only this layer; `None` writes every visible layer.
+    pub layer_id: Option<String>,
 }
 
 /// Export visible document content as SVG.
@@ -41,6 +43,9 @@ pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<S
     );
     for layer in &doc.layers {
         if !layer.visible {
+            continue;
+        }
+        if options.layer_id.as_deref().is_some_and(|id| id != layer.id) {
             continue;
         }
         let _ = writeln!(
@@ -400,6 +405,7 @@ mod tests {
                     height: 3.0,
                 }),
                 text_as_paths: false,
+                layer_id: None,
             },
         )
         .unwrap();
@@ -436,6 +442,7 @@ mod tests {
                     height: 3.0,
                 }),
                 text_as_paths: false,
+                layer_id: None,
             },
         )
         .unwrap();
@@ -462,6 +469,7 @@ mod tests {
             &SvgOptions {
                 area: None,
                 text_as_paths: true,
+                layer_id: None,
             },
         )
         .unwrap();
@@ -482,6 +490,7 @@ mod tests {
                     height: 5.0,
                 }),
                 text_as_paths: false,
+                layer_id: None,
             },
         )
         .unwrap_err();
@@ -494,8 +503,44 @@ mod tests {
                 height: 5.0,
             }),
             text_as_paths: false,
+            layer_id: None,
         };
         assert!(export_svg_with_options(&doc, &empty).is_err());
+    }
+
+    #[test]
+    fn only_the_chosen_layer_is_exported() {
+        let mut doc = Document::default();
+        let first = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            first.clone(),
+            Shape::Rect {
+                width: 1.0,
+                height: 1.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let second = doc.add_layer("Second").id.clone();
+        doc.add_object(Object::new(
+            second.clone(),
+            Shape::Rect {
+                width: 2.0,
+                height: 2.0,
+                corner_radius: 0.0,
+            },
+        ));
+        let svg = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: None,
+                text_as_paths: false,
+                layer_id: Some(second.clone()),
+            },
+        )
+        .unwrap();
+        assert!(svg.contains(&format!("id=\"{second}\"")), "{svg}");
+        assert!(!svg.contains(&format!("id=\"{first}\"")), "{svg}");
+        assert!(svg.contains("M0 200 L2 200"), "{svg}");
     }
 
     #[test]

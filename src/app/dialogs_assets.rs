@@ -562,6 +562,12 @@ impl BeamBurinApp {
         let mut start = false;
         let mut cancel = false;
         let has_selection = !self.editor.selection.is_empty();
+        let active_layer_name = self
+            .editor
+            .document
+            .layer(&self.editor.active_layer_id)
+            .map(|layer| layer.name.clone())
+            .unwrap_or_default();
         let (width_mm, height_mm) = if self.export_svg_selection && has_selection {
             self.editor.selected_bounds().map_or(
                 (
@@ -604,6 +610,25 @@ impl BeamBurinApp {
                 });
                 if self.export_svg_selection && !has_selection {
                     self.export_svg_selection = false;
+                }
+                ui.label("Layers");
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.export_svg_active_layer, false, "All visible");
+                    if ui
+                        .add_enabled(
+                            !active_layer_name.is_empty(),
+                            egui::RadioButton::new(
+                                self.export_svg_active_layer && !active_layer_name.is_empty(),
+                                format!("Active ({active_layer_name})"),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        self.export_svg_active_layer = true;
+                    }
+                });
+                if active_layer_name.is_empty() {
+                    self.export_svg_active_layer = false;
                 }
                 ui.checkbox(&mut self.export_svg_text_paths, "Text as paths");
                 ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
