@@ -548,7 +548,7 @@ fn every_top_level_menu_opens_with_its_main_entry() {
         ("Operations", "Cuts / Layers..."),
         ("Materials and profiles", "Materials and operations..."),
         ("Arrange", "Bring to front"),
-        ("View", "Fit page"),
+        ("View", "Command palette..."),
         ("Help", "About BeamBurin"),
     ] {
         harness.get_by_label(menu).click_accesskit();

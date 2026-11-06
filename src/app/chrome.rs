@@ -984,81 +984,87 @@ impl BeamBurinApp {
                 });
             });
             ui.menu_button(icons::menu_label(ui, Icon::View, "View"), |ui| {
-                if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {
-                    self.editor.zoom_in();
-                    ui.close();
-                }
-                if icons::button(ui, Icon::ZoomOut, "Zoom out").clicked() {
-                    self.editor.zoom_out();
-                    ui.close();
-                }
-                if icons::button(ui, Icon::ZoomFit, "Fit page").clicked() {
-                    self.needs_fit = true;
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        !self.editor.selection.is_empty(),
-                        icons::widget(ui, Icon::ZoomSelection, "Zoom to selection"),
-                    )
-                    .clicked()
-                {
-                    self.zoom_to_selection_request = true;
-                    ui.close();
-                }
-                ui.separator();
-                icons::checkbox(ui, &mut self.editor.canvas.grid_visible, Icon::Grid, "Show grid");
-                if icons::checkbox(
-                    ui,
-                    &mut self.editor.show_selection,
-                    Icon::Eye,
-                    "Show selection",
-                )
-                .changed()
-                {
-                    self.preferences.drawing.show_selection = self.editor.show_selection;
-                }
-                icons::checkbox(ui, &mut self.editor.show_rulers, Icon::Rulers, "Show rulers");
-                icons::checkbox(ui, &mut self.editor.guides_visible, Icon::Guides, "Show guides");
-                icons::checkbox(ui, &mut self.editor.snap_guides, Icon::Snap, "Snap to guides");
-                if icons::button(ui, Icon::Guides, "Guides...").clicked() {
-                    self.guides_open = true;
-                    ui.close();
-                }
-                ui.menu_button(icons::menu_label(ui, Icon::Snap, "Snapping"), |ui| {
-                    icons::checkbox(ui, &mut self.editor.snap_enabled, Icon::Grid, "Grid");
-                    icons::checkbox(ui, &mut self.editor.snap_nodes, Icon::Nodes, "Nodes");
-                    icons::checkbox(ui, &mut self.editor.snap_endpoints, Icon::Nodes, "Endpoints");
-                    icons::checkbox(ui, &mut self.editor.snap_centers, Icon::SnapCenter, "Centres");
-                    icons::checkbox(ui, &mut self.editor.snap_midpoints, Icon::SnapMidpoint, "Midpoints");
-                    icons::checkbox(ui, &mut self.editor.snap_intersections, Icon::Intersections, "Intersections");
-                    icons::checkbox(ui, &mut self.editor.snap_limits, Icon::SnapLimits, "Object limits");
-                    ui.add(
-                        egui::DragValue::new(&mut self.editor.snap_step_mm)
-                            .speed(0.1)
-                            .range(0.1..=100.0)
-                            .suffix(" mm grid"),
-                    );
+                ui.menu_button(icons::menu_label(ui, Icon::ZoomIn, "Zoom"), |ui| {
+                    if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {
+                        self.editor.zoom_in();
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::ZoomOut, "Zoom out").clicked() {
+                        self.editor.zoom_out();
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::ZoomFit, "Fit page").clicked() {
+                        self.needs_fit = true;
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.editor.selection.is_empty(),
+                            icons::widget(ui, Icon::ZoomSelection, "Zoom to selection"),
+                        )
+                        .clicked()
+                    {
+                        self.zoom_to_selection_request = true;
+                        ui.close();
+                    }
                 });
-                icons::checkbox(ui, &mut self.preview_toolpaths, Icon::Toolpaths, "Show toolpaths");
-                icons::checkbox(ui, &mut self.show_layers_panel, Icon::Panels, "Layers panel (F9)");
-                icons::checkbox(ui, &mut self.show_properties_panel, Icon::Panels, "Properties panel (F10)");
-                if icons::button(ui, Icon::Panels, "Workspaces...").clicked() {
-                    self.workspaces_open = true;
-                    ui.close();
-                }
-                if icons::button(ui, Icon::Clock, "History...").clicked() {
-                    self.history_open = true;
-                    ui.close();
-                }
-                if icons::button(ui, Icon::Palette, "Interface presets...").clicked() {
-                    self.interface_presets_open = true;
-                    ui.close();
-                }
+                ui.menu_button(icons::menu_label(ui, Icon::Eye, "Display"), |ui| {
+                    icons::checkbox(ui, &mut self.editor.canvas.grid_visible, Icon::Grid, "Show grid");
+                    if icons::checkbox(
+                        ui,
+                        &mut self.editor.show_selection,
+                        Icon::Eye,
+                        "Show selection",
+                    )
+                    .changed()
+                    {
+                        self.preferences.drawing.show_selection = self.editor.show_selection;
+                    }
+                    icons::checkbox(ui, &mut self.editor.show_rulers, Icon::Rulers, "Show rulers");
+                    icons::checkbox(ui, &mut self.editor.guides_visible, Icon::Guides, "Show guides");
+                    icons::checkbox(ui, &mut self.editor.snap_guides, Icon::Snap, "Snap to guides");
+                    if icons::button(ui, Icon::Guides, "Guides...").clicked() {
+                        self.guides_open = true;
+                        ui.close();
+                    }
+                    icons::checkbox(ui, &mut self.preview_toolpaths, Icon::Toolpaths, "Show toolpaths");
+                    ui.menu_button(icons::menu_label(ui, Icon::Snap, "Snapping"), |ui| {
+                        icons::checkbox(ui, &mut self.editor.snap_enabled, Icon::Grid, "Grid");
+                        icons::checkbox(ui, &mut self.editor.snap_nodes, Icon::Nodes, "Nodes");
+                        icons::checkbox(ui, &mut self.editor.snap_endpoints, Icon::Nodes, "Endpoints");
+                        icons::checkbox(ui, &mut self.editor.snap_centers, Icon::SnapCenter, "Centres");
+                        icons::checkbox(ui, &mut self.editor.snap_midpoints, Icon::SnapMidpoint, "Midpoints");
+                        icons::checkbox(ui, &mut self.editor.snap_intersections, Icon::Intersections, "Intersections");
+                        icons::checkbox(ui, &mut self.editor.snap_limits, Icon::SnapLimits, "Object limits");
+                        ui.add(
+                            egui::DragValue::new(&mut self.editor.snap_step_mm)
+                                .speed(0.1)
+                                .range(0.1..=100.0)
+                                .suffix(" mm grid"),
+                        );
+                    });
+                });
+                ui.menu_button(icons::menu_label(ui, Icon::Panels, "Panels"), |ui| {
+                    icons::checkbox(ui, &mut self.show_layers_panel, Icon::Panels, "Layers panel (F9)");
+                    icons::checkbox(ui, &mut self.show_properties_panel, Icon::Panels, "Properties panel (F10)");
+                    if icons::button(ui, Icon::Panels, "Workspaces...").clicked() {
+                        self.workspaces_open = true;
+                        ui.close();
+                    }
+                    if icons::button(ui, Icon::Clock, "History...").clicked() {
+                        self.history_open = true;
+                        ui.close();
+                    }
+                });
+                ui.separator();
                 if icons::button(ui, Icon::Search, "Command palette...").clicked() {
                     self.palette_open = true;
                     self.palette_focus = true;
                     self.palette_query.clear();
+                    ui.close();
+                }
+                if icons::button(ui, Icon::Palette, "Interface presets...").clicked() {
+                    self.interface_presets_open = true;
                     ui.close();
                 }
                 icons::checkbox(ui, &mut self.dark_mode, Icon::DarkMode, "Dark mode");
