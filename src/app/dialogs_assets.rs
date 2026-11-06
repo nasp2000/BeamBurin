@@ -629,7 +629,7 @@ impl BeamBurinApp {
                 ui.label("Layers");
                 ui.horizontal(|ui| {
                     if ui.small_button("All").clicked() {
-                        self.export_svg_layer_ids = all_layer_ids.clone();
+                        self.export_svg_layer_ids.clone_from(&all_layer_ids);
                     }
                     if ui
                         .add_enabled(
