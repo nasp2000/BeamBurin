@@ -8,7 +8,7 @@ use super::paths::{flatten, fmt_num};
 use super::png::Area;
 
 /// DXF output settings (§14.2).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct DxfOptions {
     /// Region whose origin becomes the drawing origin; `None` keeps page zero.
     pub area: Option<Area>,

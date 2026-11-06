@@ -10,7 +10,7 @@ use super::png::Area;
 const UNITS_PER_MM: f64 = 40.0;
 
 /// HPGL output settings (§14.1).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct HpglOptions {
     /// Region whose origin becomes the plot origin; `None` keeps page zero.
     pub area: Option<Area>,

@@ -10,7 +10,7 @@ use super::png::Area;
 const MM_PER_POINT: f64 = 25.4 / 72.0;
 
 /// EPS output settings (§14.1).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct EpsOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
