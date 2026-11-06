@@ -2555,6 +2555,41 @@ fn exporting_the_selection_as_svg_crops_the_viewbox() {
 }
 
 #[test]
+fn exporting_the_selection_as_pdf_writes_only_the_selected_object() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("pdf_selection_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(15.0, 12.0));
+    app.editor
+        .add_rectangle(Point2::new(30.0, 5.0), Point2::new(40.0, 12.0));
+    let first = app.editor.document.objects[0].id.clone();
+    app.editor.selection.clear();
+    app.editor.selection.add(first);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export selection ⏵").click();
+    harness.run();
+    harness.get_by_label("As PDF...").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.pdf");
+    let text = std::fs::read_to_string(&path).expect("cannot read the PDF");
+    assert_eq!(
+        text.matches("S\n").count(),
+        1,
+        "the PDF should contain only the selected rectangle"
+    );
+}
+
+#[test]
 fn exporting_dxf_from_the_dialog_writes_the_file() {
     use egui_kittest::kittest::Queryable as _;
 

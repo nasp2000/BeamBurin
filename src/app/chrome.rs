@@ -300,6 +300,20 @@ impl BeamBurinApp {
                         self.open_export_image(true);
                         ui.close();
                     }
+                    for (label, mode) in [
+                        ("As PDF...", FileMode::ExportPdf),
+                        ("As EPS...", FileMode::ExportEps),
+                        ("As HPGL...", FileMode::ExportHpgl),
+                    ] {
+                        if ui
+                            .add_enabled(enabled, icons::widget(ui, Icon::Export, label))
+                            .clicked()
+                        {
+                            self.export_subset = true;
+                            self.open_dialog(mode);
+                            ui.close();
+                        }
+                    }
                     if ui
                         .add_enabled(enabled, icons::widget(ui, Icon::Export, "As G-code..."))
                         .clicked()
