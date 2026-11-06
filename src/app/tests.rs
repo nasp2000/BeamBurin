@@ -2929,6 +2929,39 @@ fn the_image_export_options_make_a_transparent_png() {
 }
 
 #[test]
+fn the_image_export_options_use_an_explicit_size() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("png_custom_size_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Custom")
+        .click_accesskit();
+    harness.run();
+    assert!(harness.state().export_image_custom_size);
+    harness.state_mut().export_image_width_px = 42;
+    harness.state_mut().export_image_height_px = 24;
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.png");
+    let picture = image::open(&path).expect("cannot read the PNG");
+    assert_eq!((picture.width(), picture.height()), (42, 24));
+}
+
+#[test]
 fn the_command_palette_filters_by_query() {
     use egui_kittest::kittest::Queryable as _;
 

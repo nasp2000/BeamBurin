@@ -76,6 +76,12 @@ impl BeamBurinApp {
             dpi: self.export_image_dpi,
             transparent: self.export_image_transparent,
             area: export_area,
+            width_px: self
+                .export_image_custom_size
+                .then_some(self.export_image_width_px),
+            height_px: self
+                .export_image_custom_size
+                .then_some(self.export_image_height_px),
         };
         let svg_options = crate::export::SvgOptions {
             area: export_area,

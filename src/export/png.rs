@@ -21,6 +21,11 @@ pub struct PngOptions {
     pub transparent: bool,
     /// Page region to render in millimetres; `None` renders the whole page.
     pub area: Option<PngArea>,
+    /// Explicit output width in pixels; when only one side is set the other
+    /// follows the region aspect ratio.
+    pub width_px: Option<u32>,
+    /// Explicit output height in pixels.
+    pub height_px: Option<u32>,
 }
 
 /// A rectangle of the page, in millimetres from the bottom-left corner.
@@ -40,7 +45,11 @@ impl Default for PngOptions {
         Self {
             dpi: 96.0,
             transparent: false,
+            width_px: None,
+            height_px: None,
             area: None,
+            width_px: None,
+            height_px: None,
         }
     }
 }
@@ -50,6 +59,11 @@ impl PngOptions {
         if !self.dpi.is_finite() || !(10.0..=2400.0).contains(&self.dpi) {
             return Err(crate::errors::BeamError::InvalidInput(
                 "PNG resolution must be between 10 and 2400 dpi".to_string(),
+            ));
+        }
+        if self.width_px == Some(0) || self.height_px == Some(0) {
+            return Err(crate::errors::BeamError::InvalidInput(
+                "the PNG size must be at least 1 pixel".to_string(),
             ));
         }
         if let Some(area) = self.area {
@@ -86,15 +100,18 @@ struct Canvas {
     width: usize,
     height: usize,
     pixels: Vec<u8>,
-    scale: f64,
+    scale_x: f64,
+    scale_y: f64,
     /// Left edge and bottom edge of the rendered region, in millimetres.
     origin: (f64, f64),
     height_mm: f64,
+    /// `true` when explicit dimensions change the region's aspect ratio.
+    stretched: bool,
 }
 
 impl Canvas {
     fn new(document: &Document, options: &PngOptions) -> Result<Self> {
-        let scale = options.dpi / 25.4;
+        let resolution = options.dpi / 25.4;
         let (origin_x, origin_y, width_mm, height_mm) = match options.area {
             Some(area) => {
                 let epsilon = 1e-6;
@@ -111,8 +128,21 @@ impl Canvas {
             }
             None => (0.0, 0.0, document.width_mm, document.height_mm),
         };
-        let width = ((width_mm * scale).round()).max(1.0);
-        let height = ((height_mm * scale).round()).max(1.0);
+        let (width, height) = match (options.width_px, options.height_px) {
+            (Some(width), Some(height)) => (f64::from(width), f64::from(height)),
+            (Some(width), None) => (
+                f64::from(width),
+                (f64::from(width) * height_mm / width_mm).round().max(1.0),
+            ),
+            (None, Some(height)) => (
+                (f64::from(height) * width_mm / height_mm).round().max(1.0),
+                f64::from(height),
+            ),
+            (None, None) => (
+                ((width_mm * resolution).round()).max(1.0),
+                ((height_mm * resolution).round()).max(1.0),
+            ),
+        };
         if !width.is_finite()
             || !height.is_finite()
             || width > f64::from(u32::MAX)
@@ -134,6 +164,9 @@ impl Canvas {
         }
         let width = usize::try_from(width_px).unwrap_or(1);
         let height = usize::try_from(height_px).unwrap_or(1);
+        let scale_x = width as f64 / width_mm;
+        let scale_y = height as f64 / height_mm;
+        let stretched = (scale_x - scale_y).abs() > scale_x.max(scale_y) * 1e-6;
         let background = if options.transparent {
             [0, 0, 0, 0]
         } else {
@@ -147,18 +180,24 @@ impl Canvas {
             width,
             height,
             pixels,
-            scale,
+            scale_x,
+            scale_y,
             origin: (origin_x, origin_y),
             height_mm: height_mm.min(document.height_mm),
+            stretched,
         })
     }
 
     /// Document millimetres to pixel coordinates (y axis flipped).
     fn px(&self, point: Point2) -> (f64, f64) {
         (
-            (point.x - self.origin.0) * self.scale,
-            (self.origin.1 + self.height_mm - point.y) * self.scale,
+            (point.x - self.origin.0) * self.scale_x,
+            (self.origin.1 + self.height_mm - point.y) * self.scale_y,
         )
+    }
+
+    fn stroke_scale(&self) -> f64 {
+        (self.scale_x + self.scale_y) / 2.0
     }
 
     #[allow(
@@ -282,6 +321,12 @@ pub fn render_rgba_cancellable(
         .map_err(crate::errors::BeamError::InvalidInput)?;
     let mut canvas = Canvas::new(document, options)?;
     let mut warnings = Vec::new();
+    if canvas.stretched {
+        warnings.push(
+            "the output size does not match the area aspect ratio; the picture is stretched"
+                .to_string(),
+        );
+    }
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
     for layer in layers {
@@ -377,7 +422,7 @@ fn draw_object(
             if object.style.stroke.is_some() {
                 canvas.stroke_polyline(
                     &points,
-                    object.style.stroke_width_mm * canvas.scale,
+                    object.style.stroke_width_mm * canvas.stroke_scale(),
                     [stroke[0], stroke[1], stroke[2], 255],
                 );
             }
@@ -454,6 +499,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: false,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
@@ -469,10 +516,62 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
         assert_eq!(pixels[3], 0);
+    }
+
+    #[test]
+    fn explicit_dimensions_set_the_output_size() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            width_px: Some(20),
+            height_px: Some(10),
+            area: None,
+        };
+        let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (20, 10));
+        assert!(
+            warnings.iter().any(|warning| warning.contains("stretched")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn one_explicit_side_keeps_the_aspect_ratio() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            width_px: Some(20),
+            height_px: None,
+            area: None,
+        };
+        let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (20, 20));
+        assert!(
+            !warnings.iter().any(|warning| warning.contains("stretched")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn a_zero_explicit_size_is_rejected() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            width_px: Some(0),
+            height_px: None,
+            area: None,
+        };
+        let error = render_rgba(&document, &options).unwrap_err();
+        assert!(error.to_string().contains("at least 1 pixel"), "{error}");
     }
 
     #[test]
@@ -482,6 +581,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -494,6 +595,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
@@ -507,6 +610,8 @@ mod tests {
         let options = PngOptions {
             dpi: 0.0,
             transparent: false,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         assert!(render_rgba(&document, &options).is_err());
@@ -519,6 +624,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: None,
         };
         let (pixels, width, ..) = render_rgba(&document, &options).unwrap();
@@ -533,6 +640,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: Some(PngArea {
                 x: 2.0,
                 y: 2.0,
@@ -558,6 +667,8 @@ mod tests {
         let inside = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: Some(PngArea {
                 x: 5.0,
                 y: 5.0,
@@ -570,6 +681,8 @@ mod tests {
         let outside = PngOptions {
             dpi: 10.0,
             transparent: true,
+            width_px: None,
+            height_px: None,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -587,6 +700,8 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: false,
+            width_px: None,
+            height_px: None,
             area: Some(PngArea {
                 x: 8.0,
                 y: 8.0,
@@ -599,6 +714,8 @@ mod tests {
         let empty = PngOptions {
             dpi: 10.0,
             transparent: false,
+            width_px: None,
+            height_px: None,
             area: Some(PngArea {
                 x: 0.0,
                 y: 0.0,
@@ -705,6 +822,8 @@ mod tests {
             let options = PngOptions {
                 dpi,
                 transparent: false,
+                width_px: None,
+                height_px: None,
                 area: None,
             };
             let (_, width, height, _) = render_rgba(&document, &options).unwrap();

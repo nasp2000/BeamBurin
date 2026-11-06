@@ -4,8 +4,26 @@ use super::*;
 
 impl BeamBurinApp {
     /// Open the PNG export options; `selection` preselects the crop.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(super) fn open_export_image(&mut self, selection: bool) {
         self.export_image_selection = selection && !self.editor.selection.is_empty();
+        let (width_mm, height_mm) = if self.export_image_selection {
+            self.editor.selected_bounds().map_or(
+                (
+                    self.editor.document.width_mm,
+                    self.editor.document.height_mm,
+                ),
+                |(min, max)| (max.x - min.x, max.y - min.y),
+            )
+        } else {
+            (
+                self.editor.document.width_mm,
+                self.editor.document.height_mm,
+            )
+        };
+        let scale = self.export_image_dpi / 25.4;
+        self.export_image_width_px = ((width_mm * scale).round()).max(1.0) as u32;
+        self.export_image_height_px = ((height_mm * scale).round()).max(1.0) as u32;
         self.export_image_open = true;
     }
 
@@ -30,8 +48,16 @@ impl BeamBurinApp {
                 self.editor.document.height_mm,
             )
         };
-        let width_px = ((width_mm * dpi / 25.4).round()).max(1.0) as u32;
-        let height_px = ((height_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let auto_width_px = ((width_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let auto_height_px = ((height_mm * dpi / 25.4).round()).max(1.0) as u32;
+        let (width_px, height_px) = if self.export_image_custom_size {
+            (
+                self.export_image_width_px.max(1),
+                self.export_image_height_px.max(1),
+            )
+        } else {
+            (auto_width_px, auto_height_px)
+        };
         egui::Window::new("Export image")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -56,6 +82,47 @@ impl BeamBurinApp {
                         ui.end_row();
                         ui.label("Background");
                         ui.checkbox(&mut self.export_image_transparent, "Transparent");
+                        ui.end_row();
+                        ui.label("Size");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.export_image_custom_size, "Custom");
+                            if self.export_image_custom_size {
+                                let width = ui.add(
+                                    egui::DragValue::new(&mut self.export_image_width_px)
+                                        .speed(1.0)
+                                        .range(1..=100_000)
+                                        .suffix(" px"),
+                                );
+                                ui.label("x");
+                                let height = ui.add(
+                                    egui::DragValue::new(&mut self.export_image_height_px)
+                                        .speed(1.0)
+                                        .range(1..=100_000)
+                                        .suffix(" px"),
+                                );
+                                ui.checkbox(&mut self.export_image_keep_aspect, "Keep aspect");
+                                if self.export_image_keep_aspect
+                                    && width_mm > 0.0
+                                    && height_mm > 0.0
+                                {
+                                    if width.changed() {
+                                        self.export_image_height_px =
+                                            ((f64::from(self.export_image_width_px) * height_mm
+                                                / width_mm)
+                                                .round())
+                                            .max(1.0)
+                                                as u32;
+                                    } else if height.changed() {
+                                        self.export_image_width_px =
+                                            ((f64::from(self.export_image_height_px) * width_mm
+                                                / height_mm)
+                                                .round())
+                                            .max(1.0)
+                                                as u32;
+                                    }
+                                }
+                            }
+                        });
                         ui.end_row();
                         ui.label("Area");
                         ui.horizontal(|ui| {
