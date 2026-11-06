@@ -11,6 +11,13 @@ fn image_is_negative(document: &crate::document::Document, id: &str) -> bool {
 }
 
 #[test]
+fn invert_color_image_swaps_light_and_dark() {
+    let image = egui::ColorImage::new([1, 1], vec![egui::Color32::from_rgb(10, 20, 30)]);
+    let inverted = super::invert_color_image(image);
+    assert_eq!(inverted.pixels[0], egui::Color32::from_rgb(245, 235, 225));
+}
+
+#[test]
 fn preview_marks_burn_black() {
     let bitmap = crate::raster::RasterBitmap {
         width: 2,
@@ -2765,6 +2772,10 @@ fn the_image_adjust_window_edits_the_settings() {
         .get_by_role_and_label(egui::accesskit::Role::CheckBox, "3×3 median")
         .click_accesskit();
     harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Invert display")
+        .click_accesskit();
+    harness.run();
     let object = harness
         .state()
         .editor
@@ -2780,6 +2791,10 @@ fn the_image_adjust_window_edits_the_settings() {
     assert!(
         image.settings.despeckle,
         "the despeckle switch did not apply"
+    );
+    assert!(
+        harness.state().image_invert_display,
+        "the invert-display switch did not apply"
     );
 }
 

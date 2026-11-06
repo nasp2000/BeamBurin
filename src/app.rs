@@ -421,12 +421,14 @@ pub struct BeamBurinApp {
     preview_toolpaths: bool,
     image_previews: std::collections::HashMap<String, ImagePreview>,
     burn_preview: Option<BurnPreview>,
+    invert_preview: Option<InvertPreview>,
     image_original_previews: std::collections::HashMap<String, egui::TextureHandle>,
     image_adjust: Option<String>,
     image_adjust_snapshot: Option<Document>,
     image_adjust_edit: Option<crate::objects::ImageSettings>,
     image_compare: bool,
     image_burn_map: bool,
+    image_invert_display: bool,
     image_preview_zoom: f32,
     image_estimate_speed: f64,
     image_target_dpi: f64,
@@ -961,6 +963,14 @@ struct ImagePreview {
 /// Only one exists at a time: keeping one per image would double the texture
 /// memory of a project with many images.
 struct BurnPreview {
+    object_id: String,
+    settings: crate::objects::ImageSettings,
+    crop: Option<crate::objects::ImageCrop>,
+    texture: egui::TextureHandle,
+}
+
+/// Inverted processed-preview texture of the image open in Adjust image.
+struct InvertPreview {
     object_id: String,
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
@@ -1995,6 +2005,19 @@ fn preview_color_image(bitmap: &crate::raster::RasterBitmap, burn_map: bool) -> 
         }
     }
     egui::ColorImage::from_rgba_unmultiplied([width, height], &pixels)
+}
+
+/// Swap black and white in a preview image without touching the document.
+fn invert_color_image(mut image: egui::ColorImage) -> egui::ColorImage {
+    for pixel in &mut image.pixels {
+        *pixel = egui::Color32::from_rgba_unmultiplied(
+            255 - pixel.r(),
+            255 - pixel.g(),
+            255 - pixel.b(),
+            pixel.a(),
+        );
+    }
+    image
 }
 
 #[cfg(test)]

@@ -62,6 +62,7 @@ impl BeamBurinApp {
             })
             .unwrap_or(image.settings);
         let mut burn_map = self.image_burn_map;
+        let mut invert_display = self.image_invert_display;
         let mut zoom = self.image_preview_zoom;
         let mut target_dpi = self.image_target_dpi;
         let mut target_width_mm = self.image_target_width_mm;
@@ -72,6 +73,11 @@ impl BeamBurinApp {
             .map(|preview| preview.texture.clone());
         let burn_texture = if burn_map {
             self.burn_preview_texture(ctx, &id, &image)
+        } else {
+            None
+        };
+        let invert_texture = if invert_display {
+            self.invert_preview_texture(ctx, &id, &image)
         } else {
             None
         };
@@ -128,6 +134,7 @@ impl BeamBurinApp {
                         ui.horizontal(|ui| {
                             ui.label("Preview");
                             ui.checkbox(&mut burn_map, "Burn map");
+                            ui.checkbox(&mut invert_display, "Invert display");
                             let label = if (zoom - 1.0).abs() < f32::EPSILON {
                                 "1:1".to_string()
                             } else if zoom > 0.0 {
@@ -145,7 +152,10 @@ impl BeamBurinApp {
                                     ui.selectable_value(&mut zoom, 4.0, "4×");
                                 });
                         });
-                        if let Some(texture) = burn_texture.as_ref().or(processed_texture.as_ref())
+                        if let Some(texture) = burn_texture
+                            .as_ref()
+                            .or(invert_texture.as_ref())
+                            .or(processed_texture.as_ref())
                         {
                             if zoom > 0.0 {
                                 egui::ScrollArea::both()
@@ -710,6 +720,7 @@ impl BeamBurinApp {
             None
         };
         self.image_burn_map = burn_map;
+        self.image_invert_display = invert_display;
         self.image_preview_zoom = zoom;
         self.image_target_dpi = target_dpi;
         if let Some(message) = target_message {

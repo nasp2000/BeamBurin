@@ -494,6 +494,37 @@ impl BeamBurinApp {
             .map(|preview| preview.texture.clone())
     }
 
+    pub(super) fn invert_preview_texture(
+        &mut self,
+        ctx: &egui::Context,
+        id: &str,
+        image: &crate::objects::ImageObject,
+    ) -> Option<egui::TextureHandle> {
+        let current = self.invert_preview.as_ref().is_some_and(|preview| {
+            preview.object_id == id
+                && preview.settings == image.settings
+                && preview.crop == image.crop
+        });
+        if !current {
+            let bitmap =
+                crate::raster::process_object(std::path::Path::new(&image.path), image).ok()?;
+            let texture = ctx.load_texture(
+                format!("invert-preview-{id}"),
+                invert_color_image(preview_color_image(&bitmap, false)),
+                egui::TextureOptions::NEAREST,
+            );
+            self.invert_preview = Some(InvertPreview {
+                object_id: id.to_string(),
+                settings: image.settings,
+                crop: image.crop,
+                texture,
+            });
+        }
+        self.invert_preview
+            .as_ref()
+            .map(|preview| preview.texture.clone())
+    }
+
     pub(super) fn open_image_adjust(&mut self) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
             return;
