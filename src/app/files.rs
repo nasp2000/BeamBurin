@@ -77,7 +77,10 @@ impl BeamBurinApp {
             transparent: self.export_image_transparent,
             area: export_area,
         };
-        let svg_options = crate::export::SvgOptions { area: export_area };
+        let svg_options = crate::export::SvgOptions {
+            area: export_area,
+            text_as_paths: self.export_svg_text_paths,
+        };
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
         self.export_offset_origin = false;

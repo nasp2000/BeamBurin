@@ -437,8 +437,9 @@ impl BeamBurinApp {
                 if self.export_svg_selection && !has_selection {
                     self.export_svg_selection = false;
                 }
+                ui.checkbox(&mut self.export_svg_text_paths, "Text as paths");
                 ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
-                ui.weak("Visible layers only; geometry is written as paths.");
+                ui.weak("Visible layers only; curves are flattened.");
                 ui.horizontal(|ui| {
                     if ui.button("Export").clicked() {
                         start = true;

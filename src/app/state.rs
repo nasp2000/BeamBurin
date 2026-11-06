@@ -285,6 +285,7 @@ impl BeamBurinApp {
             export_image_selection: false,
             export_svg_open: false,
             export_svg_selection: false,
+            export_svg_text_paths: false,
             recover_next: false,
             pen_nodes: Vec::new(),
             pen_drag_start: None,

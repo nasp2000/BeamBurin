@@ -11,6 +11,8 @@ use super::png::Area;
 pub struct SvgOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Convert text to outline paths instead of writing `<text>` elements.
+    pub text_as_paths: bool,
 }
 
 /// Export visible document content as SVG.
@@ -80,7 +82,7 @@ pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<S
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            write_object(&mut out, object, layer.rgb(), view);
+            write_object(&mut out, object, layer.rgb(), view, options.text_as_paths);
         }
         out.push_str("  </g>\n");
     }
@@ -107,11 +109,38 @@ impl View {
     }
 }
 
-fn write_object(out: &mut String, object: &Object, layer_rgb: (u8, u8, u8), view: View) {
+fn write_object(
+    out: &mut String,
+    object: &Object,
+    layer_rgb: (u8, u8, u8),
+    view: View,
+    text_as_paths: bool,
+) {
     let style = &object.style;
     let (stroke, fill) = effective_colors(object, style, layer_rgb);
     match &object.shape {
         Shape::Text(text) => {
+            if text_as_paths {
+                if let Ok(paths) = crate::objects::text_to_paths(text) {
+                    for path in paths {
+                        let world = path.transform(&object.transform);
+                        let svg = world.transform(&Transform2 {
+                            a: 1.0,
+                            b: 0.0,
+                            c: 0.0,
+                            d: -1.0,
+                            tx: -view.x,
+                            ty: view.y + view.height,
+                        });
+                        let d = path_to_svg(&svg);
+                        if d.is_empty() {
+                            continue;
+                        }
+                        let _ = writeln!(out, "    <path d=\"{}\"/>", d);
+                    }
+                    return;
+                }
+            }
             let world = object.transform.apply(Point2::new(text.x, text.y));
             let scale = transform_scale(&object.transform);
             let anchor = match text.align {
@@ -397,6 +426,7 @@ mod tests {
                     width: 4.0,
                     height: 3.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
@@ -432,10 +462,38 @@ mod tests {
                     width: 4.0,
                     height: 3.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
         assert!(svg.contains("<text x=\"0\" y=\"3\""), "{svg}");
+    }
+
+    #[test]
+    fn text_can_be_written_as_outline_paths() {
+        let mut doc = Document::default();
+        let layer_id = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 10.0,
+                y: 10.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let plain = export_svg(&doc).unwrap();
+        assert!(plain.contains("<text"));
+        let outlined = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                area: None,
+                text_as_paths: true,
+            },
+        )
+        .unwrap();
+        assert!(!outlined.contains("<text"), "{outlined}");
+        assert!(outlined.contains("<path"), "{outlined}");
     }
 
     #[test]
@@ -461,6 +519,7 @@ mod tests {
                 width: 0.0,
                 height: 5.0,
             }),
+            text_as_paths: false,
         };
         assert!(export_svg_with_options(&doc, &empty).is_err());
     }

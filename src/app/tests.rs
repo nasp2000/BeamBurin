@@ -2497,6 +2497,14 @@ fn exporting_svg_from_the_dialog_writes_the_file() {
         harness.state().export_svg_open,
         "the SVG export options did not open"
     );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Text as paths")
+        .click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().export_svg_text_paths,
+        "the text-as-paths switch did not apply"
+    );
     harness.get_by_label("Export").click();
     harness.run();
     harness.get_by_label("Export").click();

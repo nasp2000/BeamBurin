@@ -582,6 +582,7 @@ pub struct BeamBurinApp {
     export_image_selection: bool,
     export_svg_open: bool,
     export_svg_selection: bool,
+    export_svg_text_paths: bool,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
