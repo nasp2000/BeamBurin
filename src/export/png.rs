@@ -195,7 +195,7 @@ impl Canvas {
     }
 
     fn stroke_scale(&self) -> f64 {
-        (self.scale_x + self.scale_y) / 2.0
+        f64::midpoint(self.scale_x, self.scale_y)
     }
 
     #[allow(
