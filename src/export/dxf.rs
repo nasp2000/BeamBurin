@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crate::document::{Document, Shape};
 use crate::errors::Result;
-use crate::geometry::path::Segment;
+use crate::geometry::{Point2, path::Segment};
 
 use super::paths::{flatten, fmt_num};
 use super::png::Area;
@@ -16,6 +16,8 @@ pub struct DxfOptions {
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
     pub layer_ids: Option<Vec<String>>,
+    /// Write axis-aligned ellipses as `CIRCLE`/`ELLIPSE` entities.
+    pub arcs: bool,
 }
 
 /// What the DXF export wrote and what it had to leave out (§14.2).
@@ -27,6 +29,8 @@ pub struct DxfReport {
     pub text_omitted: usize,
     /// Images that were not written.
     pub images_omitted: usize,
+    /// Ellipses written as `CIRCLE` or `ELLIPSE` entities.
+    pub arcs_written: usize,
     /// Paths that contained curves and were flattened.
     pub curves_flattened: usize,
     /// Filled paths written as outlines only.
@@ -81,6 +85,29 @@ pub fn export_dxf_with_report_options(
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
+            if options.arcs {
+                if let Shape::Ellipse { rx, ry } = &object.shape {
+                    if let Some(curve) = dxf_curve(object, *rx, *ry) {
+                        if object.style.fill.is_some() {
+                            report.fills_outlined += 1;
+                        }
+                        write_curve(
+                            &mut out,
+                            curve,
+                            layer.name.as_str(),
+                            (red, green, blue),
+                            area,
+                        );
+                        report.arcs_written += 1;
+                        report.entities += 1;
+                        continue;
+                    }
+                    report.warnings.push(format!(
+                        "ellipse '{}' has a rotated or skewed transform and was flattened",
+                        object.name
+                    ));
+                }
+            }
             let paths = match &object.shape {
                 Shape::Text(text) => {
                     if !options.text_as_paths {
@@ -165,6 +192,94 @@ fn true_colour(red: u8, green: u8, blue: u8) -> u32 {
     (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
 }
 
+/// A DXF curve entity derived from an axis-aligned ellipse object.
+#[derive(Debug, Clone, Copy)]
+enum DxfCurve {
+    Circle {
+        center: Point2,
+        radius: f64,
+    },
+    Ellipse {
+        center: Point2,
+        major: Point2,
+        ratio: f64,
+    },
+}
+
+/// Convert an ellipse with an axis-aligned transform, or return `None`.
+fn dxf_curve(object: &crate::document::Object, rx: f64, ry: f64) -> Option<DxfCurve> {
+    let transform = object.transform;
+    if transform.b.abs() > 1e-9 || transform.c.abs() > 1e-9 {
+        return None;
+    }
+    let scale_x = transform.a.abs();
+    let scale_y = transform.d.abs();
+    if scale_x <= 1e-12 || scale_y <= 1e-12 {
+        return None;
+    }
+    let center = transform.apply(Point2::new(0.0, 0.0));
+    let rx = rx.abs() * scale_x;
+    let ry = ry.abs() * scale_y;
+    if rx <= 1e-12 || ry <= 1e-12 {
+        return None;
+    }
+    let largest = rx.max(ry);
+    if (rx - ry).abs() <= largest * 1e-9 {
+        return Some(DxfCurve::Circle { center, radius: rx });
+    }
+    if rx >= ry {
+        Some(DxfCurve::Ellipse {
+            center,
+            major: Point2::new(rx, 0.0),
+            ratio: (ry / rx).clamp(0.0, 1.0),
+        })
+    } else {
+        Some(DxfCurve::Ellipse {
+            center,
+            major: Point2::new(0.0, ry),
+            ratio: (rx / ry).clamp(0.0, 1.0),
+        })
+    }
+}
+
+fn write_curve(
+    out: &mut String,
+    curve: DxfCurve,
+    layer_name: &str,
+    (red, green, blue): (u8, u8, u8),
+    area: Area,
+) {
+    match curve {
+        DxfCurve::Circle { center, radius } => {
+            out.push_str("0\nCIRCLE\n");
+            let _ = writeln!(out, "8\n{layer_name}");
+            let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
+            let _ = writeln!(out, "10\n{}", fmt_num(center.x - area.x));
+            let _ = writeln!(out, "20\n{}", fmt_num(center.y - area.y));
+            let _ = writeln!(out, "30\n0");
+            let _ = writeln!(out, "40\n{}", fmt_num(radius));
+        }
+        DxfCurve::Ellipse {
+            center,
+            major,
+            ratio,
+        } => {
+            out.push_str("0\nELLIPSE\n");
+            let _ = writeln!(out, "8\n{layer_name}");
+            let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
+            let _ = writeln!(out, "10\n{}", fmt_num(center.x - area.x));
+            let _ = writeln!(out, "20\n{}", fmt_num(center.y - area.y));
+            let _ = writeln!(out, "30\n0");
+            let _ = writeln!(out, "11\n{}", fmt_num(major.x));
+            let _ = writeln!(out, "21\n{}", fmt_num(major.y));
+            let _ = writeln!(out, "31\n0");
+            let _ = writeln!(out, "40\n{}", fmt_num(ratio));
+            let _ = writeln!(out, "41\n0");
+            let _ = writeln!(out, "42\n{}", fmt_num(std::f64::consts::TAU));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +359,7 @@ mod tests {
                 }),
                 text_as_paths: false,
                 layer_ids: None,
+                arcs: false,
             },
         )
         .unwrap();
@@ -270,6 +386,7 @@ mod tests {
                 area: None,
                 text_as_paths: false,
                 layer_ids: None,
+                arcs: false,
             },
         )
         .unwrap();
@@ -281,12 +398,81 @@ mod tests {
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,
+                arcs: false,
             },
         )
         .unwrap();
         assert!(outlined.contains("LWPOLYLINE"), "{outlined}");
         assert_eq!(report.text_omitted, 0);
         assert!(report.entities > 0);
+    }
+
+    #[test]
+    fn ellipses_can_be_written_as_curve_entities() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id.clone(),
+            Shape::Ellipse { rx: 5.0, ry: 5.0 },
+        ));
+        let text = export_dxf_with_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: None,
+                arcs: true,
+            },
+        )
+        .unwrap();
+        assert!(text.contains("0\nCIRCLE\n"), "{text}");
+        assert!(text.contains("40\n5\n"), "{text}");
+        assert!(!text.contains("LWPOLYLINE"), "{text}");
+
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(layer_id, Shape::Ellipse { rx: 5.0, ry: 2.0 }));
+        let text = export_dxf_with_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: None,
+                arcs: true,
+            },
+        )
+        .unwrap();
+        assert!(text.contains("0\nELLIPSE\n"), "{text}");
+        assert!(text.contains("40\n0.4\n"), "{text}");
+    }
+
+    #[test]
+    fn a_rotated_ellipse_falls_back_to_a_polyline() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        let object = Object::new(layer_id, Shape::Ellipse { rx: 5.0, ry: 2.0 })
+            .with_transform(Transform2::rotate(30.0));
+        document.add_object(object);
+        let (text, report) = export_dxf_with_report_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: false,
+                layer_ids: None,
+                arcs: true,
+            },
+        )
+        .unwrap();
+        assert!(text.contains("LWPOLYLINE"), "{text}");
+        assert_eq!(report.arcs_written, 0);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("rotated or skewed")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
@@ -316,6 +502,7 @@ mod tests {
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![second]),
+                arcs: false,
             },
         )
         .unwrap();

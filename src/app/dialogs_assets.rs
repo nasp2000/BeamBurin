@@ -499,6 +499,7 @@ impl BeamBurinApp {
                     self.export_dxf_selection = false;
                 }
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
+                ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves");
                 ui.label("Layers");
                 layer_picker(
                     ui,

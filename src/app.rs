@@ -594,6 +594,7 @@ pub struct BeamBurinApp {
     export_dxf_open: bool,
     export_dxf_selection: bool,
     export_dxf_text_paths: bool,
+    export_dxf_arcs: bool,
     export_dxf_layer_ids: Vec<String>,
     export_vector_open: bool,
     export_vector_mode: FileMode,
@@ -621,6 +622,7 @@ fn run_export(
     svg_options: &crate::export::SvgOptions,
     vector_area: Option<crate::export::Area>,
     dxf_text_as_paths: bool,
+    dxf_arcs: bool,
     vector_text_as_paths: bool,
     layer_ids: Vec<String>,
     gcode: crate::gcode::GCodeOptions,
@@ -665,6 +667,7 @@ fn run_export(
                     area: vector_area,
                     text_as_paths: dxf_text_as_paths,
                     layer_ids: layer_ids.clone(),
+                    arcs: dxf_arcs,
                 },
             )
             .map_err(|error| error.to_string())?;
