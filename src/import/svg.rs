@@ -19,8 +19,23 @@ use crate::errors::{BeamError, Result};
 use crate::geometry::{CubicBezier, Path, Point2, Transform2, path::Segment};
 use crate::objects::{ImageObject, TextObject};
 
-const DPI: f64 = 96.0;
-const PX_TO_MM: f64 = 25.4 / DPI;
+/// CSS pixels per inch used when the file gives no unit.
+const DEFAULT_DPI: f64 = 96.0;
+
+/// Ways an SVG generator states its own pixel density.
+///
+/// Some editors write unitless `width`/`height` values at 72 dpi; SVG itself
+/// assumes 96. The source metadata is enough to pick the right one without
+/// asking the user.
+fn detect_dpi(src: &str) -> f64 {
+    let head: String = src.chars().take(4096).collect();
+    let head = head.to_ascii_lowercase();
+    if head.contains("adobe illustrator") {
+        72.0
+    } else {
+        DEFAULT_DPI
+    }
+}
 
 /// Deepest element nesting accepted in an SVG document.
 ///
@@ -54,6 +69,7 @@ pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Re
         ));
     }
 
+    let dpi = detect_dpi(src);
     let mut warnings = Vec::new();
     resolve_gradient_paints(&mut root, &mut warnings);
     let mut doc = Document::default();
@@ -62,11 +78,11 @@ pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Re
     let width = root
         .attr("width")
         .and_then(parse_length)
-        .and_then(Length::to_mm);
+        .and_then(|length| length.to_mm(dpi));
     let height = root
         .attr("height")
         .and_then(parse_length)
-        .and_then(Length::to_mm);
+        .and_then(|length| length.to_mm(dpi));
     let view_box = root.attr("viewBox").and_then(parse_view_box);
 
     if let Some((_, _, vb_width, vb_height)) = view_box {
@@ -83,7 +99,7 @@ pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Re
         doc.height_mm = 200.0;
     }
 
-    let root_transform = root_transform(&root, view_box, doc.width_mm, doc.height_mm);
+    let root_transform = root_transform(&root, view_box, doc.width_mm, doc.height_mm, dpi);
     let root_style = SvgStyle::from_node(&root);
     let layer_id = doc.layers[0].id.clone();
     let mut ids = HashMap::new();
@@ -231,6 +247,7 @@ fn root_transform(
     view_box: Option<(f64, f64, f64, f64)>,
     width_mm: f64,
     height_mm: f64,
+    dpi: f64,
 ) -> Transform2 {
     if let Some((vb_x, vb_y, vb_width, vb_height)) = view_box {
         let sx = width_mm / vb_width;
@@ -261,11 +278,12 @@ fn root_transform(
             ty: height_mm - offset_y + vb_y * scale,
         };
     }
+    let px_to_mm = 25.4 / dpi;
     Transform2 {
-        a: PX_TO_MM,
+        a: px_to_mm,
         b: 0.0,
         c: 0.0,
-        d: -PX_TO_MM,
+        d: -px_to_mm,
         tx: 0.0,
         ty: height_mm,
     }
@@ -953,9 +971,9 @@ impl Length {
         self.value
     }
 
-    fn to_mm(self) -> Option<f64> {
+    fn to_mm(self, dpi: f64) -> Option<f64> {
         match self.unit {
-            LengthUnit::None | LengthUnit::Px => Some(self.value * PX_TO_MM),
+            LengthUnit::None | LengthUnit::Px => Some(self.value * 25.4 / dpi),
             LengthUnit::Mm => Some(self.value),
             LengthUnit::Cm => Some(self.value * 10.0),
             LengthUnit::In => Some(self.value * 25.4),
@@ -1285,10 +1303,29 @@ mod tests {
 
     #[test]
     fn length_units() {
-        assert!((parse_length("25.4mm").unwrap().to_mm().unwrap() - 25.4).abs() < 1e-9);
-        assert!((parse_length("1in").unwrap().to_mm().unwrap() - 25.4).abs() < 1e-9);
-        assert!((parse_length("96px").unwrap().to_mm().unwrap() - 25.4).abs() < 1e-9);
-        assert!(parse_length("50%").unwrap().to_mm().is_none());
+        assert!((parse_length("25.4mm").unwrap().to_mm(DEFAULT_DPI).unwrap() - 25.4).abs() < 1e-9);
+        assert!((parse_length("1in").unwrap().to_mm(DEFAULT_DPI).unwrap() - 25.4).abs() < 1e-9);
+        assert!((parse_length("96px").unwrap().to_mm(DEFAULT_DPI).unwrap() - 25.4).abs() < 1e-9);
+        assert!(parse_length("50%").unwrap().to_mm(DEFAULT_DPI).is_none());
+    }
+
+    #[test]
+    fn illustrator_metadata_uses_72_dpi_for_unitless_lengths() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="72" height="36" viewBox="0 0 72 36"><!-- Generator: Adobe Illustrator 29.0.0 --><rect x="0" y="0" width="36" height="18"/></svg>"#;
+        let doc = import_svg(svg).unwrap();
+        assert!((doc.width_mm - 25.4).abs() < 1e-6, "{}", doc.width_mm);
+        assert!((doc.height_mm - 12.7).abs() < 1e-6, "{}", doc.height_mm);
+        let (min, max) = doc.objects[0].bounds().unwrap();
+        assert!((max.x - min.x - 12.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn unitless_lengths_default_to_96_dpi() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="10" height="10"/></svg>"#;
+        let doc = import_svg(svg).unwrap();
+        assert!((doc.width_mm - 25.4).abs() < 1e-6, "{}", doc.width_mm);
+        let (min, max) = doc.objects[0].bounds().unwrap();
+        assert!((max.x - min.x - 2.645_833).abs() < 1e-6);
     }
 
     #[test]
