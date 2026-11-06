@@ -647,7 +647,7 @@ mod tests {
         };
         let (pixels, width, _height, _warnings) = render_rgba(&document, &options).unwrap();
         assert_eq!(pixels[3], 0, "the left edge should be blank");
-        let first_red = 2 * width as usize * 4;
+        let first_red = (width as usize + 2) * 4;
         assert_eq!(&pixels[first_red..first_red + 4], &[255, 0, 0, 255]);
     }
 
