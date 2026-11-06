@@ -1847,7 +1847,7 @@ fn the_draw_menu_inserts_a_barcode() {
         !harness.state().barcode_open,
         "the barcode window stayed open"
     );
-    assert!(harness.state().editor.document.operations.len() >= 1);
+    assert!(!harness.state().editor.document.operations.is_empty());
 }
 
 #[test]
