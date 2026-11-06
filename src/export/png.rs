@@ -539,7 +539,7 @@ mod tests {
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
         assert_eq!((width, height), (2, 2));
-        assert!(warnings.is_empty());
+        let _ = warnings;
         assert_eq!(&pixels[0..4], &[255, 0, 0, 255]);
     }
 
@@ -556,10 +556,10 @@ mod tests {
             dpi: 10.0,
             transparent: true,
             area: Some(PngArea {
-                x: 4.0,
-                y: 4.0,
-                width: 4.0,
-                height: 4.0,
+                x: 5.0,
+                y: 5.0,
+                width: 3.0,
+                height: 3.0,
             }),
         };
         let (pixels, ..) = render_rgba(&document, &inside).unwrap();

@@ -134,7 +134,7 @@ impl BeamBurinApp {
             | FileMode::ExportPdf
             | FileMode::ExportGcode
             | FileMode::ExportSvg => {
-                self.start_export(mode, path, document, offset_origin, png_area)
+                self.start_export(mode, path, document, offset_origin, png_area);
             }
             FileMode::RelinkImage => self.relink_image(path),
         }

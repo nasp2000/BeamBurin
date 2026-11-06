@@ -2640,7 +2640,7 @@ fn exporting_the_selection_as_an_image_crops_to_it() {
     harness.run();
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Export selection").click();
+    harness.get_by_label("Export selection ⏵").click();
     harness.run();
     harness.get_by_label("As image...").click();
     harness.run();
