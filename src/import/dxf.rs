@@ -118,10 +118,39 @@ pub fn import_dxf_report(src: &str) -> Result<DxfImport> {
     for entity in skipped {
         warnings.push(format!("unsupported DXF entity skipped: {entity}"));
     }
+    let (unit_scale, unit_name) = dxf_unit_scale(&pairs);
+    if unit_scale != 1.0 {
+        for object in &mut document.objects {
+            object.transform = Transform2::scale(unit_scale, unit_scale).compose(&object.transform);
+        }
+        warnings.push(format!(
+            "DXF units are {unit_name}; coordinates were scaled to millimetres"
+        ));
+    }
     document
         .validate()
         .map_err(|error| BeamError::InvalidInput(format!("imported DXF is invalid: {error}")))?;
     Ok(DxfImport { document, warnings })
+}
+
+/// Millimetres per drawing unit for the `$INSUNITS` header value.
+///
+/// Unitless drawings and unknown codes keep the native scale.
+fn dxf_unit_scale(pairs: &[(i32, String)]) -> (f64, &'static str) {
+    for window in pairs.windows(2) {
+        if window[0].0 == 9 && window[0].1.trim().eq_ignore_ascii_case("$INSUNITS") {
+            let code = window[1].1.trim().parse::<i32>().unwrap_or(0);
+            return match code {
+                1 => (25.4, "inches"),
+                2 => (304.8, "feet"),
+                4 => (1.0, "millimetres"),
+                5 => (10.0, "centimetres"),
+                6 => (1000.0, "metres"),
+                _ => (1.0, "unspecified"),
+            };
+        }
+    }
+    (1.0, "unspecified")
 }
 
 #[derive(Debug, Clone)]
@@ -1115,6 +1144,31 @@ mod tests {
         };
         assert!((from.x - 20.0).abs() < 1e-9 && (from.y - 30.0).abs() < 1e-9);
         assert!((to.x - 30.0).abs() < 1e-9 && (to.y - 30.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn inches_in_the_header_are_scaled_to_millimetres() {
+        let src = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n";
+        let report = import_dxf_report(src).unwrap();
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((max.x - min.x - 254.0).abs() < 1e-6, "{}", max.x - min.x);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("inches")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn millimetre_header_keeps_the_coordinates() {
+        let src = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n";
+        let report = import_dxf_report(src).unwrap();
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((max.x - min.x - 10.0).abs() < 1e-6);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     }
 
     #[test]
