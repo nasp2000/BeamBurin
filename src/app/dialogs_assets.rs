@@ -460,6 +460,97 @@ impl BeamBurinApp {
         }
     }
 
+    /// Open the PDF, EPS or HPGL options; `mode` picks the format.
+    pub(super) fn open_export_vector(&mut self, mode: FileMode, selection: bool) {
+        self.export_vector_mode = mode;
+        self.export_vector_selection = selection && !self.editor.selection.is_empty();
+        self.export_vector_open = true;
+    }
+
+    pub(super) fn export_vector_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.export_vector_open;
+        let mut start = false;
+        let mut cancel = false;
+        let mode = self.export_vector_mode;
+        let title = match mode {
+            FileMode::ExportEps => "Export EPS",
+            FileMode::ExportHpgl => "Export HPGL",
+            _ => "Export PDF",
+        };
+        let hpgl = mode == FileMode::ExportHpgl;
+        let has_selection = !self.editor.selection.is_empty();
+        let (width_mm, height_mm) = if self.export_vector_selection && has_selection {
+            self.editor.selected_bounds().map_or(
+                (
+                    self.editor.document.width_mm,
+                    self.editor.document.height_mm,
+                ),
+                |(min, max)| (max.x - min.x, max.y - min.y),
+            )
+        } else {
+            (
+                self.editor.document.width_mm,
+                self.editor.document.height_mm,
+            )
+        };
+        egui::Window::new(title)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                ui.label(if hpgl { "Origin" } else { "Area" });
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.export_vector_selection, false, "Whole page");
+                    if ui
+                        .add_enabled(
+                            has_selection,
+                            egui::RadioButton::new(
+                                self.export_vector_selection && has_selection,
+                                "Selection",
+                            ),
+                        )
+                        .clicked()
+                    {
+                        self.export_vector_selection = true;
+                    }
+                });
+                if self.export_vector_selection && !has_selection {
+                    self.export_vector_selection = false;
+                }
+                ui.checkbox(&mut self.export_vector_text_paths, "Text as paths");
+                ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
+                if hpgl {
+                    ui.weak(
+                        "Visible layers only; curves and text outlines are flattened and the region starts at 0,0.",
+                    );
+                } else {
+                    ui.weak("Visible layers only; the page is the region and curves are flattened.");
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Export").clicked() {
+                        start = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if start {
+            self.export_vector_open = false;
+            self.export_subset = self.export_vector_selection && has_selection;
+            self.open_dialog(mode);
+        } else if cancel {
+            self.export_vector_open = false;
+        } else {
+            self.export_vector_open = open;
+        }
+    }
+
     /// Open the SVG export options; `selection` preselects the crop.
     pub(super) fn open_export_svg(&mut self, selection: bool) {
         self.export_svg_selection = selection && !self.editor.selection.is_empty();

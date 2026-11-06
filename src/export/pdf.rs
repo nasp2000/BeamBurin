@@ -14,6 +14,8 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 pub struct PdfOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Convert text to outline paths instead of omitting it.
+    pub text_as_paths: bool,
 }
 
 /// Export the document as a single-page vector PDF.
@@ -53,32 +55,36 @@ pub fn export_pdf_with_options(document: &Document, options: &PdfOptions) -> Res
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            let path = object.world_path();
-            let points = flatten(&path, 16);
-            if points.len() < 2 {
+            let Some(paths) = super::object_paths(object, options.text_as_paths) else {
                 continue;
-            }
+            };
             content.push_str(&stroke);
             content.push_str("0.25 w\n");
-            let first = points[0];
-            let _ = writeln!(
-                content,
-                "{} {} m",
-                fmt_num((first.0 - area.x) / MM_PER_POINT),
-                fmt_num((first.1 - area.y) / MM_PER_POINT)
-            );
-            for point in &points[1..] {
+            for path in &paths {
+                let points = flatten(path, 16);
+                if points.len() < 2 {
+                    continue;
+                }
+                let first = points[0];
                 let _ = writeln!(
                     content,
-                    "{} {} l",
-                    fmt_num((point.0 - area.x) / MM_PER_POINT),
-                    fmt_num((point.1 - area.y) / MM_PER_POINT)
+                    "{} {} m",
+                    fmt_num((first.0 - area.x) / MM_PER_POINT),
+                    fmt_num((first.1 - area.y) / MM_PER_POINT)
                 );
+                for point in &points[1..] {
+                    let _ = writeln!(
+                        content,
+                        "{} {} l",
+                        fmt_num((point.0 - area.x) / MM_PER_POINT),
+                        fmt_num((point.1 - area.y) / MM_PER_POINT)
+                    );
+                }
+                if path.closed {
+                    content.push_str("h\n");
+                }
+                content.push_str("S\n");
             }
-            if path.closed {
-                content.push_str("h\n");
-            }
-            content.push_str("S\n");
         }
     }
 
@@ -171,6 +177,7 @@ mod tests {
                     width: 10.0,
                     height: 5.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
@@ -180,6 +187,32 @@ mod tests {
         );
         assert!(text.contains("0 0 m"), "{text}");
         assert!(text.contains("28.346457 0 l"), "{text}");
+    }
+
+    #[test]
+    fn text_can_be_written_as_outline_paths() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 10.0,
+                y: 10.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let plain = export_pdf(&document).unwrap();
+        assert!(!plain.contains(" m\n"), "{plain}");
+        let outlined = export_pdf_with_options(
+            &document,
+            &PdfOptions {
+                area: None,
+                text_as_paths: true,
+            },
+        )
+        .unwrap();
+        assert!(outlined.contains(" m\n"), "{outlined}");
     }
 
     #[test]

@@ -2577,6 +2577,12 @@ fn exporting_the_selection_as_pdf_writes_only_the_selected_object() {
     harness.run();
     harness.get_by_label("As PDF...").click();
     harness.run();
+    assert!(
+        harness.state().export_vector_open,
+        "the PDF export options did not open"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
     harness.get_by_label("Export").click();
     harness.step();
     wait_for_task(&mut harness);
@@ -2590,6 +2596,50 @@ fn exporting_the_selection_as_pdf_writes_only_the_selected_object() {
         text.matches("S\n").count(),
         1,
         "the PDF should contain only the selected rectangle"
+    );
+}
+
+#[test]
+fn exporting_text_as_pdf_paths_writes_a_stroked_path() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("pdf_text_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor.add_text(Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export PDF...").click();
+    harness.run();
+    assert!(
+        harness.state().export_vector_open,
+        "the PDF export options did not open"
+    );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Text as paths")
+        .click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().export_vector_text_paths,
+        "the text-as-paths switch did not apply"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.pdf");
+    let text = std::fs::read_to_string(&path).expect("cannot read the PDF");
+    assert!(
+        text.contains(" m\n"),
+        "the text outline was not written: {text}"
+    );
+    assert!(
+        text.contains("S\n"),
+        "the text outline was not stroked: {text}"
     );
 }
 

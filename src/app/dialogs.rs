@@ -55,6 +55,9 @@ impl BeamBurinApp {
         if self.export_dxf_open {
             self.export_dxf_window(ctx);
         }
+        if self.export_vector_open {
+            self.export_vector_window(ctx);
+        }
         if self.regmarks_open {
             self.registration_marks_window(ctx);
         }

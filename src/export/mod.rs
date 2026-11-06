@@ -19,8 +19,9 @@ pub use png::{
 };
 pub use svg::{SvgOptions, export_svg, export_svg_with_options};
 
-use crate::document::{Document, Shape};
+use crate::document::{Document, Object, Shape};
 use crate::errors::{BeamError, Result};
+use crate::geometry::Path;
 use crate::geometry::path::Segment;
 
 /// Validate an optional export region and return the rectangle to write.
@@ -69,12 +70,38 @@ pub struct VectorNotes {
     pub warnings: Vec<String>,
 }
 
+/// Paths to write for one object in a path-only vector exporter.
+///
+/// Text is outlined when `text_as_paths` is set. Text that cannot be outlined
+/// and images return `None`; the caller skips them and [`vector_notes`] says
+/// why.
+pub(crate) fn object_paths(object: &Object, text_as_paths: bool) -> Option<Vec<Path>> {
+    match &object.shape {
+        Shape::Text(text) if text_as_paths => {
+            crate::objects::text_to_paths(text).ok().map(|paths| {
+                paths
+                    .iter()
+                    .map(|path| path.transform(&object.transform))
+                    .collect()
+            })
+        }
+        Shape::Text(_) | Shape::Image(_) => None,
+        _ => Some(vec![object.world_path()]),
+    }
+}
+
 /// Describe the elements the EPS, PDF and HPGL exporters leave out.
 ///
 /// They share the same subset: visible layers, path geometry only, curves
 /// flattened. Text and images are named so an export cannot look complete when
-/// it is not.
+/// it is not. When `text_as_paths` is set, text is only reported if outlining
+/// fails.
 pub fn vector_notes(document: &Document) -> VectorNotes {
+    vector_notes_with_text(document, false)
+}
+
+/// Describe omitted elements, taking the text-as-paths setting into account.
+pub fn vector_notes_with_text(document: &Document, text_as_paths: bool) -> VectorNotes {
     let mut notes = VectorNotes::default();
     for layer in document.layers.iter().filter(|layer| layer.visible) {
         for object in document
@@ -83,12 +110,22 @@ pub fn vector_notes(document: &Document) -> VectorNotes {
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
             match &object.shape {
-                Shape::Text(_) => {
-                    notes.text_omitted += 1;
-                    notes.warnings.push(format!(
-                        "text '{}' was omitted; convert it to paths first",
-                        object.name
-                    ));
+                Shape::Text(text) => {
+                    let outlined = text_as_paths && crate::objects::text_to_paths(text).is_ok();
+                    if !outlined {
+                        notes.text_omitted += 1;
+                        if text_as_paths {
+                            notes.warnings.push(format!(
+                                "text '{}' could not be converted to paths",
+                                object.name
+                            ));
+                        } else {
+                            notes.warnings.push(format!(
+                                "text '{}' was omitted; enable text as paths first",
+                                object.name
+                            ));
+                        }
+                    }
                 }
                 Shape::Image(_) => {
                     notes.images_omitted += 1;
@@ -184,5 +221,14 @@ mod tests {
             ..document.clone()
         };
         assert_eq!(vector_notes(&hidden), VectorNotes::default());
+        let outlined = vector_notes_with_text(&document, true);
+        assert_eq!(outlined.text_omitted, 0);
+        assert_eq!(outlined.images_omitted, 1);
+        assert!(
+            outlined
+                .warnings
+                .iter()
+                .all(|warning| !warning.contains("text 'Text'"))
+        );
     }
 }

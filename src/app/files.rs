@@ -152,6 +152,7 @@ impl BeamBurinApp {
                     svg_options,
                     export_area,
                     self.export_dxf_text_paths,
+                    self.export_vector_text_paths,
                 );
             }
             FileMode::RelinkImage => self.relink_image(path),
@@ -294,6 +295,7 @@ impl BeamBurinApp {
         svg_options: crate::export::SvgOptions,
         vector_area: Option<crate::export::Area>,
         dxf_text_as_paths: bool,
+        vector_text_as_paths: bool,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -328,6 +330,7 @@ impl BeamBurinApp {
                 svg_options,
                 vector_area,
                 dxf_text_as_paths,
+                vector_text_as_paths,
                 gcode,
                 smooth_mm,
             )))

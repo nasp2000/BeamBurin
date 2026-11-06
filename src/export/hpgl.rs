@@ -14,6 +14,8 @@ const UNITS_PER_MM: f64 = 40.0;
 pub struct HpglOptions {
     /// Region whose origin becomes the plot origin; `None` keeps page zero.
     pub area: Option<Area>,
+    /// Convert text to outline paths instead of omitting it.
+    pub text_as_paths: bool,
 }
 
 /// Export the document as HPGL for a pen plotter.
@@ -48,22 +50,26 @@ pub fn export_hpgl_with_options(document: &Document, options: &HpglOptions) -> R
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            let path = object.world_path();
-            let mut points = flatten(&path, 16);
-            if path.closed && points.len() > 1 {
-                points.push(points[0]);
-            }
-            if points.len() < 2 {
+            let Some(paths) = super::object_paths(object, options.text_as_paths) else {
                 continue;
+            };
+            for path in &paths {
+                let mut points = flatten(path, 16);
+                if path.closed && points.len() > 1 {
+                    points.push(points[0]);
+                }
+                if points.len() < 2 {
+                    continue;
+                }
+                let _ = writeln!(out, "PU{};", coord(points[0], area));
+                out.push_str("PD");
+                for point in &points[1..] {
+                    out.push_str(&coord(*point, area));
+                    out.push(',');
+                }
+                out.pop();
+                out.push(';');
             }
-            let _ = writeln!(out, "PU{};", coord(points[0], area));
-            out.push_str("PD");
-            for point in &points[1..] {
-                out.push_str(&coord(*point, area));
-                out.push(',');
-            }
-            out.pop();
-            out.push(';');
         }
     }
     out.push_str("SP0;PU0,0;");
@@ -134,11 +140,38 @@ mod tests {
                     width: 10.0,
                     height: 5.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
         assert!(text.contains("PU0,0;"), "{text}");
         assert!(text.contains("PD400,0,400,200,0,200,0,0;"), "{text}");
+    }
+
+    #[test]
+    fn text_can_be_written_as_outline_paths() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 10.0,
+                y: 10.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let plain = export_hpgl(&document).unwrap();
+        assert!(!plain.contains("PD"), "{plain}");
+        let outlined = export_hpgl_with_options(
+            &document,
+            &HpglOptions {
+                area: None,
+                text_as_paths: true,
+            },
+        )
+        .unwrap();
+        assert!(outlined.contains("PD"), "{outlined}");
     }
 
     #[test]

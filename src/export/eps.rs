@@ -14,6 +14,8 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 pub struct EpsOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Convert text to outline paths instead of omitting it.
+    pub text_as_paths: bool,
 }
 
 /// Export the document as an Encapsulated PostScript file.
@@ -53,11 +55,9 @@ pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Res
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            let path = object.world_path();
-            let points = flatten(&path, 16);
-            if points.len() < 2 {
+            let Some(paths) = super::object_paths(object, options.text_as_paths) else {
                 continue;
-            }
+            };
             let _ = writeln!(
                 out,
                 "{:.3} {:.3} {:.3} setrgbcolor",
@@ -66,25 +66,31 @@ pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Res
                 f64::from(blue) / 255.0
             );
             out.push_str("0.25 setlinewidth\n");
-            let first = points[0];
-            let _ = writeln!(
-                out,
-                "newpath {} {} moveto",
-                point(first.0 - area.x),
-                point(first.1 - area.y)
-            );
-            for entry in &points[1..] {
+            for path in &paths {
+                let points = flatten(path, 16);
+                if points.len() < 2 {
+                    continue;
+                }
+                let first = points[0];
                 let _ = writeln!(
                     out,
-                    "{} {} lineto",
-                    point(entry.0 - area.x),
-                    point(entry.1 - area.y)
+                    "newpath {} {} moveto",
+                    point(first.0 - area.x),
+                    point(first.1 - area.y)
                 );
+                for entry in &points[1..] {
+                    let _ = writeln!(
+                        out,
+                        "{} {} lineto",
+                        point(entry.0 - area.x),
+                        point(entry.1 - area.y)
+                    );
+                }
+                if path.closed {
+                    out.push_str("closepath\n");
+                }
+                out.push_str("stroke\n");
             }
-            if path.closed {
-                out.push_str("closepath\n");
-            }
-            out.push_str("stroke\n");
         }
     }
     out.push_str("%%EOF\n");
@@ -143,12 +149,39 @@ mod tests {
                     width: 10.0,
                     height: 5.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
         assert!(text.contains("%%BoundingBox: 0 0 29 15"), "{text}");
         assert!(text.contains("newpath 0 0 moveto"), "{text}");
         assert!(text.contains("28.346457 0 lineto"), "{text}");
+    }
+
+    #[test]
+    fn text_can_be_written_as_outline_paths() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 10.0,
+                y: 10.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let plain = export_eps(&document).unwrap();
+        assert!(!plain.contains("moveto"), "{plain}");
+        let outlined = export_eps_with_options(
+            &document,
+            &EpsOptions {
+                area: None,
+                text_as_paths: true,
+            },
+        )
+        .unwrap();
+        assert!(outlined.contains("moveto"), "{outlined}");
     }
 
     #[test]

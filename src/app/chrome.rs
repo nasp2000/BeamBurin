@@ -257,15 +257,15 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export HPGL...").clicked() {
-                    self.open_dialog(FileMode::ExportHpgl);
+                    self.open_export_vector(FileMode::ExportHpgl, false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export EPS...").clicked() {
-                    self.open_dialog(FileMode::ExportEps);
+                    self.open_export_vector(FileMode::ExportEps, false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export PDF...").clicked() {
-                    self.open_dialog(FileMode::ExportPdf);
+                    self.open_export_vector(FileMode::ExportPdf, false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export image...").clicked() {
@@ -308,8 +308,7 @@ impl BeamBurinApp {
                             .add_enabled(enabled, icons::widget(ui, Icon::Export, label))
                             .clicked()
                         {
-                            self.export_subset = true;
-                            self.open_dialog(mode);
+                            self.open_export_vector(mode, true);
                             ui.close();
                         }
                     }

@@ -586,6 +586,10 @@ pub struct BeamBurinApp {
     export_dxf_open: bool,
     export_dxf_selection: bool,
     export_dxf_text_paths: bool,
+    export_vector_open: bool,
+    export_vector_mode: FileMode,
+    export_vector_selection: bool,
+    export_vector_text_paths: bool,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
@@ -607,6 +611,7 @@ fn run_export(
     svg_options: crate::export::SvgOptions,
     vector_area: Option<crate::export::Area>,
     dxf_text_as_paths: bool,
+    vector_text_as_paths: bool,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -656,12 +661,15 @@ fn run_export(
         FileMode::ExportEps => {
             let eps = crate::export::export_eps_with_options(
                 document,
-                &crate::export::EpsOptions { area: vector_area },
+                &crate::export::EpsOptions {
+                    area: vector_area,
+                    text_as_paths: vector_text_as_paths,
+                },
             )
             .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, eps).map_err(|error| error.to_string())?;
-            let notes = crate::export::vector_notes(document);
+            let notes = crate::export::vector_notes_with_text(document, vector_text_as_paths);
             Ok(FileReport::new("Export EPS", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
                 .with_summary("Format", "Encapsulated PostScript")
@@ -670,12 +678,15 @@ fn run_export(
         FileMode::ExportPdf => {
             let pdf = crate::export::export_pdf_with_options(
                 document,
-                &crate::export::PdfOptions { area: vector_area },
+                &crate::export::PdfOptions {
+                    area: vector_area,
+                    text_as_paths: vector_text_as_paths,
+                },
             )
             .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, pdf.as_bytes()).map_err(|error| error.to_string())?;
-            let notes = crate::export::vector_notes(document);
+            let notes = crate::export::vector_notes_with_text(document, vector_text_as_paths);
             Ok(FileReport::new("Export PDF", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
                 .with_summary("Format", "single-page vector")
@@ -684,12 +695,15 @@ fn run_export(
         FileMode::ExportHpgl => {
             let hpgl = crate::export::export_hpgl_with_options(
                 document,
-                &crate::export::HpglOptions { area: vector_area },
+                &crate::export::HpglOptions {
+                    area: vector_area,
+                    text_as_paths: vector_text_as_paths,
+                },
             )
             .map_err(|error| error.to_string())?;
             cancelled()?;
             std::fs::write(path, hpgl).map_err(|error| error.to_string())?;
-            let notes = crate::export::vector_notes(document);
+            let notes = crate::export::vector_notes_with_text(document, vector_text_as_paths);
             Ok(FileReport::new("Export HPGL", path.display().to_string())
                 .with_summary("Objects", document.objects.len().to_string())
                 .with_summary("Units", "40 per mm")
