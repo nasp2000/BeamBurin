@@ -770,7 +770,7 @@ impl BeamBurinApp {
             Action::ToolPencil => self.editor.tool = Tool::Pencil,
             Action::Import => self.open_dialog(FileMode::ImportFile),
             Action::ExportSvg => self.open_export_svg(false),
-            Action::ExportDxf => self.open_dialog(FileMode::ExportDxf),
+            Action::ExportDxf => self.open_export_dxf(false),
             Action::ExportEps => self.open_dialog(FileMode::ExportEps),
             Action::ExportPdf => self.open_dialog(FileMode::ExportPdf),
             Action::ExportImage => self.open_export_image(false),

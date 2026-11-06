@@ -253,7 +253,7 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export DXF...").clicked() {
-                    self.open_dialog(FileMode::ExportDxf);
+                    self.open_export_dxf(false);
                     ui.close();
                 }
                 if icons::button(ui, Icon::Export, "Export HPGL...").clicked() {
@@ -289,8 +289,7 @@ impl BeamBurinApp {
                         .add_enabled(enabled, icons::widget(ui, Icon::Export, "As DXF..."))
                         .clicked()
                     {
-                        self.export_subset = true;
-                        self.open_dialog(FileMode::ExportDxf);
+                        self.open_export_dxf(true);
                         ui.close();
                     }
                     if ui

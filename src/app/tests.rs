@@ -2609,6 +2609,12 @@ fn exporting_dxf_from_the_dialog_writes_the_file() {
     harness.run();
     harness.get_by_label("Export DXF...").click();
     harness.run();
+    assert!(
+        harness.state().export_dxf_open,
+        "the DXF export options did not open"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
     harness.get_by_label("Export").click();
     harness.step();
     wait_for_task(&mut harness);
@@ -2617,6 +2623,42 @@ fn exporting_dxf_from_the_dialog_writes_the_file() {
     let text = std::fs::read_to_string(&path).expect("cannot read the DXF");
     assert!(text.contains("SECTION"), "the export is not a DXF");
     assert!(text.contains("ENTITIES"), "the DXF has no entities");
+}
+
+#[test]
+fn exporting_text_as_dxf_paths_writes_polylines() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("dxf_text_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor.add_text(Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export DXF...").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Text as paths")
+        .click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().export_dxf_text_paths,
+        "the text-as-paths switch did not apply"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.dxf");
+    let text = std::fs::read_to_string(&path).expect("cannot read the DXF");
+    assert!(
+        text.contains("LWPOLYLINE"),
+        "the outlined text was not written: {text}"
+    );
 }
 
 #[test]

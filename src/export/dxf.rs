@@ -12,6 +12,8 @@ use super::png::Area;
 pub struct DxfOptions {
     /// Region whose origin becomes the drawing origin; `None` keeps page zero.
     pub area: Option<Area>,
+    /// Convert text to outline paths instead of omitting it.
+    pub text_as_paths: bool,
 }
 
 /// What the DXF export wrote and what it had to leave out (§14.2).
@@ -75,14 +77,30 @@ pub fn export_dxf_with_report_options(
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            match &object.shape {
-                Shape::Text(_) => {
-                    report.text_omitted += 1;
-                    report.warnings.push(format!(
-                        "text '{}' was omitted; convert it to paths first",
-                        object.name
-                    ));
-                    continue;
+            let paths = match &object.shape {
+                Shape::Text(text) => {
+                    if !options.text_as_paths {
+                        report.text_omitted += 1;
+                        report.warnings.push(format!(
+                            "text '{}' was omitted; enable text as paths first",
+                            object.name
+                        ));
+                        continue;
+                    }
+                    match crate::objects::text_to_paths(text) {
+                        Ok(paths) => paths
+                            .iter()
+                            .map(|path| path.transform(&object.transform))
+                            .collect(),
+                        Err(error) => {
+                            report.text_omitted += 1;
+                            report.warnings.push(format!(
+                                "text '{}' could not be converted to paths: {error}",
+                                object.name
+                            ));
+                            continue;
+                        }
+                    }
                 }
                 Shape::Image(_) => {
                     report.images_omitted += 1;
@@ -92,33 +110,34 @@ pub fn export_dxf_with_report_options(
                     ));
                     continue;
                 }
-                _ => {}
-            }
-            let path = object.world_path();
-            let points = flatten(&path, 16);
-            if points.len() < 2 {
-                continue;
-            }
-            if path
-                .segments
-                .iter()
-                .any(|segment| matches!(segment, Segment::Cubic(_)))
-            {
-                report.curves_flattened += 1;
-            }
+                _ => vec![object.world_path()],
+            };
             if object.style.fill.is_some() {
                 report.fills_outlined += 1;
             }
-            out.push_str("0\nLWPOLYLINE\n");
-            let _ = writeln!(out, "8\n{}", layer.name);
-            let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
-            let _ = writeln!(out, "90\n{}", points.len());
-            let _ = writeln!(out, "70\n{}", u32::from(path.closed));
-            for (x, y) in points {
-                let _ = writeln!(out, "10\n{}", fmt_num(x - area.x));
-                let _ = writeln!(out, "20\n{}", fmt_num(y - area.y));
+            for path in &paths {
+                let points = flatten(path, 16);
+                if points.len() < 2 {
+                    continue;
+                }
+                if path
+                    .segments
+                    .iter()
+                    .any(|segment| matches!(segment, Segment::Cubic(_)))
+                {
+                    report.curves_flattened += 1;
+                }
+                out.push_str("0\nLWPOLYLINE\n");
+                let _ = writeln!(out, "8\n{}", layer.name);
+                let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
+                let _ = writeln!(out, "90\n{}", points.len());
+                let _ = writeln!(out, "70\n{}", u32::from(path.closed));
+                for (x, y) in points {
+                    let _ = writeln!(out, "10\n{}", fmt_num(x - area.x));
+                    let _ = writeln!(out, "20\n{}", fmt_num(y - area.y));
+                }
+                report.entities += 1;
             }
-            report.entities += 1;
         }
     }
     if report.curves_flattened > 0 {
@@ -217,11 +236,48 @@ mod tests {
                     width: 10.0,
                     height: 5.0,
                 }),
+                text_as_paths: false,
             },
         )
         .unwrap();
         assert!(text.contains("10\n0\n20\n0\n"), "{text}");
         assert!(text.contains("10\n10\n20\n5\n"), "{text}");
+    }
+
+    #[test]
+    fn text_can_be_written_as_outline_paths() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "A".to_string(),
+                x: 10.0,
+                y: 10.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let (plain, plain_report) = export_dxf_with_report_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: false,
+            },
+        )
+        .unwrap();
+        assert!(!plain.contains("LWPOLYLINE"), "{plain}");
+        assert_eq!(plain_report.text_omitted, 1);
+        let (outlined, report) = export_dxf_with_report_options(
+            &document,
+            &DxfOptions {
+                area: None,
+                text_as_paths: true,
+            },
+        )
+        .unwrap();
+        assert!(outlined.contains("LWPOLYLINE"), "{outlined}");
+        assert_eq!(report.text_omitted, 0);
+        assert!(report.entities > 0);
     }
 
     #[test]

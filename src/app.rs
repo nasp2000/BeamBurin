@@ -583,6 +583,9 @@ pub struct BeamBurinApp {
     export_svg_open: bool,
     export_svg_selection: bool,
     export_svg_text_paths: bool,
+    export_dxf_open: bool,
+    export_dxf_selection: bool,
+    export_dxf_text_paths: bool,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,
     pen_drag_start: Option<Point2>,
@@ -603,6 +606,7 @@ fn run_export(
     png_options: crate::export::PngOptions,
     svg_options: crate::export::SvgOptions,
     vector_area: Option<crate::export::Area>,
+    dxf_text_as_paths: bool,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -636,7 +640,10 @@ fn run_export(
         FileMode::ExportDxf => {
             let (dxf, report) = crate::export::export_dxf_with_report_options(
                 document,
-                &crate::export::DxfOptions { area: vector_area },
+                &crate::export::DxfOptions {
+                    area: vector_area,
+                    text_as_paths: dxf_text_as_paths,
+                },
             )
             .map_err(|error| error.to_string())?;
             cancelled()?;

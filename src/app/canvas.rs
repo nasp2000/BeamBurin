@@ -583,8 +583,7 @@ impl BeamBurinApp {
                 self.open_export_svg(true);
             }
             ContextAction::ExportDxf => {
-                self.export_subset = true;
-                self.open_dialog(FileMode::ExportDxf);
+                self.open_export_dxf(true);
             }
             ContextAction::ExportGcode => {
                 self.export_subset = true;
