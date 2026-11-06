@@ -19,6 +19,17 @@ pub struct PngOptions {
     pub dpi: f64,
     /// Transparent background instead of white.
     pub transparent: bool,
+    /// Page region to render in millimetres; `None` renders the whole page.
+    pub area: Option<PngArea>,
+}
+
+/// A rectangle of the page, in millimetres from the bottom-left corner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PngArea {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl Default for PngOptions {
@@ -26,6 +37,7 @@ impl Default for PngOptions {
         Self {
             dpi: 96.0,
             transparent: false,
+            area: None,
         }
     }
 }
@@ -36,6 +48,17 @@ impl PngOptions {
             return Err(crate::errors::BeamError::InvalidInput(
                 "PNG resolution must be between 10 and 2400 dpi".to_string(),
             ));
+        }
+        if let Some(area) = self.area {
+            let finite = area.x.is_finite()
+                && area.y.is_finite()
+                && area.width.is_finite()
+                && area.height.is_finite();
+            if !finite || area.width <= 0.0 || area.height <= 0.0 {
+                return Err(crate::errors::BeamError::InvalidInput(
+                    "the PNG area must have a positive finite size".to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -61,14 +84,32 @@ struct Canvas {
     height: usize,
     pixels: Vec<u8>,
     scale: f64,
+    /// Left edge and bottom edge of the rendered region, in millimetres.
+    origin: (f64, f64),
     height_mm: f64,
 }
 
 impl Canvas {
     fn new(document: &Document, options: &PngOptions) -> Result<Self> {
         let scale = options.dpi / 25.4;
-        let width = ((document.width_mm * scale).round()).max(1.0);
-        let height = ((document.height_mm * scale).round()).max(1.0);
+        let (origin_x, origin_y, width_mm, height_mm) = match options.area {
+            Some(area) => {
+                let epsilon = 1e-6;
+                if area.x < -epsilon
+                    || area.y < -epsilon
+                    || area.x + area.width > document.width_mm + epsilon
+                    || area.y + area.height > document.height_mm + epsilon
+                {
+                    return Err(crate::errors::BeamError::InvalidInput(
+                        "the PNG area must lie inside the page".to_string(),
+                    ));
+                }
+                (area.x, area.y, area.width, area.height)
+            }
+            None => (0.0, 0.0, document.width_mm, document.height_mm),
+        };
+        let width = ((width_mm * scale).round()).max(1.0);
+        let height = ((height_mm * scale).round()).max(1.0);
         if !width.is_finite()
             || !height.is_finite()
             || width > f64::from(u32::MAX)
@@ -104,15 +145,16 @@ impl Canvas {
             height,
             pixels,
             scale,
-            height_mm: document.height_mm,
+            origin: (origin_x, origin_y),
+            height_mm: height_mm.min(document.height_mm),
         })
     }
 
     /// Document millimetres to pixel coordinates (y axis flipped).
     fn px(&self, point: Point2) -> (f64, f64) {
         (
-            point.x * self.scale,
-            (self.height_mm - point.y) * self.scale,
+            (point.x - self.origin.0) * self.scale,
+            (self.origin.1 + self.height_mm - point.y) * self.scale,
         )
     }
 
@@ -409,6 +451,7 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: false,
+            area: None,
         };
         let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
         assert_eq!((width, height), (4, 4));
@@ -423,6 +466,7 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
         assert_eq!(pixels[3], 0);
@@ -435,6 +479,7 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
         assert_eq!(pixels[3], 0);
@@ -446,6 +491,7 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            area: None,
         };
         let (pixels, ..) = render_rgba(&document, &options).unwrap();
         // The corner pixel belongs to the stroke.
@@ -458,6 +504,7 @@ mod tests {
         let options = PngOptions {
             dpi: 0.0,
             transparent: false,
+            area: None,
         };
         assert!(render_rgba(&document, &options).is_err());
     }
@@ -469,11 +516,94 @@ mod tests {
         let options = PngOptions {
             dpi: 10.0,
             transparent: true,
+            area: None,
         };
         let (pixels, width, ..) = render_rgba(&document, &options).unwrap();
         // The 10 mm rectangle shifted by 5 mm starts at about pixel 2.
         assert_eq!(pixels[(2 * width as usize) * 4 + 3], 0);
         assert_eq!(pixels[(2 * width as usize + 3) * 4 + 3], 255);
+    }
+
+    #[test]
+    fn an_area_renders_only_that_region() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            area: Some(PngArea {
+                x: 2.0,
+                y: 2.0,
+                width: 4.0,
+                height: 4.0,
+            }),
+        };
+        let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (2, 2));
+        assert!(warnings.is_empty());
+        assert_eq!(&pixels[0..4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn an_area_uses_the_region_origin_for_geometry() {
+        let mut document = document_with_rect(Some("#ff0000"), false);
+        document.objects[0].shape = Shape::Rect {
+            width: 2.0,
+            height: 2.0,
+            corner_radius: 0.0,
+        };
+        document.objects[0].transform = Transform2::translate(5.0, 5.0);
+        let inside = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            area: Some(PngArea {
+                x: 4.0,
+                y: 4.0,
+                width: 4.0,
+                height: 4.0,
+            }),
+        };
+        let (pixels, ..) = render_rgba(&document, &inside).unwrap();
+        assert_eq!(&pixels[0..4], &[255, 0, 0, 255]);
+        let outside = PngOptions {
+            dpi: 10.0,
+            transparent: true,
+            area: Some(PngArea {
+                x: 0.0,
+                y: 0.0,
+                width: 3.0,
+                height: 3.0,
+            }),
+        };
+        let (pixels, ..) = render_rgba(&document, &outside).unwrap();
+        assert_eq!(pixels[3], 0, "the region included a rectangle outside it");
+    }
+
+    #[test]
+    fn an_area_outside_the_page_is_refused() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            dpi: 10.0,
+            transparent: false,
+            area: Some(PngArea {
+                x: 8.0,
+                y: 8.0,
+                width: 4.0,
+                height: 4.0,
+            }),
+        };
+        let error = render_rgba(&document, &options).unwrap_err();
+        assert!(error.to_string().contains("inside the page"), "{error}");
+        let empty = PngOptions {
+            dpi: 10.0,
+            transparent: false,
+            area: Some(PngArea {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 4.0,
+            }),
+        };
+        assert!(render_rgba(&document, &empty).is_err());
     }
 
     #[test]

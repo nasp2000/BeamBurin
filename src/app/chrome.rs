@@ -295,6 +295,14 @@ impl BeamBurinApp {
                         ui.close();
                     }
                     if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Export, "As image..."))
+                        .clicked()
+                    {
+                        self.export_subset = true;
+                        self.open_dialog(FileMode::ExportImage);
+                        ui.close();
+                    }
+                    if ui
                         .add_enabled(enabled, icons::widget(ui, Icon::Export, "As G-code..."))
                         .clicked()
                     {

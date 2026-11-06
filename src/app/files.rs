@@ -60,6 +60,18 @@ impl BeamBurinApp {
             return;
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
+        let png_area = if selection_only {
+            self.editor
+                .selected_bounds()
+                .map(|(min, max)| crate::export::PngArea {
+                    x: min.x,
+                    y: min.y,
+                    width: (max.x - min.x).max(0.01),
+                    height: (max.y - min.y).max(0.01),
+                })
+        } else {
+            None
+        };
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
         self.export_offset_origin = false;
@@ -121,7 +133,9 @@ impl BeamBurinApp {
             | FileMode::ExportEps
             | FileMode::ExportPdf
             | FileMode::ExportGcode
-            | FileMode::ExportSvg => self.start_export(mode, path, document, offset_origin),
+            | FileMode::ExportSvg => {
+                self.start_export(mode, path, document, offset_origin, png_area)
+            }
             FileMode::RelinkImage => self.relink_image(path),
         }
     }
@@ -257,6 +271,7 @@ impl BeamBurinApp {
         path: &Path,
         document: crate::document::Document,
         offset_origin: bool,
+        png_area: Option<crate::export::PngArea>,
     ) {
         if self.task.is_some() {
             self.status = "Another operation is still running".to_string();
@@ -286,6 +301,7 @@ impl BeamBurinApp {
                 &document,
                 cancel,
                 offset_origin,
+                png_area,
                 origin,
                 gcode,
                 smooth_mm,
