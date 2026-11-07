@@ -37,12 +37,13 @@ fn sample_dxf() -> String {
 fn sample_gcode() -> String {
     let mut program = String::new();
     for index in 0..20000 {
-        program.push_str(&format!(
-            "G1 X{} Y{} S{}\n",
+        let _ = writeln!(
+            program,
+            "G1 X{} Y{} S{}",
             index % 300,
             index % 200,
             index % 1000
-        ));
+        );
     }
     program
 }
