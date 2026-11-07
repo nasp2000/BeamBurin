@@ -211,6 +211,7 @@ fn page_streams(objects: &HashMap<u32, Vec<u8>>) -> Vec<PdfStream> {
         let close = after
             .iter()
             .position(|byte| *byte == b']')
+            .filter(|close| *close > open)
             .unwrap_or(after.len());
         (open + 1, close)
     } else {
@@ -704,6 +705,14 @@ mod tests {
             content.len()
         )
         .into_bytes()
+    }
+
+    #[test]
+    fn a_reversed_contents_array_does_not_panic() {
+        let mut objects = std::collections::HashMap::new();
+        objects.insert(1, b"<< /Type /Page /Contents ] [ 2 0 R >>".to_vec());
+        let streams = super::page_streams(&objects);
+        assert!(streams.is_empty());
     }
 
     #[test]
