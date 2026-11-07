@@ -14,6 +14,7 @@ use beamburin::raster::{
 
 #[test]
 #[ignore = "large image budget; run by the scheduled corpus workflow"]
+#[allow(clippy::cast_possible_truncation)]
 fn a_multi_megabyte_photo_imports_and_previews_within_budget() {
     let path = std::env::temp_dir().join("bw_large_photo_budget.jpg");
     let _ = std::fs::remove_file(&path);

@@ -6,12 +6,14 @@
 //! parsers may reject an input or return a best-effort document, but the
 //! process must survive either way.
 
+use std::fmt::Write as _;
+
 use beamburin::import::{dxf, hpgl, pdf, svg};
 
 fn sample_svg() -> String {
     let mut path = String::from("M0 0");
     for index in 1..=5000 {
-        path.push_str(&format!(" L{index} {}", index % 37));
+        let _ = write!(path, " L{index} {}", index % 37);
     }
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><path d="{path}"/></svg>"#
@@ -21,11 +23,12 @@ fn sample_svg() -> String {
 fn sample_dxf() -> String {
     let mut entities = String::from("0\nSECTION\n2\nENTITIES\n");
     for index in 0..2000 {
-        entities.push_str(&format!(
+        let _ = write!(
+            entities,
             "0\nLINE\n10\n{index}\n20\n0\n11\n{}\n21\n{}\n",
             index + 1,
             index % 17
-        ));
+        );
     }
     entities.push_str("0\nENDSEC\n0\nEOF\n");
     entities
