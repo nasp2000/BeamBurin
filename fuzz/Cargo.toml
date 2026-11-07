@@ -1,0 +1,53 @@
+[package]
+name = "beamburin-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+beamburin = { path = ".." }
+
+[[bin]]
+name = "svg"
+path = "fuzz_targets/svg.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dxf"
+path = "fuzz_targets/dxf.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "hpgl"
+path = "fuzz_targets/hpgl.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "pdf"
+path = "fuzz_targets/pdf.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "project"
+path = "fuzz_targets/project.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "gcode"
+path = "fuzz_targets/gcode.rs"
+test = false
+doc = false
+
+[profile.release]
+debug = 1
+
+[workspace]

@@ -1,0 +1,28 @@
+name: Large corpus
+
+on:
+  schedule:
+    - cron: "41 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  large-images:
+    name: Large photo budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install a virtual display and software rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libgl1-mesa-dev libudev-dev libxcb1 libxcb-render0 libxcb-shape0 \
+            libxcb-xfixes0 libxcb-randr0
+      - name: Import and preview a multi-megabyte photo
+        run: cargo test --locked --test large_images -- --ignored --nocapture
