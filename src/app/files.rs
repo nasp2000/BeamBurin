@@ -208,6 +208,7 @@ impl BeamBurinApp {
                     vector_area,
                     self.export_dxf_text_paths,
                     self.export_dxf_arcs,
+                    self.export_dxf_unit,
                     self.export_vector_text_paths,
                     export_layer_ids,
                 );
@@ -353,6 +354,7 @@ impl BeamBurinApp {
         vector_area: Option<crate::export::Area>,
         dxf_text_as_paths: bool,
         dxf_arcs: bool,
+        dxf_unit: crate::export::DxfUnit,
         vector_text_as_paths: bool,
         layer_ids: Vec<String>,
     ) {
@@ -390,6 +392,7 @@ impl BeamBurinApp {
                 vector_area,
                 dxf_text_as_paths,
                 dxf_arcs,
+                dxf_unit,
                 vector_text_as_paths,
                 layer_ids,
                 gcode,

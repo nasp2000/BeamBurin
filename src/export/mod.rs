@@ -7,7 +7,7 @@ pub mod png;
 pub mod svg;
 
 pub use dxf::{
-    DxfOptions, DxfReport, export_dxf, export_dxf_with_options, export_dxf_with_report,
+    DxfOptions, DxfReport, DxfUnit, export_dxf, export_dxf_with_options, export_dxf_with_report,
     export_dxf_with_report_options,
 };
 pub use eps::{EpsOptions, export_eps, export_eps_with_options};

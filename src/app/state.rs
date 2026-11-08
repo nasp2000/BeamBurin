@@ -302,6 +302,7 @@ impl BeamBurinApp {
             export_dxf_selection: false,
             export_dxf_text_paths: false,
             export_dxf_arcs: false,
+            export_dxf_unit: crate::export::DxfUnit::Millimetres,
             export_dxf_layer_ids: Vec::new(),
             export_vector_open: false,
             export_vector_mode: FileMode::ExportPdf,

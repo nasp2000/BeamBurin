@@ -4082,6 +4082,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.image_export_preset_name = "Photo".to_string();
     app.export_dxf_text_paths = true;
     app.export_dxf_arcs = true;
+    app.export_dxf_unit = crate::export::DxfUnit::Inches;
     app.export_vector_margin_mm = 6.0;
     app.vector_export_preset_name = "DXF arcs".to_string();
     app.vector_export_preset_format = "dxf".to_string();
@@ -4116,6 +4117,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!(vector.text_as_paths);
     assert!(vector.arcs);
     assert!((vector.margin_mm - 6.0).abs() < f64::EPSILON);
+    assert_eq!(vector.dxf_unit, "in");
     let image = image.clone();
     let vector = vector.clone();
 
@@ -4123,6 +4125,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     state.export_image_dpi = 96.0;
     state.export_image_keep_aspect = true;
     state.export_dxf_arcs = false;
+    state.export_dxf_unit = crate::export::DxfUnit::Millimetres;
     state.export_vector_margin_mm = 0.0;
     state.apply_image_export_preset(&image);
     state.apply_vector_export_preset(&vector);
@@ -4132,6 +4135,11 @@ fn the_export_presets_window_saves_image_and_vector_options() {
         "the preset aspect link was not applied"
     );
     assert!(state.export_dxf_arcs, "the vector preset was not applied");
+    assert_eq!(
+        state.export_dxf_unit,
+        crate::export::DxfUnit::Inches,
+        "the preset unit was not applied"
+    );
     assert!(
         (state.export_vector_margin_mm - 6.0).abs() < f64::EPSILON,
         "the preset margin was not applied"

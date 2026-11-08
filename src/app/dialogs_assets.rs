@@ -499,6 +499,8 @@ impl BeamBurinApp {
             "dxf" => {
                 self.export_dxf_text_paths = preset.text_as_paths;
                 self.export_dxf_arcs = preset.arcs;
+                self.export_dxf_unit =
+                    crate::export::DxfUnit::from_id(&preset.dxf_unit).unwrap_or_default();
             }
             _ => self.export_vector_text_paths = preset.text_as_paths,
         }
@@ -557,6 +559,19 @@ impl BeamBurinApp {
                 );
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
                 ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves");
+                ui.horizontal(|ui| {
+                    ui.label("Units");
+                    egui::ComboBox::from_id_salt("dxf_export_unit")
+                        .selected_text(self.export_dxf_unit.label())
+                        .show_ui(ui, |ui| {
+                            for unit in [
+                                crate::export::DxfUnit::Millimetres,
+                                crate::export::DxfUnit::Inches,
+                            ] {
+                                ui.selectable_value(&mut self.export_dxf_unit, unit, unit.label());
+                            }
+                        });
+                });
                 ui.label("Layers");
                 layer_picker(
                     ui,
@@ -1090,6 +1105,7 @@ impl BeamBurinApp {
                 text_as_paths,
                 arcs,
                 margin_mm: self.export_vector_margin_mm,
+                dxf_unit: self.export_dxf_unit.id().to_string(),
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {

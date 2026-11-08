@@ -529,6 +529,13 @@ pub struct VectorExportPreset {
     /// Blank space kept around the exported region, in millimetres.
     #[serde(default)]
     pub margin_mm: f64,
+    /// DXF drawing unit; `mm` or `in`.
+    #[serde(default = "default_dxf_unit")]
+    pub dxf_unit: String,
+}
+
+fn default_dxf_unit() -> String {
+    "mm".to_string()
 }
 
 impl VectorExportPreset {
@@ -544,6 +551,9 @@ impl VectorExportPreset {
         }
         if !self.margin_mm.is_finite() || !(0.0..=100.0).contains(&self.margin_mm) {
             return Err("vector export margin must be between 0 and 100 mm".to_string());
+        }
+        if !matches!(self.dxf_unit.as_str(), "mm" | "in") {
+            return Err(format!("unknown DXF unit: {}", self.dxf_unit));
         }
         Ok(())
     }
@@ -1133,6 +1143,7 @@ mod tests {
             text_as_paths: true,
             arcs: true,
             margin_mm: 0.0,
+            dxf_unit: "mm".to_string(),
         }
     }
 
@@ -1163,6 +1174,9 @@ mod tests {
         bad.margin_mm = -1.0;
         assert!(presets.upsert(bad.clone()).is_err());
         bad.margin_mm = 5.0;
+        bad.dxf_unit = "furlong".to_string();
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.dxf_unit = "in".to_string();
         assert!(presets.upsert(bad).is_ok());
 
         let mut duplicate = VectorExportPresetPrefs {

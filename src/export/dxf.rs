@@ -7,6 +7,54 @@ use crate::geometry::{Point2, path::Segment};
 use super::paths::{flatten, fmt_num};
 use super::png::Area;
 
+/// Unit written in the DXF header and applied to every coordinate.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DxfUnit {
+    #[default]
+    Millimetres,
+    Inches,
+}
+
+impl DxfUnit {
+    pub fn label(self) -> &'static str {
+        match self {
+            DxfUnit::Millimetres => "Millimetres",
+            DxfUnit::Inches => "Inches",
+        }
+    }
+
+    /// Stable identifier used by the export presets.
+    pub fn id(self) -> &'static str {
+        match self {
+            DxfUnit::Millimetres => "mm",
+            DxfUnit::Inches => "in",
+        }
+    }
+
+    pub fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "mm" => Some(DxfUnit::Millimetres),
+            "in" => Some(DxfUnit::Inches),
+            _ => None,
+        }
+    }
+
+    /// Drawing units per millimetre.
+    fn scale(self) -> f64 {
+        match self {
+            DxfUnit::Millimetres => 1.0,
+            DxfUnit::Inches => 1.0 / 25.4,
+        }
+    }
+
+    fn insunits(self) -> u32 {
+        match self {
+            DxfUnit::Millimetres => 4,
+            DxfUnit::Inches => 1,
+        }
+    }
+}
+
 /// DXF output settings (§14.2).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DxfOptions {
@@ -18,6 +66,8 @@ pub struct DxfOptions {
     pub layer_ids: Option<Vec<String>>,
     /// Write axis-aligned ellipses as `CIRCLE`/`ELLIPSE` entities.
     pub arcs: bool,
+    /// Drawing unit used for the header and every coordinate.
+    pub unit: DxfUnit,
 }
 
 /// What the DXF export wrote and what it had to leave out (§14.2).
@@ -69,10 +119,16 @@ pub fn export_dxf_with_report_options(
     options: &DxfOptions,
 ) -> Result<(String, DxfReport)> {
     let area = super::export_area(document, options.area, "DXF")?;
+    let scale = options.unit.scale();
     let mut out = String::new();
     let mut report = DxfReport::default();
-    // Declare millimetres so readers do not have to guess the drawing unit.
-    out.push_str("0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n");
+    // Declare the unit so readers do not have to guess it.
+    let _ = writeln!(
+        out,
+        "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n{}",
+        options.unit.insunits()
+    );
+    out.push_str("0\nENDSEC\n");
     out.push_str("0\nSECTION\n2\nENTITIES\n");
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -98,6 +154,7 @@ pub fn export_dxf_with_report_options(
                             layer.name.as_str(),
                             (red, green, blue),
                             area,
+                            scale,
                         );
                         report.arcs_written += 1;
                         report.entities += 1;
@@ -165,8 +222,8 @@ pub fn export_dxf_with_report_options(
                 let _ = writeln!(out, "90\n{}", points.len());
                 let _ = writeln!(out, "70\n{}", u32::from(path.closed));
                 for (x, y) in points {
-                    let _ = writeln!(out, "10\n{}", fmt_num(x - area.x));
-                    let _ = writeln!(out, "20\n{}", fmt_num(y - area.y));
+                    let _ = writeln!(out, "10\n{}", fmt_num((x - area.x) * scale));
+                    let _ = writeln!(out, "20\n{}", fmt_num((y - area.y) * scale));
                 }
                 report.entities += 1;
             }
@@ -249,16 +306,17 @@ fn write_curve(
     layer_name: &str,
     (red, green, blue): (u8, u8, u8),
     area: Area,
+    scale: f64,
 ) {
     match curve {
         DxfCurve::Circle { center, radius } => {
             out.push_str("0\nCIRCLE\n");
             let _ = writeln!(out, "8\n{layer_name}");
             let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
-            let _ = writeln!(out, "10\n{}", fmt_num(center.x - area.x));
-            let _ = writeln!(out, "20\n{}", fmt_num(center.y - area.y));
+            let _ = writeln!(out, "10\n{}", fmt_num((center.x - area.x) * scale));
+            let _ = writeln!(out, "20\n{}", fmt_num((center.y - area.y) * scale));
             let _ = writeln!(out, "30\n0");
-            let _ = writeln!(out, "40\n{}", fmt_num(radius));
+            let _ = writeln!(out, "40\n{}", fmt_num(radius * scale));
         }
         DxfCurve::Ellipse {
             center,
@@ -268,11 +326,11 @@ fn write_curve(
             out.push_str("0\nELLIPSE\n");
             let _ = writeln!(out, "8\n{layer_name}");
             let _ = writeln!(out, "62\n{}", true_colour(red, green, blue));
-            let _ = writeln!(out, "10\n{}", fmt_num(center.x - area.x));
-            let _ = writeln!(out, "20\n{}", fmt_num(center.y - area.y));
+            let _ = writeln!(out, "10\n{}", fmt_num((center.x - area.x) * scale));
+            let _ = writeln!(out, "20\n{}", fmt_num((center.y - area.y) * scale));
             let _ = writeln!(out, "30\n0");
-            let _ = writeln!(out, "11\n{}", fmt_num(major.x));
-            let _ = writeln!(out, "21\n{}", fmt_num(major.y));
+            let _ = writeln!(out, "11\n{}", fmt_num(major.x * scale));
+            let _ = writeln!(out, "21\n{}", fmt_num(major.y * scale));
             let _ = writeln!(out, "31\n0");
             let _ = writeln!(out, "40\n{}", fmt_num(ratio));
             let _ = writeln!(out, "41\n0");
@@ -336,6 +394,32 @@ mod tests {
     }
 
     #[test]
+    fn the_unit_is_declared_and_scales_every_coordinate() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Rect {
+                width: 25.4,
+                height: 25.4,
+                corner_radius: 0.0,
+            },
+        ));
+        let millimetres = export_dxf(&document).unwrap();
+        assert!(millimetres.contains("$INSUNITS\n70\n4\n"), "{millimetres}");
+        let inches = export_dxf_with_options(
+            &document,
+            &DxfOptions {
+                unit: DxfUnit::Inches,
+                ..DxfOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(inches.contains("$INSUNITS\n70\n1\n"), "{inches}");
+        assert!(inches.contains("10\n1\n20\n1\n"), "{inches}");
+    }
+
+    #[test]
     fn an_area_moves_the_drawing_to_the_origin() {
         let mut document = Document::default();
         let layer_id = document.layers[0].id.clone();
@@ -361,6 +445,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: None,
                 arcs: false,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -388,6 +473,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: None,
                 arcs: false,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -400,6 +486,7 @@ mod tests {
                 text_as_paths: true,
                 layer_ids: None,
                 arcs: false,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -423,6 +510,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: None,
                 arcs: true,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -440,6 +528,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: None,
                 arcs: true,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -461,6 +550,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: None,
                 arcs: true,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
@@ -504,6 +594,7 @@ mod tests {
                 text_as_paths: false,
                 layer_ids: Some(vec![second]),
                 arcs: false,
+                unit: DxfUnit::Millimetres,
             },
         )
         .unwrap();
