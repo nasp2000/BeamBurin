@@ -307,6 +307,7 @@ impl BeamBurinApp {
             export_vector_mode: FileMode::ExportPdf,
             export_vector_selection: false,
             export_vector_text_paths: false,
+            export_vector_margin_mm: 0.0,
             export_vector_layer_ids: Vec::new(),
             recover_next: false,
             pen_nodes: Vec::new(),

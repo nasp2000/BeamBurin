@@ -454,10 +454,45 @@ impl BeamBurinApp {
         self.export_image_height_px = preset.height_px;
     }
 
+    /// Region a vector export writes, including the selection margin.
+    pub(super) fn vector_export_region(
+        &self,
+        selection: bool,
+        has_selection: bool,
+    ) -> crate::export::Area {
+        use crate::export::Area;
+
+        let document = &self.editor.document;
+        let page = Area {
+            x: 0.0,
+            y: 0.0,
+            width: document.width_mm,
+            height: document.height_mm,
+        };
+        let (area, margin) = if selection && has_selection {
+            match self.editor.selected_bounds() {
+                Some((min, max)) => (
+                    Area {
+                        x: min.x,
+                        y: min.y,
+                        width: (max.x - min.x).max(0.01),
+                        height: (max.y - min.y).max(0.01),
+                    },
+                    self.export_vector_margin_mm,
+                ),
+                None => (page, 0.0),
+            }
+        } else {
+            (page, 0.0)
+        };
+        crate::export::expand_area(area, margin, document.width_mm, document.height_mm)
+    }
+
     pub(super) fn apply_vector_export_preset(
         &mut self,
         preset: &crate::config::preferences::VectorExportPreset,
     ) {
+        self.export_vector_margin_mm = preset.margin_mm;
         match preset.format.as_str() {
             "svg" => self.export_svg_text_paths = preset.text_as_paths,
             "dxf" => {
@@ -483,20 +518,8 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let (width_mm, height_mm) = if self.export_dxf_selection && has_selection {
-            self.editor.selected_bounds().map_or(
-                (
-                    self.editor.document.width_mm,
-                    self.editor.document.height_mm,
-                ),
-                |(min, max)| (max.x - min.x, max.y - min.y),
-            )
-        } else {
-            (
-                self.editor.document.width_mm,
-                self.editor.document.height_mm,
-            )
-        };
+        let region = self.vector_export_region(self.export_dxf_selection, has_selection);
+        let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new("Export DXF")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -526,6 +549,11 @@ impl BeamBurinApp {
                 if self.export_dxf_selection && !has_selection {
                     self.export_dxf_selection = false;
                 }
+                vector_margin_row(
+                    ui,
+                    self.export_dxf_selection && has_selection,
+                    &mut self.export_vector_margin_mm,
+                );
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
                 ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves");
                 ui.label("Layers");
@@ -587,20 +615,8 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let (width_mm, height_mm) = if self.export_vector_selection && has_selection {
-            self.editor.selected_bounds().map_or(
-                (
-                    self.editor.document.width_mm,
-                    self.editor.document.height_mm,
-                ),
-                |(min, max)| (max.x - min.x, max.y - min.y),
-            )
-        } else {
-            (
-                self.editor.document.width_mm,
-                self.editor.document.height_mm,
-            )
-        };
+        let region = self.vector_export_region(self.export_vector_selection, has_selection);
+        let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new(title)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -630,6 +646,11 @@ impl BeamBurinApp {
                 if self.export_vector_selection && !has_selection {
                     self.export_vector_selection = false;
                 }
+                vector_margin_row(
+                    ui,
+                    self.export_vector_selection && has_selection,
+                    &mut self.export_vector_margin_mm,
+                );
                 ui.checkbox(&mut self.export_vector_text_paths, "Text as paths");
                 ui.label("Layers");
                 layer_picker(
@@ -687,20 +708,8 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let (width_mm, height_mm) = if self.export_svg_selection && has_selection {
-            self.editor.selected_bounds().map_or(
-                (
-                    self.editor.document.width_mm,
-                    self.editor.document.height_mm,
-                ),
-                |(min, max)| (max.x - min.x, max.y - min.y),
-            )
-        } else {
-            (
-                self.editor.document.width_mm,
-                self.editor.document.height_mm,
-            )
-        };
+        let region = self.vector_export_region(self.export_svg_selection, has_selection);
+        let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new("Export SVG")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -730,6 +739,11 @@ impl BeamBurinApp {
                 if self.export_svg_selection && !has_selection {
                     self.export_svg_selection = false;
                 }
+                vector_margin_row(
+                    ui,
+                    self.export_svg_selection && has_selection,
+                    &mut self.export_vector_margin_mm,
+                );
                 ui.label("Layers");
                 layer_picker(
                     ui,
@@ -1059,6 +1073,7 @@ impl BeamBurinApp {
                 format,
                 text_as_paths,
                 arcs,
+                margin_mm: self.export_vector_margin_mm,
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {
@@ -1216,4 +1231,20 @@ impl BeamBurinApp {
         self.editor = app_editor;
         response.to_string()
     }
+}
+
+/// Vector export margin control; only meaningful for a selection export.
+fn vector_margin_row(ui: &mut egui::Ui, enabled: bool, margin: &mut f64) {
+    ui.add_enabled_ui(enabled, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Margin");
+            ui.add(
+                egui::DragValue::new(margin)
+                    .range(0.0..=100.0)
+                    .speed(0.1)
+                    .suffix(" mm"),
+            );
+            ui.weak("blank space around the selection, up to the page edge");
+        });
+    });
 }

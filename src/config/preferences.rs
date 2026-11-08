@@ -523,6 +523,9 @@ pub struct VectorExportPreset {
     pub text_as_paths: bool,
     /// Only used by DXF.
     pub arcs: bool,
+    /// Blank space kept around the exported region, in millimetres.
+    #[serde(default)]
+    pub margin_mm: f64,
 }
 
 impl VectorExportPreset {
@@ -535,6 +538,9 @@ impl VectorExportPreset {
         }
         if !matches!(self.format.as_str(), "svg" | "dxf" | "pdf" | "eps" | "hpgl") {
             return Err(format!("unknown vector format: {}", self.format));
+        }
+        if !self.margin_mm.is_finite() || !(0.0..=100.0).contains(&self.margin_mm) {
+            return Err("vector export margin must be between 0 and 100 mm".to_string());
         }
         Ok(())
     }
@@ -1115,6 +1121,7 @@ mod tests {
             format: "dxf".to_string(),
             text_as_paths: true,
             arcs: true,
+            margin_mm: 0.0,
         }
     }
 
@@ -1142,6 +1149,9 @@ mod tests {
         bad.format = "dwf".to_string();
         assert!(presets.upsert(bad.clone()).is_err());
         bad.format = "hpgl".to_string();
+        bad.margin_mm = -1.0;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.margin_mm = 5.0;
         assert!(presets.upsert(bad).is_ok());
 
         let mut duplicate = VectorExportPresetPrefs {
@@ -1150,6 +1160,13 @@ mod tests {
         assert!(duplicate.validate().is_err());
         duplicate.saved.pop();
         assert!(duplicate.validate().is_ok());
+    }
+
+    #[test]
+    fn a_vector_preset_without_a_margin_still_loads() {
+        let json = r#"{"name":"Old","format":"svg","text_as_paths":false,"arcs":false}"#;
+        let preset: VectorExportPreset = serde_json::from_str(json).unwrap();
+        assert!(preset.margin_mm.abs() < f64::EPSILON);
     }
 
     #[test]

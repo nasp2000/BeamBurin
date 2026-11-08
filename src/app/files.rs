@@ -85,6 +85,26 @@ impl BeamBurinApp {
         } else {
             None
         };
+        let vector_area = if selection_only
+            && matches!(
+                mode,
+                FileMode::ExportSvg
+                    | FileMode::ExportDxf
+                    | FileMode::ExportPdf
+                    | FileMode::ExportEps
+                    | FileMode::ExportHpgl
+            ) {
+            export_area.map(|area| {
+                crate::export::expand_area(
+                    area,
+                    self.export_vector_margin_mm,
+                    self.editor.document.width_mm,
+                    self.editor.document.height_mm,
+                )
+            })
+        } else {
+            export_area
+        };
         let png_options = crate::export::PngOptions {
             dpi: self.export_image_dpi,
             transparent: self.export_image_transparent,
@@ -100,7 +120,7 @@ impl BeamBurinApp {
             offset_y_mm: self.export_image_offset_y_mm,
         };
         let svg_options = crate::export::SvgOptions {
-            area: export_area,
+            area: vector_area,
             text_as_paths: self.export_svg_text_paths,
             layer_ids: if self.export_svg_layer_ids.is_empty() {
                 None
@@ -185,7 +205,7 @@ impl BeamBurinApp {
                     offset_origin,
                     png_options,
                     svg_options,
-                    export_area,
+                    vector_area,
                     self.export_dxf_text_paths,
                     self.export_dxf_arcs,
                     self.export_vector_text_paths,

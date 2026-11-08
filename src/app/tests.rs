@@ -2597,6 +2597,46 @@ fn exporting_the_selection_as_svg_crops_the_viewbox() {
 }
 
 #[test]
+fn exporting_the_selection_as_svg_keeps_the_margin() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("svg_margin_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let id = app.editor.document.objects[0].id.clone();
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    app.export_vector_margin_mm = 5.0;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export selection ⏵").click();
+    harness.run();
+    harness.get_by_label("As SVG...").click();
+    harness.run();
+    assert_eq!(
+        harness.state().export_vector_margin_mm,
+        5.0,
+        "the margin was not kept"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.svg");
+    let text = std::fs::read_to_string(&path).expect("cannot read the SVG");
+    assert!(
+        text.contains("width=\"30mm\" height=\"25mm\" viewBox=\"0 0 30 25\""),
+        "the margin was not applied to the selection: {text}"
+    );
+}
+
+#[test]
 fn exporting_svg_from_only_the_active_layer() {
     use egui_kittest::kittest::Queryable as _;
 
@@ -3982,6 +4022,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.image_export_preset_name = "Photo".to_string();
     app.export_dxf_text_paths = true;
     app.export_dxf_arcs = true;
+    app.export_vector_margin_mm = 6.0;
     app.vector_export_preset_name = "DXF arcs".to_string();
     app.vector_export_preset_format = "dxf".to_string();
     let mut harness = ui_harness(app);
@@ -4013,14 +4054,20 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert_eq!(vector.format, "dxf");
     assert!(vector.text_as_paths);
     assert!(vector.arcs);
+    assert!((vector.margin_mm - 6.0).abs() < f64::EPSILON);
     let image = image.clone();
     let vector = vector.clone();
 
     let state = harness.state_mut();
     state.export_image_dpi = 96.0;
     state.export_dxf_arcs = false;
+    state.export_vector_margin_mm = 0.0;
     state.apply_image_export_preset(&image);
     state.apply_vector_export_preset(&vector);
     assert!((state.export_image_dpi - 300.0).abs() < f64::EPSILON);
     assert!(state.export_dxf_arcs, "the vector preset was not applied");
+    assert!(
+        (state.export_vector_margin_mm - 6.0).abs() < f64::EPSILON,
+        "the preset margin was not applied"
+    );
 }

@@ -57,6 +57,36 @@ pub(crate) fn export_area(document: &Document, area: Option<Area>, label: &str) 
     Ok(area)
 }
 
+/// Add a margin around an export region, limited to the page.
+///
+/// Vector exports use the region as their frame: the margin becomes blank space
+/// on every side. A region that already lies outside the page is returned
+/// unchanged, so the exporter still reports its own error instead of silently
+/// framing different content. A non-finite or non-positive margin is ignored.
+pub fn expand_area(area: Area, margin_mm: f64, page_width_mm: f64, page_height_mm: f64) -> Area {
+    if !margin_mm.is_finite() || margin_mm <= 0.0 {
+        return area;
+    }
+    let epsilon = 1e-6;
+    let inside = area.x >= -epsilon
+        && area.y >= -epsilon
+        && area.x + area.width <= page_width_mm + epsilon
+        && area.y + area.height <= page_height_mm + epsilon;
+    if !inside {
+        return area;
+    }
+    let min_x = (area.x - margin_mm).max(0.0);
+    let min_y = (area.y - margin_mm).max(0.0);
+    let max_x = (area.x + area.width + margin_mm).min(page_width_mm);
+    let max_y = (area.y + area.height + margin_mm).min(page_height_mm);
+    Area {
+        x: min_x,
+        y: min_y,
+        width: (max_x - min_x).max(0.01),
+        height: (max_y - min_y).max(0.01),
+    }
+}
+
 /// What the path-only vector exporters (EPS, PDF, HPGL) cannot represent.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct VectorNotes {
@@ -164,6 +194,51 @@ pub fn vector_notes_with_text(document: &Document, text_as_paths: bool) -> Vecto
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_margin_expands_the_region_on_every_side() {
+        let area = Area {
+            x: 10.0,
+            y: 20.0,
+            width: 30.0,
+            height: 40.0,
+        };
+        let framed = expand_area(area, 5.0, 200.0, 100.0);
+        assert!((framed.x - 5.0).abs() < 1e-9);
+        assert!((framed.y - 15.0).abs() < 1e-9);
+        assert!((framed.width - 40.0).abs() < 1e-9);
+        assert!((framed.height - 50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_margin_stops_at_the_page_edge() {
+        let area = Area {
+            x: 0.0,
+            y: 0.0,
+            width: 190.0,
+            height: 95.0,
+        };
+        let framed = expand_area(area, 20.0, 200.0, 100.0);
+        assert!((framed.x).abs() < 1e-9);
+        assert!((framed.y).abs() < 1e-9);
+        assert!((framed.width - 200.0).abs() < 1e-9);
+        assert!((framed.height - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_margin_keeps_an_outside_region_for_the_exporter_to_reject() {
+        let area = Area {
+            x: 180.0,
+            y: 0.0,
+            width: 40.0,
+            height: 40.0,
+        };
+        let framed = expand_area(area, 5.0, 200.0, 100.0);
+        assert!((framed.x - area.x).abs() < 1e-9);
+        assert!((framed.width - area.width).abs() < 1e-9);
+        assert_eq!(expand_area(area, 0.0, 200.0, 100.0), Area { ..area });
+        assert_eq!(expand_area(area, f64::NAN, 200.0, 100.0), Area { ..area });
+    }
 
     #[test]
     fn vector_notes_name_text_images_and_curves() {
