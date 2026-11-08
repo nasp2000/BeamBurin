@@ -264,6 +264,8 @@ mod tests {
                 mask_tolerance: 24,
                 mask_paths: Vec::new(),
                 mask_invert: false,
+                mask_alpha: false,
+                mask_alpha_threshold: 128,
             }),
         ));
         document.add_object(crate::document::Object::new(

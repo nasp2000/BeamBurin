@@ -648,6 +648,8 @@ mod tests {
                 mask_tolerance: 24,
                 mask_paths: Vec::new(),
                 mask_invert: false,
+                mask_alpha: false,
+                mask_alpha_threshold: 128,
             }),
         ));
         let mut filled = Object::new(layer_id.clone(), Shape::Ellipse { rx: 4.0, ry: 2.0 });

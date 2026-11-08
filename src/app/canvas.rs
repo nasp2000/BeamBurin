@@ -144,7 +144,25 @@ impl BeamBurinApp {
                     }
                 }
 
-                if primary_pressed && pointer_in_canvas {
+                let mut rounded_corner = false;
+                if primary_pressed
+                    && pointer_in_canvas
+                    && let Some(radius) = self.pending_corner_radius.take()
+                {
+                    rounded_corner = true;
+                    if let Some(pos) = pointer {
+                        let point = self.doc_point(rect, pos);
+                        let tolerance = 8.0 / self.editor.canvas.zoom.max(0.01);
+                        if self.editor.round_corner_at(point, tolerance, radius) {
+                            self.status =
+                                format!("Rounded the corner with a {radius:.1} mm radius");
+                        } else {
+                            self.status =
+                                "No corner of the selected shape is near the click".to_string();
+                        }
+                    }
+                }
+                if primary_pressed && pointer_in_canvas && !rounded_corner {
                     response.request_focus();
                     if let Some(pos) = pointer {
                         let point = self.doc_point(rect, pos);
@@ -216,6 +234,26 @@ impl BeamBurinApp {
                                 self.drag = None;
                             }
                         }
+                    }
+                }
+
+                if !self.editor.is_editing_nodes()
+                    && self.editor.tool == Tool::Select
+                    && pointer_in_canvas
+                    && response.double_clicked()
+                    && let Some(pos) = pointer
+                {
+                    let point = self.doc_point(rect, pos);
+                    if let Some(id) = self.editor.object_at(point, 0.5)
+                        && self
+                            .editor
+                            .document
+                            .object(&id)
+                            .is_some_and(|object| matches!(object.shape, Shape::Text(_)))
+                    {
+                        self.editor.selection.clear();
+                        self.editor.selection.add(id);
+                        self.open_text_editor();
                     }
                 }
 
@@ -446,7 +484,7 @@ impl BeamBurinApp {
                 ContextAction::Group => count >= 2,
                 ContextAction::GroupByColour => self.editor.document.objects.len() >= 2,
                 ContextAction::EditNodes => count == 1,
-                ContextAction::TextToOutlines => text_selected,
+                ContextAction::EditText | ContextAction::TextToOutlines => text_selected,
                 ContextAction::AdjustImage
                 | ContextAction::VectorizeImage
                 | ContextAction::CenterlineImage => image_selected,
@@ -575,6 +613,7 @@ impl BeamBurinApp {
                     }
                 }
             }
+            ContextAction::EditText => self.open_text_editor(),
             ContextAction::TextToOutlines => self.apply_text_outlines(),
             ContextAction::AdjustImage => self.open_image_adjust(),
             ContextAction::VectorizeImage => self.vectorize_selected_image(),

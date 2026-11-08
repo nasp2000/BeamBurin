@@ -117,26 +117,39 @@ impl BeamBurinApp {
                     ui.checkbox(&mut self.preview_order, "Processing order on canvas");
                 });
                 ui.weak(format!("Estimated job time: {duration:.1} s"));
-                ui.separator();
-                ui.heading("G-code");
-                let mut text = if self.preview_line_numbers {
-                    crate::gcode::number_lines(&self.gcode_text)
-                } else {
-                    self.gcode_text.clone()
-                };
-                egui::ScrollArea::vertical()
-                    .max_height(260.0)
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut text)
-                                .code_editor()
-                                .desired_rows(18)
-                                .desired_width(f32::INFINITY),
-                        );
-                    });
                 if ui.button("Copy G-code").clicked() {
                     ui.ctx().copy_text(self.gcode_text.clone());
                 }
+                ui.separator();
+                egui::CollapsingHeader::new(format!(
+                    "G-code ({} lines)",
+                    self.gcode_line_count
+                ))
+                .default_open(false)
+                .show(ui, |ui| {
+                    let mut text = preview_gcode(
+                        &self.gcode_text,
+                        self.gcode_line_count,
+                        self.preview_line_numbers,
+                        GCODE_PREVIEW_LINES,
+                    );
+                    egui::ScrollArea::vertical()
+                        .max_height(260.0)
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut text)
+                                    .code_editor()
+                                    .desired_rows(18)
+                                    .desired_width(f32::INFINITY),
+                            );
+                        });
+                    if self.gcode_line_count > GCODE_PREVIEW_LINES {
+                        ui.weak(format!(
+                            "Showing the first {GCODE_PREVIEW_LINES} of {} lines; Copy G-code copies the whole job.",
+                            self.gcode_line_count
+                        ));
+                    }
+                });
             });
         self.preview_open = open;
     }
@@ -379,5 +392,27 @@ impl BeamBurinApp {
             }
             Err(error) => self.status = format!("{} failed: {error}", op.label()),
         }
+    }
+}
+
+/// Lines rendered inside the G-code preview; the full text stays available for
+/// Copy G-code and export.
+const GCODE_PREVIEW_LINES: usize = 400;
+
+/// Build the visible prefix of the G-code, optionally numbered.
+fn preview_gcode(text: &str, total_lines: usize, numbers: bool, limit: usize) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let lines = text.lines().take(limit);
+    if numbers {
+        let width = total_lines.to_string().len();
+        lines
+            .enumerate()
+            .map(|(index, line)| format!("{:>width$}  {line}", index + 1, width = width))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        lines.collect::<Vec<_>>().join("\n")
     }
 }

@@ -35,6 +35,7 @@ mod dialogs_machines;
 mod dialogs_operations;
 mod dialogs_preferences;
 mod dialogs_reports;
+mod dialogs_text;
 mod dialogs_transform;
 mod files;
 mod layers;
@@ -173,6 +174,7 @@ enum ContextAction {
     Lock,
     Unlock,
     EditNodes,
+    EditText,
     TextToOutlines,
     AdjustImage,
     VectorizeImage,
@@ -209,6 +211,7 @@ impl ContextAction {
             ContextAction::Lock => "Lock",
             ContextAction::Unlock => "Unlock",
             ContextAction::EditNodes => "Edit nodes",
+            ContextAction::EditText => "Edit text...",
             ContextAction::TextToOutlines => "Text to outlines",
             ContextAction::AdjustImage => "Adjust image...",
             ContextAction::VectorizeImage => "Vectorize image...",
@@ -243,6 +246,7 @@ impl ContextAction {
             ContextAction::Lock => Icon::Lock,
             ContextAction::Unlock => Icon::Unlock,
             ContextAction::EditNodes => Icon::Nodes,
+            ContextAction::EditText => Icon::Text,
             ContextAction::TextToOutlines => Icon::TextOutline,
             ContextAction::AdjustImage => Icon::Image,
             ContextAction::VectorizeImage => Icon::Bezier,
@@ -290,6 +294,7 @@ fn object_context_actions(
         actions.push(ContextAction::EditNodes);
     }
     if text_selected {
+        actions.push(ContextAction::EditText);
         actions.push(ContextAction::TextToOutlines);
     }
     if image_selected {
@@ -424,6 +429,9 @@ pub struct BeamBurinApp {
     invert_preview: Option<InvertPreview>,
     image_original_previews: std::collections::HashMap<String, egui::TextureHandle>,
     image_adjust: Option<String>,
+    text_editor_open: bool,
+    text_editor_object: Option<String>,
+    text_editor_draft: crate::objects::TextObject,
     image_adjust_snapshot: Option<Document>,
     image_adjust_edit: Option<crate::objects::ImageSettings>,
     image_compare: bool,
@@ -529,6 +537,7 @@ pub struct BeamBurinApp {
     position_y: f64,
     corner_radius_open: bool,
     corner_radius_value: f64,
+    pending_corner_radius: Option<f64>,
     barcode_open: bool,
     barcode_text: String,
     barcode_module_mm: f64,
@@ -553,6 +562,7 @@ pub struct BeamBurinApp {
     playback_speed: f32,
     playback_error: Option<String>,
     gcode_text: String,
+    gcode_line_count: usize,
     preview_snapshot: Option<Document>,
     preview_line_numbers: bool,
     preview_order: bool,
@@ -1046,6 +1056,8 @@ struct ImagePreview {
     mask_tolerance: u8,
     mask_paths: Vec<crate::geometry::Path>,
     mask_invert: bool,
+    mask_alpha: bool,
+    mask_alpha_threshold: u8,
     stats: crate::raster::RasterStats,
 }
 
@@ -1061,6 +1073,8 @@ struct BurnPreview {
     mask_tolerance: u8,
     mask_paths: Vec<crate::geometry::Path>,
     mask_invert: bool,
+    mask_alpha: bool,
+    mask_alpha_threshold: u8,
     texture: egui::TextureHandle,
 }
 
@@ -1073,6 +1087,8 @@ struct InvertPreview {
     mask_tolerance: u8,
     mask_paths: Vec<crate::geometry::Path>,
     mask_invert: bool,
+    mask_alpha: bool,
+    mask_alpha_threshold: u8,
     texture: egui::TextureHandle,
 }
 
@@ -1088,6 +1104,8 @@ struct ImageHistogram {
     mask_tolerance: u8,
     mask_paths: Vec<crate::geometry::Path>,
     mask_invert: bool,
+    mask_alpha: bool,
+    mask_alpha_threshold: u8,
     bins: [u64; 256],
 }
 
@@ -1126,6 +1144,8 @@ impl BeamBurinApp {
                     && preview.mask_tolerance == image.mask_tolerance
                     && preview.mask_paths == image.mask_paths
                     && preview.mask_invert == image.mask_invert
+                    && preview.mask_alpha == image.mask_alpha
+                    && preview.mask_alpha_threshold == image.mask_alpha_threshold
             })
         });
         for (id, image) in needed {
@@ -1146,6 +1166,8 @@ impl BeamBurinApp {
             let mask_tolerance = image.mask_tolerance;
             let mask_paths = image.mask_paths.clone();
             let mask_invert = image.mask_invert;
+            let mask_alpha = image.mask_alpha;
+            let mask_alpha_threshold = image.mask_alpha_threshold;
             let stats = crate::raster::RasterStats::of(&bitmap);
             let texture = ctx.load_texture(
                 format!("image-preview-{id}"),
@@ -1163,6 +1185,8 @@ impl BeamBurinApp {
                     mask_tolerance,
                     mask_paths,
                     mask_invert,
+                    mask_alpha,
+                    mask_alpha_threshold,
                     stats,
                 },
             );
@@ -1811,11 +1835,13 @@ impl BeamBurinApp {
                 self.playback_progress = self.playback_progress.min(playback.total_length);
                 self.playback = Some(playback);
                 self.playback_error = None;
+                self.gcode_line_count = text.lines().count();
                 self.gcode_text = text;
             }
             Err(error) => {
                 self.playback = None;
                 self.playback_error = Some(error.to_string());
+                self.gcode_line_count = 0;
                 self.gcode_text.clear();
             }
         }

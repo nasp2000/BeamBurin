@@ -485,6 +485,8 @@ impl BeamBurinApp {
                 && preview.mask_tolerance == image.mask_tolerance
                 && preview.mask_paths == image.mask_paths
                 && preview.mask_invert == image.mask_invert
+                && preview.mask_alpha == image.mask_alpha
+                && preview.mask_alpha_threshold == image.mask_alpha_threshold
         });
         if !current {
             let bitmap = crate::raster::process_object_preview(
@@ -506,6 +508,8 @@ impl BeamBurinApp {
                 mask_tolerance: image.mask_tolerance,
                 mask_paths: image.mask_paths.clone(),
                 mask_invert: image.mask_invert,
+                mask_alpha: image.mask_alpha,
+                mask_alpha_threshold: image.mask_alpha_threshold,
                 texture,
             });
         }
@@ -528,6 +532,8 @@ impl BeamBurinApp {
                 && preview.mask_tolerance == image.mask_tolerance
                 && preview.mask_paths == image.mask_paths
                 && preview.mask_invert == image.mask_invert
+                && preview.mask_alpha == image.mask_alpha
+                && preview.mask_alpha_threshold == image.mask_alpha_threshold
         });
         if !current {
             let bitmap = crate::raster::process_object_preview(
@@ -549,6 +555,8 @@ impl BeamBurinApp {
                 mask_tolerance: image.mask_tolerance,
                 mask_paths: image.mask_paths.clone(),
                 mask_invert: image.mask_invert,
+                mask_alpha: image.mask_alpha,
+                mask_alpha_threshold: image.mask_alpha_threshold,
                 texture,
             });
         }

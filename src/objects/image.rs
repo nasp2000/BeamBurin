@@ -320,6 +320,16 @@ pub struct ImageObject {
     /// Keep the pixels outside the vector mask instead of inside.
     #[serde(default)]
     pub mask_invert: bool,
+    /// Treat pixels below the alpha threshold as background.
+    #[serde(default)]
+    pub mask_alpha: bool,
+    /// Alpha values below this are masked, 0..=255.
+    #[serde(default = "default_alpha_threshold")]
+    pub mask_alpha_threshold: u8,
+}
+
+fn default_alpha_threshold() -> u8 {
+    128
 }
 
 fn default_mask_tolerance() -> u8 {
@@ -428,6 +438,8 @@ impl ImageObject {
             mask_tolerance: default_mask_tolerance(),
             mask_paths: Vec::new(),
             mask_invert: false,
+            mask_alpha: false,
+            mask_alpha_threshold: default_alpha_threshold(),
         }
     }
 

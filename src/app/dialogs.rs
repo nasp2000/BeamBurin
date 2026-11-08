@@ -28,6 +28,9 @@ impl BeamBurinApp {
         if self.corner_radius_open {
             self.corner_radius_window(ctx);
         }
+        if self.text_editor_open {
+            self.text_editor_window(ctx);
+        }
         if self.barcode_open {
             self.barcode_window(ctx);
         }

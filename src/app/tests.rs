@@ -222,6 +222,7 @@ fn object_context_menu_matches_the_selection() {
 
     let text = object_context_actions(1, true, false);
     assert!(text.contains(&ContextAction::EditNodes));
+    assert!(text.contains(&ContextAction::EditText));
     assert!(text.contains(&ContextAction::TextToOutlines));
     assert!(!text.contains(&ContextAction::Group));
 
@@ -3813,6 +3814,40 @@ fn the_mask_tools_apply_invert_and_clear_a_vector_mask() {
     let cleared = image(&app);
     assert!(cleared.mask_paths.is_empty(), "the mask was not cleared");
     assert!(!cleared.mask_invert);
+}
+
+#[test]
+fn the_text_editor_updates_the_object_and_undoes_once() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_text(Point2::new(10.0, 20.0))
+        .expect("the text was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.state_mut().open_text_editor();
+    harness.run();
+    harness.state_mut().text_editor_draft.content = "Hello\nworld".to_string();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    let content = |app: &BeamBurinApp| {
+        let object = app
+            .editor
+            .document
+            .object(&id)
+            .expect("the text disappeared");
+        let crate::document::Shape::Text(text) = &object.shape else {
+            panic!("the object is not text");
+        };
+        text.content.clone()
+    };
+    assert_eq!(content(harness.state()), "Hello\nworld");
+    harness.state_mut().undo();
+    assert_eq!(content(harness.state()), "Text");
 }
 
 #[test]

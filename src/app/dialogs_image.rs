@@ -628,6 +628,16 @@ impl BeamBurinApp {
                                 });
                             }
                             ui.horizontal(|ui| {
+                                ui.checkbox(&mut image.mask_alpha, "Transparent pixels");
+                                ui.add_enabled(
+                                    image.mask_alpha,
+                                    egui::DragValue::new(&mut image.mask_alpha_threshold)
+                                        .range(1..=255)
+                                        .speed(1),
+                                );
+                                ui.weak("alpha below this is background");
+                            });
+                            ui.horizontal(|ui| {
                                 ui.strong("Colour mask");
                                 ui.weak("Treat these colours as background");
                                 if !image.mask_colours.is_empty()
@@ -1149,6 +1159,8 @@ impl BeamBurinApp {
                 && cache.mask_tolerance == image.mask_tolerance
                 && cache.mask_paths == image.mask_paths
                 && cache.mask_invert == image.mask_invert
+                && cache.mask_alpha == image.mask_alpha
+                && cache.mask_alpha_threshold == image.mask_alpha_threshold
             {
                 return cache.bins;
             }
@@ -1167,6 +1179,8 @@ impl BeamBurinApp {
             mask_tolerance: image.mask_tolerance,
             mask_paths: image.mask_paths.clone(),
             mask_invert: image.mask_invert,
+            mask_alpha: image.mask_alpha,
+            mask_alpha_threshold: image.mask_alpha_threshold,
             bins,
         });
         bins

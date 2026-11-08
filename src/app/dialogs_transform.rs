@@ -57,10 +57,21 @@ impl BeamBurinApp {
                             .suffix(" mm"),
                     );
                 });
-                ui.weak("Applies to every selected rectangle, up to half the smaller side.");
+                ui.weak(
+                    "Apply rounds every corner; Pick corner applies the radius where you click next.",
+                );
                 ui.horizontal(|ui| {
                     if ui.button("Apply").clicked() {
                         apply = true;
+                    }
+                    if ui
+                        .add_enabled(self.corner_radius_value > 0.0, egui::Button::new("Pick corner"))
+                        .on_hover_text("Close this window; the next click rounds one corner")
+                        .clicked()
+                    {
+                        self.pending_corner_radius = Some(self.corner_radius_value);
+                        self.corner_radius_open = false;
+                        self.status = "Click the corner to round".to_string();
                     }
                     if ui.button("Clear corners").clicked() {
                         self.corner_radius_value = 0.0;

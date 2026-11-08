@@ -677,7 +677,7 @@ fn preview_key(
     let mask_key = format!("{:?}", image.mask_paths);
     let _ = write!(
         key,
-        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{}|{}|{max_side}",
+        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{max_side}",
         path.display(),
         image.width_px,
         image.height_px,
@@ -690,6 +690,8 @@ fn preview_key(
         image.mask_tolerance,
         mask_key,
         image.mask_invert,
+        image.mask_alpha,
+        image.mask_alpha_threshold,
     );
     key
 }
@@ -802,6 +804,7 @@ fn prepared_image(
         return Ok(PreparedImage { luma, exclude });
     }
     let picture = load_prepared_picture(path, image, max_side)?;
+    let alpha_exclude = alpha_mask_exclusion(&picture, image);
     let prepared_width = usize::try_from(picture.width()).unwrap_or(0);
     let prepared_height = usize::try_from(picture.height()).unwrap_or(0);
     let mut cache_rgb: Option<Arc<image::RgbImage>> = None;
@@ -825,7 +828,7 @@ fn prepared_image(
         luma = despeckle(&luma);
     }
     let exclude = combine_exclusions(
-        colour_exclude,
+        combine_exclusions(colour_exclude, alpha_exclude),
         vector_mask_exclusion(
             &image.mask_paths,
             image.mask_invert,
@@ -850,6 +853,22 @@ fn prepared_image(
         });
     }
     Ok(PreparedImage { luma, exclude })
+}
+
+/// Mark pixels below the alpha threshold when the source has an alpha channel.
+fn alpha_mask_exclusion(
+    picture: &image::DynamicImage,
+    image: &crate::objects::ImageObject,
+) -> Option<Vec<bool>> {
+    if !image.mask_alpha || !picture.color().has_alpha() {
+        return None;
+    }
+    let rgba = picture.to_rgba8();
+    Some(
+        rgba.pixels()
+            .map(|pixel| pixel[3] < image.mask_alpha_threshold)
+            .collect(),
+    )
 }
 
 /// Merge two exclusion buffers; a pixel is excluded if either source excludes it.
@@ -1279,6 +1298,36 @@ mod object_tests {
                 );
             }
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn an_alpha_mask_removes_transparent_pixels() {
+        let path = std::env::temp_dir().join("bw_raster_alpha_mask.png");
+        let mut picture = image::RgbaImage::new(8, 8);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = if x < 4 {
+                image::Rgba([0, 0, 255, 0])
+            } else {
+                image::Rgba([0, 0, 255, 255])
+            };
+        }
+        picture.save(&path).unwrap();
+        let mut object = ImageObject::new(path.to_string_lossy(), 8, 8, 96.0);
+        object.mask_alpha = true;
+        object.mask_alpha_threshold = 128;
+        let bitmap = process_object_preview(&path, &object, 64).unwrap();
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(bitmap.get(x, y), x >= 4, "alpha mismatch at {x},{y}");
+            }
+        }
+        object.mask_alpha = false;
+        let opaque = process_object_preview(&path, &object, 64).unwrap();
+        assert!(
+            opaque.power.iter().all(|power| *power > 0),
+            "the alpha mask leaked into the normal path"
+        );
         let _ = std::fs::remove_file(&path);
     }
 

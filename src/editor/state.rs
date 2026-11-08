@@ -2125,7 +2125,69 @@ impl EditorState {
         targets.len()
     }
 
-    /// Replace rectangles and ellipses in the selection with their path form.
+    /// Round one corner of the selected rectangle or path.
+    ///
+    /// The clicked point is in world coordinates; the nearest corner within
+    /// `tolerance` is rounded with a cubic arc and the shape becomes a path.
+    pub fn round_corner_at(&mut self, point: Point2, tolerance: f64, radius: f64) -> bool {
+        if radius <= 1e-9 || !radius.is_finite() {
+            return false;
+        }
+        let ids = self.selection.ids().to_vec();
+        for id in ids {
+            let Some(object) = self.document.object(&id) else {
+                continue;
+            };
+            if object.locked {
+                continue;
+            }
+            let Some(inverse) = object.transform.invert() else {
+                continue;
+            };
+            let scale = f64::midpoint(
+                object.transform.a.hypot(object.transform.b),
+                object.transform.c.hypot(object.transform.d),
+            )
+            .max(1e-9);
+            let local = inverse.apply(point);
+            let local_tolerance = tolerance / scale;
+            let rounded = match &object.shape {
+                Shape::Rect { width, height, .. } => {
+                    let points = [
+                        Point2::origin(),
+                        Point2::new(*width, 0.0),
+                        Point2::new(*width, *height),
+                        Point2::new(0.0, *height),
+                    ];
+                    nearest_corner(&points, local, local_tolerance)
+                        .and_then(|index| rounded_polygon_corner(&points, true, index, radius))
+                }
+                Shape::Path(path) => {
+                    let mut vertices: Vec<Point2> =
+                        path.segments.iter().map(Segment::start).collect();
+                    if !path.closed
+                        && let Some(last) = path.segments.last()
+                    {
+                        vertices.push(last.end());
+                    }
+                    nearest_corner(&vertices, local, local_tolerance)
+                        .and_then(|index| round_path_corner(path, index, radius))
+                }
+                _ => None,
+            };
+            let Some(rounded) = rounded else {
+                continue;
+            };
+            self.record_action("Corner radius");
+            if let Some(object) = self.document.object_mut(&id) {
+                object.shape = Shape::Path(rounded);
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Replace rectangles and ellipses in the selection with their path form.    /// Replace rectangles and ellipses in the selection with their path form.
     ///
     /// The transform and style stay with the object, so the drawing does not
     /// move. Paths, text and images are left alone. Returns how many objects
@@ -3716,6 +3778,197 @@ fn point_in_polygon(point: Point2, polygon: &[Point2]) -> bool {
     inside
 }
 
+/// Circle-to-cubic magic constant used for rounded corners.
+const CORNER_K: f64 = 0.552_284_749_830_793_6;
+
+/// Index of the nearest point within the tolerance, if any.
+fn nearest_corner(points: &[Point2], point: Point2, tolerance: f64) -> Option<usize> {
+    points
+        .iter()
+        .enumerate()
+        .map(|(index, corner)| (index, corner.distance(point)))
+        .filter(|(_, distance)| *distance <= tolerance)
+        .min_by(|left, right| {
+            left.1
+                .partial_cmp(&right.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(index, _)| index)
+}
+
+/// Round one line-line vertex of a path, keeping every other segment.
+fn round_path_corner(path: &Path, vertex: usize, radius: f64) -> Option<Path> {
+    let count = path.segments.len();
+    if count < 2 {
+        return None;
+    }
+    let (incoming, outgoing) = if path.closed {
+        if vertex >= count {
+            return None;
+        }
+        ((vertex + count - 1) % count, vertex)
+    } else {
+        if vertex == 0 || vertex >= count {
+            return None;
+        }
+        (vertex - 1, vertex)
+    };
+    let Segment::Line {
+        from: incoming_from,
+        ..
+    } = path.segments[incoming]
+    else {
+        return None;
+    };
+    let Segment::Line {
+        to: outgoing_to, ..
+    } = path.segments[outgoing]
+    else {
+        return None;
+    };
+    let previous = incoming_from;
+    let corner = path.segments[incoming].end();
+    let next = outgoing_to;
+    let radius = radius
+        .min(corner.distance(previous) / 2.0)
+        .min(corner.distance(next) / 2.0);
+    if radius <= 1e-9 {
+        return None;
+    }
+    let p0 = point_towards(corner, previous, radius);
+    let p3 = point_towards(corner, next, radius);
+    let p1 = p0.add(corner.sub(p0).scale(CORNER_K));
+    let p2 = p3.add(corner.sub(p3).scale(CORNER_K));
+    let arc = Segment::Cubic(crate::geometry::CubicBezier { p0, p1, p2, p3 });
+    let incoming_line = Segment::Line {
+        from: incoming_from,
+        to: p0,
+    };
+    let outgoing_line = Segment::Line {
+        from: p3,
+        to: outgoing_to,
+    };
+    let mut segments = Vec::with_capacity(count + 1);
+    if path.closed {
+        for step in 0..count {
+            let index = (incoming + step) % count;
+            if step == 0 {
+                segments.push(incoming_line);
+                segments.push(arc);
+                segments.push(outgoing_line);
+            } else if index != outgoing {
+                segments.push(path.segments[index]);
+            }
+        }
+    } else {
+        segments.extend_from_slice(&path.segments[..incoming]);
+        segments.push(incoming_line);
+        segments.push(arc);
+        segments.push(outgoing_line);
+        segments.extend_from_slice(&path.segments[outgoing + 1..]);
+    }
+    let mut rounded = Path::new();
+    rounded.closed = path.closed;
+    rounded.segments = segments;
+    Some(rounded)
+}
+
+/// Point at `distance` from `from`, moving towards `towards`.
+fn point_towards(from: Point2, towards: Point2, distance: f64) -> Point2 {
+    let delta = towards.sub(from);
+    let length = delta.x.hypot(delta.y);
+    if length <= 1e-12 {
+        return from;
+    }
+    from.add(delta.scale(distance / length))
+}
+
+/// Build a path with one polygon corner replaced by a cubic arc.
+fn rounded_polygon_corner(
+    points: &[Point2],
+    closed: bool,
+    index: usize,
+    radius: f64,
+) -> Option<Path> {
+    let count = points.len();
+    if count < 3 || index >= count || (!closed && (index == 0 || index + 1 == count)) {
+        return None;
+    }
+    let previous = if index == 0 {
+        points[count - 1]
+    } else {
+        points[index - 1]
+    };
+    let vertex = points[index];
+    let next = if index + 1 == count {
+        points[0]
+    } else {
+        points[index + 1]
+    };
+    let radius = radius
+        .min(vertex.distance(previous) / 2.0)
+        .min(vertex.distance(next) / 2.0);
+    if radius <= 1e-9 {
+        return None;
+    }
+    let p0 = point_towards(vertex, previous, radius);
+    let p3 = point_towards(vertex, next, radius);
+    let p1 = p0.add(vertex.sub(p0).scale(CORNER_K));
+    let p2 = p3.add(vertex.sub(p3).scale(CORNER_K));
+    let mut path = Path::new();
+    path.closed = closed;
+    if closed && index == 0 {
+        let mut current = p3;
+        for point in points.iter().skip(1) {
+            path.push(Segment::Line {
+                from: current,
+                to: *point,
+            });
+            current = *point;
+        }
+        path.push(Segment::Line {
+            from: current,
+            to: p0,
+        });
+        path.push(Segment::Cubic(crate::geometry::CubicBezier {
+            p0,
+            p1,
+            p2,
+            p3,
+        }));
+        return Some(path);
+    }
+    let mut current = points[0];
+    for (position, point) in points.iter().enumerate().skip(1) {
+        if position == index {
+            path.push(Segment::Line {
+                from: current,
+                to: p0,
+            });
+            path.push(Segment::Cubic(crate::geometry::CubicBezier {
+                p0,
+                p1,
+                p2,
+                p3,
+            }));
+            current = p3;
+        } else {
+            path.push(Segment::Line {
+                from: current,
+                to: *point,
+            });
+            current = *point;
+        }
+    }
+    if closed {
+        path.push(Segment::Line {
+            from: current,
+            to: points[0],
+        });
+    }
+    Some(path)
+}
+
 #[cfg(test)]
 #[allow(clippy::assert_is_empty)]
 mod tests {
@@ -4364,6 +4617,42 @@ mod tests {
         assert!(editor.align_selection(AlignMode::Top));
         let (_, max) = editor.selected_bounds().unwrap();
         assert!((max.y - editor.document.height_mm).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rounding_one_corner_keeps_the_others_sharp() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        assert!(editor.round_corner_at(Point2::new(0.0, 0.0), 0.5, 2.0));
+        let object = editor.document.object(&id).unwrap();
+        let crate::document::Shape::Path(path) = &object.shape else {
+            panic!("the rectangle did not become a path");
+        };
+        assert_eq!(
+            path.segments
+                .iter()
+                .filter(|segment| matches!(segment, Segment::Cubic(_)))
+                .count(),
+            1
+        );
+        let (min, max) = object.bounds().unwrap();
+        assert!(min.x.abs() < 1e-9 && min.y.abs() < 1e-9);
+        assert!((max.x - 10.0).abs() < 1e-9 && (max.y - 10.0).abs() < 1e-9);
+        assert!(editor.round_corner_at(Point2::new(10.0, 10.0), 0.5, 3.0));
+        let object = editor.document.object(&id).unwrap();
+        let crate::document::Shape::Path(path) = &object.shape else {
+            panic!("the object is not a path");
+        };
+        assert_eq!(
+            path.segments
+                .iter()
+                .filter(|segment| matches!(segment, Segment::Cubic(_)))
+                .count(),
+            2
+        );
+        assert!(!editor.round_corner_at(Point2::new(50.0, 50.0), 0.5, 2.0));
     }
 
     #[test]
