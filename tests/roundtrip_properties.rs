@@ -75,15 +75,15 @@ fn compare(left: &Document, right: &Document, label: &str) {
         "{label}: object count"
     );
     for (index, (a, b)) in left.objects.iter().zip(&right.objects).enumerate() {
-        let (a_min, a_max) = a.bounds().expect("left bounds");
-        let (b_min, b_max) = b.bounds().expect("right bounds");
+        let (a_min, a_max) = a.world_path().bounding_box().expect("left bounds");
+        let (b_min, b_max) = b.world_path().bounding_box().expect("right bounds");
         for (name, left, right) in [
             ("min x", a_min.x, b_min.x),
             ("min y", a_min.y, b_min.y),
             ("max x", a_max.x, b_max.x),
             ("max y", a_max.y, b_max.y),
         ] {
-            let tolerance = 0.5_f64.max(0.002 * left.abs().max(right.abs()));
+            let tolerance = 1e-3_f64.max(1e-6 * left.abs().max(right.abs()));
             assert!(
                 (left - right).abs() <= tolerance,
                 "{label}: object {index} {name}: {left} vs {right} (tolerance {tolerance})"
