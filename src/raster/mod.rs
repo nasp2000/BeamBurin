@@ -1,3 +1,6 @@
+use std::fmt::Write as _;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use crate::errors::{BeamError, Result};
 use crate::objects::{ImageMode, ImageSettings};
 
@@ -573,13 +576,73 @@ pub fn process_object_preview(
     process_luma(luma.as_raw(), width, height, &image.settings)
 }
 
+/// Cached bounded preview, keyed by everything that changes the prepared pixels.
+///
+/// The canvas preview, the histogram and auto levels all ask for the same
+/// bounded image within one frame. JPEG decoding dominates those calls, so the
+/// prepared luminance is kept until the file, crop, rotation, working size or
+/// grey weights change. Full-resolution jobs are never cached.
+struct PreviewCache {
+    key: String,
+    luma: Arc<image::GrayImage>,
+}
+
+fn preview_cache() -> &'static Mutex<Option<PreviewCache>> {
+    static CACHE: OnceLock<Mutex<Option<PreviewCache>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn preview_key(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+) -> String {
+    let metadata = std::fs::metadata(path).ok();
+    let length = metadata.as_ref().map_or(0, std::fs::Metadata::len);
+    let modified = metadata
+        .as_ref()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |duration| duration.as_nanos());
+    let crop = image.crop.map_or((0, 0, 0, 0), |crop| {
+        (crop.x, crop.y, crop.width, crop.height)
+    });
+    let settings = &image.settings;
+    let mut key = String::new();
+    let _ = write!(
+        key,
+        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{}|{}|{max_side}",
+        path.display(),
+        image.width_px,
+        image.height_px,
+        settings.rotation_degrees.to_bits(),
+        settings.target_width_px,
+        settings.target_height_px,
+        settings.flip_horizontal,
+        settings.flip_vertical,
+        settings.gray_red.to_bits(),
+        settings.gray_green.to_bits(),
+        settings.gray_blue.to_bits(),
+        settings.despeckle,
+    );
+    key
+}
+
 /// Apply crop, flips, rotation and working size, returning the prepared source.
 fn prepared_luma(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
     max_side: Option<u32>,
-) -> Result<image::GrayImage> {
+) -> Result<Arc<image::GrayImage>> {
     image.validate().map_err(BeamError::InvalidInput)?;
+    let key = max_side.map(|max_side| preview_key(path, image, max_side));
+    if let Some(key) = &key
+        && let Ok(cache) = preview_cache().lock()
+        && let Some(entry) = cache.as_ref()
+        && &entry.key == key
+    {
+        return Ok(Arc::clone(&entry.luma));
+    }
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
     let (width, height) = image_dimensions(path)?;
@@ -636,6 +699,15 @@ fn prepared_luma(
     drop(picture);
     if image.settings.despeckle {
         luma = despeckle(&luma);
+    }
+    let luma = Arc::new(luma);
+    if let Some(key) = key
+        && let Ok(mut cache) = preview_cache().lock()
+    {
+        *cache = Some(PreviewCache {
+            key,
+            luma: Arc::clone(&luma),
+        });
     }
     Ok(luma)
 }
@@ -839,6 +911,35 @@ mod object_tests {
         assert_eq!(bins.iter().sum::<u64>(), 64 * 32);
         let (black, white) = auto_levels_preview(&path, &object, 64).unwrap();
         assert!(black <= white);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn changing_the_grey_weights_invalidates_the_preview_cache() {
+        let path = std::env::temp_dir().join("bw_raster_cache_weights.png");
+        let mut picture = image::RgbImage::new(64, 64);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = if x < 32 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            };
+        }
+        picture.save(&path).unwrap();
+        let mut object = ImageObject::new(path.to_string_lossy(), 64, 64, 96.0);
+        object.settings.gray_red = 1.0;
+        object.settings.gray_green = 0.0;
+        object.settings.gray_blue = 0.0;
+        let red = histogram_preview(&path, &object, 64).unwrap();
+        let red_again = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(red, red_again, "the cached preview changed by itself");
+        assert_eq!(red[255], 32 * 64, "the red half should be white");
+        assert_eq!(red[0], 32 * 64, "the blue half should be black");
+        object.settings.gray_red = 0.0;
+        object.settings.gray_blue = 1.0;
+        let blue = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(blue[255], 32 * 64, "the cache kept the old grey weights");
+        assert_ne!(red, blue);
         let _ = std::fs::remove_file(&path);
     }
 
