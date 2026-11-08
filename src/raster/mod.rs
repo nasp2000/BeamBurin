@@ -713,11 +713,12 @@ fn prepared_image(
             if &entry.key != key {
                 return None;
             }
-            Some((
-                Arc::clone(&entry.rgb),
-                entry.exclude.clone(),
-                (entry.luma_key == settings_key).then(|| Arc::clone(&entry.luma)),
-            ))
+            let luma = if entry.luma_key == settings_key {
+                Some(Arc::clone(&entry.luma))
+            } else {
+                None
+            };
+            Some((Arc::clone(&entry.rgb), entry.exclude.clone(), luma))
         })
     {
         let luma = if let Some(luma) = cached_luma {
