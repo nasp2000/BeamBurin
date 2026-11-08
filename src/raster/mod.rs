@@ -696,50 +696,12 @@ struct PreparedImage {
     exclude: Option<Vec<bool>>,
 }
 
-/// Apply crop, flips, rotation and working size, returning the prepared source
-/// and the colour-mask exclusion buffer.
-fn prepared_image(
+/// Decode the source and apply flips, crop, rotation and working size.
+fn load_prepared_picture(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
     max_side: Option<u32>,
-) -> Result<PreparedImage> {
-    image.validate().map_err(BeamError::InvalidInput)?;
-    let key = max_side.map(|max_side| preview_key(path, image, max_side));
-    let mask_colours = image.mask_rgb();
-    let settings_key = derived_luma_key(&image.settings);
-    if let Some(key) = &key
-        && let Some((rgb, exclude, cached_luma)) = preview_cache().lock().ok().and_then(|cache| {
-            let entry = cache.as_ref()?;
-            if &entry.key != key {
-                return None;
-            }
-            let luma = if entry.luma_key == settings_key {
-                Some(Arc::clone(&entry.luma))
-            } else {
-                None
-            };
-            Some((Arc::clone(&entry.rgb), entry.exclude.clone(), luma))
-        })
-    {
-        let luma = if let Some(luma) = cached_luma {
-            luma
-        } else {
-            let mut luma = luma_from_rgb(&rgb, &image.settings);
-            if image.settings.despeckle {
-                luma = despeckle(&luma);
-            }
-            let luma = Arc::new(luma);
-            if let Ok(mut cache) = preview_cache().lock()
-                && let Some(entry) = cache.as_mut()
-                && &entry.key == key
-            {
-                entry.luma_key.clone_from(&settings_key);
-                entry.luma = Arc::clone(&luma);
-            }
-            luma
-        };
-        return Ok(PreparedImage { luma, exclude });
-    }
+) -> Result<image::DynamicImage> {
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
     let (width, height) = image_dimensions(path)?;
@@ -788,6 +750,54 @@ fn prepared_image(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
+    Ok(picture)
+}
+
+/// Apply crop, flips, rotation and working size, returning the prepared source
+/// and the colour-mask exclusion buffer.
+fn prepared_image(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: Option<u32>,
+) -> Result<PreparedImage> {
+    image.validate().map_err(BeamError::InvalidInput)?;
+    let key = max_side.map(|max_side| preview_key(path, image, max_side));
+    let mask_colours = image.mask_rgb();
+    let settings_key = derived_luma_key(&image.settings);
+    if let Some(key) = &key
+        && let Some((rgb, exclude, cached_luma)) = preview_cache().lock().ok().and_then(|cache| {
+            let entry = cache.as_ref()?;
+            if &entry.key != key {
+                return None;
+            }
+            let luma = if entry.luma_key == settings_key {
+                Some(Arc::clone(&entry.luma))
+            } else {
+                None
+            };
+            Some((Arc::clone(&entry.rgb), entry.exclude.clone(), luma))
+        })
+    {
+        let luma = if let Some(luma) = cached_luma {
+            luma
+        } else {
+            let mut luma = luma_from_rgb(&rgb, &image.settings);
+            if image.settings.despeckle {
+                luma = despeckle(&luma);
+            }
+            let luma = Arc::new(luma);
+            if let Ok(mut cache) = preview_cache().lock()
+                && let Some(entry) = cache.as_mut()
+                && &entry.key == key
+            {
+                entry.luma_key.clone_from(&settings_key);
+                entry.luma = Arc::clone(&luma);
+            }
+            luma
+        };
+        return Ok(PreparedImage { luma, exclude });
+    }
+    let picture = load_prepared_picture(path, image, max_side)?;
     let mut cache_rgb: Option<Arc<image::RgbImage>> = None;
     let (mut luma, exclude) = if max_side.is_some() || !mask_colours.is_empty() {
         let rgb = Arc::new(picture.to_rgb8());
