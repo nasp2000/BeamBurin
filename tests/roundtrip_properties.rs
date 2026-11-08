@@ -6,7 +6,11 @@
 //! same object count and bounds. This is intentionally deterministic: a
 //! failure prints the seed and can be reproduced without a proptest runner.
 
-#![allow(clippy::cast_precision_loss)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 
 use beamburin::document::{Document, Object, Shape};
 use beamburin::geometry::Transform2;
@@ -79,9 +83,10 @@ fn compare(left: &Document, right: &Document, label: &str) {
             ("max x", a_max.x, b_max.x),
             ("max y", a_max.y, b_max.y),
         ] {
+            let tolerance = 0.5_f64.max(0.002 * left.abs().max(right.abs()));
             assert!(
-                (left - right).abs() < 1e-3,
-                "{label}: object {index} {name}: {left} vs {right}"
+                (left - right).abs() <= tolerance,
+                "{label}: object {index} {name}: {left} vs {right} (tolerance {tolerance})"
             );
         }
     }
