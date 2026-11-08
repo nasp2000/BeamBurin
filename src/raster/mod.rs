@@ -576,15 +576,17 @@ pub fn process_object_preview(
     process_luma(luma.as_raw(), width, height, &image.settings)
 }
 
-/// Cached bounded preview, keyed by everything that changes the prepared pixels.
+/// Cached bounded source, keyed by everything that changes the decoded pixels.
 ///
 /// The canvas preview, the histogram and auto levels all ask for the same
-/// bounded image within one frame. JPEG decoding dominates those calls, so the
-/// prepared luminance is kept until the file, crop, rotation, working size or
-/// grey weights change. Full-resolution jobs are never cached.
+/// bounded image within one frame, and the image dialog changes the grey mix
+/// and despeckle while the photo stays open. JPEG decoding dominates all of
+/// those calls, so the bounded RGB source is kept until the file, crop, flips,
+/// rotation or working size change; the grey conversion, despeckle, tone and
+/// dithering rerun on that buffer. Full-resolution jobs are never cached.
 struct PreviewCache {
     key: String,
-    luma: Arc<image::GrayImage>,
+    rgb: Arc<image::RgbImage>,
 }
 
 fn preview_cache() -> &'static Mutex<Option<PreviewCache>> {
@@ -611,7 +613,7 @@ fn preview_key(
     let mut key = String::new();
     let _ = write!(
         key,
-        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{}|{}|{max_side}",
+        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{max_side}",
         path.display(),
         image.width_px,
         image.height_px,
@@ -620,10 +622,6 @@ fn preview_key(
         settings.target_height_px,
         settings.flip_horizontal,
         settings.flip_vertical,
-        settings.gray_red.to_bits(),
-        settings.gray_green.to_bits(),
-        settings.gray_blue.to_bits(),
-        settings.despeckle,
     );
     key
 }
@@ -641,7 +639,11 @@ fn prepared_luma(
         && let Some(entry) = cache.as_ref()
         && &entry.key == key
     {
-        return Ok(Arc::clone(&entry.luma));
+        let mut luma = luma_from_rgb(&entry.rgb, &image.settings);
+        if image.settings.despeckle {
+            luma = despeckle(&luma);
+        }
+        return Ok(Arc::new(luma));
     }
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
@@ -691,7 +693,19 @@ fn prepared_luma(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
-    let mut luma = if uses_default_gray(&image.settings) {
+    let mut luma = if max_side.is_some() {
+        let rgb = Arc::new(picture.to_rgb8());
+        drop(picture);
+        if let Some(key) = key
+            && let Ok(mut cache) = preview_cache().lock()
+        {
+            *cache = Some(PreviewCache {
+                key,
+                rgb: Arc::clone(&rgb),
+            });
+        }
+        luma_from_rgb(&rgb, &image.settings)
+    } else if uses_default_gray(&image.settings) {
         picture.to_luma8()
     } else {
         luma_with_weights(&picture, &image.settings)
@@ -700,16 +714,7 @@ fn prepared_luma(
     if image.settings.despeckle {
         luma = despeckle(&luma);
     }
-    let luma = Arc::new(luma);
-    if let Some(key) = key
-        && let Ok(mut cache) = preview_cache().lock()
-    {
-        *cache = Some(PreviewCache {
-            key,
-            luma: Arc::clone(&luma),
-        });
-    }
-    Ok(luma)
+    Ok(Arc::new(luma))
 }
 
 fn uses_default_gray(settings: &ImageSettings) -> bool {
@@ -718,13 +723,23 @@ fn uses_default_gray(settings: &ImageSettings) -> bool {
         && (settings.gray_blue - 0.114).abs() < 1e-4
 }
 
+/// Convert a bounded RGB source to luminance, using the default or user weights.
+fn luma_from_rgb(picture: &image::RgbImage, settings: &ImageSettings) -> image::GrayImage {
+    if uses_default_gray(settings) {
+        use image::Pixel as _;
+        return image::GrayImage::from_fn(picture.width(), picture.height(), |x, y| {
+            image::Luma([picture.get_pixel(x, y).to_luma()[0]])
+        });
+    }
+    luma_with_weights(picture, settings)
+}
+
 /// Convert to luminance with user weights, normalised so they need not sum to 1.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn luma_with_weights(picture: &image::DynamicImage, settings: &ImageSettings) -> image::GrayImage {
-    let rgb = picture.to_rgb8();
+fn luma_with_weights(picture: &image::RgbImage, settings: &ImageSettings) -> image::GrayImage {
     let total = (settings.gray_red + settings.gray_green + settings.gray_blue).max(f32::EPSILON);
-    image::GrayImage::from_fn(rgb.width(), rgb.height(), |x, y| {
-        let pixel = rgb.get_pixel(x, y);
+    image::GrayImage::from_fn(picture.width(), picture.height(), |x, y| {
+        let pixel = picture.get_pixel(x, y);
         let value = (f32::from(pixel[0]) * settings.gray_red
             + f32::from(pixel[1]) * settings.gray_green
             + f32::from(pixel[2]) * settings.gray_blue)
@@ -915,7 +930,7 @@ mod object_tests {
     }
 
     #[test]
-    fn changing_the_grey_weights_invalidates_the_preview_cache() {
+    fn changing_the_grey_weights_updates_the_prepared_luma() {
         let path = std::env::temp_dir().join("bw_raster_cache_weights.png");
         let mut picture = image::RgbImage::new(64, 64);
         for (x, _y, pixel) in picture.enumerate_pixels_mut() {
