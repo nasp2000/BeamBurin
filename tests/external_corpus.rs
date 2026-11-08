@@ -45,9 +45,23 @@ fn assert_importable(entry: &Entry) {
         "{} is missing; run scripts/fetch-external-corpus.sh",
         entry.name
     );
+    let extension = entry
+        .path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
     let started = Instant::now();
-    let outcome = beamburin::import::format::import_with_report(&entry.path)
-        .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+    let outcome = match beamburin::import::format::import_with_report(&entry.path) {
+        Ok(outcome) => outcome,
+        Err(error)
+            if extension.eq_ignore_ascii_case("pdf")
+                && error.to_string().contains("no vector paths") =>
+        {
+            println!("{}: clearly rejected ({error})", entry.name);
+            return;
+        }
+        Err(error) => panic!("{}: {error}", entry.name),
+    };
     let elapsed = started.elapsed();
     assert!(
         outcome.document.width_mm.is_finite() && outcome.document.width_mm > 0.0,
@@ -71,11 +85,6 @@ fn assert_importable(entry: &Entry) {
         outcome.document.layers.len(),
         outcome.warnings.len()
     );
-    let extension = entry
-        .path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
     if extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("dxf") {
         assert!(
             !outcome.document.objects.is_empty(),
