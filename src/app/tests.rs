@@ -632,6 +632,48 @@ fn the_arrange_menu_converts_a_rectangle_to_a_path() {
 }
 
 #[test]
+fn the_arrange_menu_matches_the_width_of_the_first_selection() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let reference = app
+        .editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(20.0, 10.0))
+        .expect("the reference rectangle was not added");
+    let other = app
+        .editor
+        .add_rectangle(Point2::new(30.0, 20.0), Point2::new(40.0, 30.0))
+        .expect("the second rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(reference);
+    app.editor.selection.add(other.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Arrange").click_accesskit();
+    harness.run();
+    harness.get_by_label("Transform ⏵").click_accesskit();
+    harness.run();
+    harness.get_by_label("Match width").click_accesskit();
+    harness.run();
+    let (min, max) = harness
+        .state()
+        .editor
+        .document
+        .object(&other)
+        .expect("the second rectangle disappeared")
+        .bounds()
+        .expect("the second rectangle has no bounds");
+    assert!(
+        (max.x - min.x - 20.0).abs() < 1e-9,
+        "the width was not matched"
+    );
+    assert!(
+        (max.y - min.y - 10.0).abs() < 1e-9,
+        "the height should not change"
+    );
+}
+
+#[test]
 fn the_text_properties_can_force_upper_case() {
     use egui_kittest::kittest::Queryable as _;
 

@@ -770,6 +770,39 @@ impl BeamBurinApp {
                         ui.close();
                     }
                     ui.separator();
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            egui::Button::new("Match width"),
+                        )
+                        .on_hover_text(
+                            "Scale the other selected objects to the width of the first one",
+                        )
+                        .clicked()
+                    {
+                        if self.editor.match_selection_size(true) {
+                            self.status =
+                                "Matched the width of the first selected object".to_string();
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            egui::Button::new("Match height"),
+                        )
+                        .on_hover_text(
+                            "Scale the other selected objects to the height of the first one",
+                        )
+                        .clicked()
+                    {
+                        if self.editor.match_selection_size(false) {
+                            self.status =
+                                "Matched the height of the first selected object".to_string();
+                        }
+                        ui.close();
+                    }
+                    ui.separator();
                     ui.menu_button(
                         icons::menu_label(ui, Icon::TransformCenter, "Transform around"),
                         |ui| {

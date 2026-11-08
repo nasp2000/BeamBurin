@@ -2401,6 +2401,86 @@ impl EditorState {
         self.transform_selection(Transform2::scale(sx, sy), "Resize")
     }
 
+    /// Resize every other selected object to the width or height of the first.
+    ///
+    /// The first selected editable object is the reference. The others are
+    /// scaled about their own centre on that axis, so their position and the
+    /// other dimension stay put. Locked objects and objects on a locked layer
+    /// are left alone. Returns `false` with fewer than two editable objects or
+    /// when every object already matches.
+    pub fn match_selection_size(&mut self, horizontal: bool) -> bool {
+        let ids = self.selection.ids().to_vec();
+        if ids.len() < 2 {
+            return false;
+        }
+        let mut sizes: Vec<(String, Point2, f64)> = Vec::new();
+        for id in &ids {
+            let Some(object) = self.document.object(id) else {
+                continue;
+            };
+            if object.locked {
+                continue;
+            }
+            if self
+                .document
+                .layer(&object.layer_id)
+                .is_some_and(|layer| layer.locked)
+            {
+                continue;
+            }
+            let Some((min, max)) = object.bounds() else {
+                continue;
+            };
+            let size = if horizontal {
+                max.x - min.x
+            } else {
+                max.y - min.y
+            };
+            sizes.push((
+                id.clone(),
+                Point2::new(f64::midpoint(min.x, max.x), f64::midpoint(min.y, max.y)),
+                size,
+            ));
+        }
+        if sizes.len() < 2 {
+            return false;
+        }
+        let target = sizes[0].2;
+        if target <= 1e-9 {
+            return false;
+        }
+        let mut scales: Vec<(String, Point2, f64)> = Vec::new();
+        for (id, centre, size) in &sizes[1..] {
+            if *size <= 1e-9 {
+                continue;
+            }
+            let factor = target / size;
+            if !factor.is_finite() || (factor - 1.0).abs() < 1e-9 {
+                continue;
+            }
+            scales.push((id.clone(), *centre, factor));
+        }
+        if scales.is_empty() {
+            return false;
+        }
+        self.record_action(if horizontal {
+            "Match width"
+        } else {
+            "Match height"
+        });
+        for (id, centre, factor) in scales {
+            let scale = if horizontal {
+                Transform2::scale_around(factor, 1.0, centre.x, centre.y)
+            } else {
+                Transform2::scale_around(1.0, factor, centre.x, centre.y)
+            };
+            if let Some(object) = self.document.object_mut(&id) {
+                object.transform = scale.compose(&object.transform);
+            }
+        }
+        true
+    }
+
     /// Shear the selection around its centre, in degrees per axis.
     pub fn skew_selection(&mut self, x_degrees: f64, y_degrees: f64) -> bool {
         if !x_degrees.is_finite() || !y_degrees.is_finite() {
@@ -4284,6 +4364,68 @@ mod tests {
         assert!(editor.align_selection(AlignMode::Top));
         let (_, max) = editor.selected_bounds().unwrap();
         assert!((max.y - editor.document.height_mm).abs() < 1e-9);
+    }
+
+    #[test]
+    fn match_width_uses_the_first_selected_object_as_reference() {
+        let mut editor = editor();
+        let reference = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(20.0, 10.0))
+            .unwrap();
+        let other = editor
+            .add_rectangle(Point2::new(30.0, 20.0), Point2::new(40.0, 30.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(reference);
+        editor.selection.add(other.clone());
+        assert!(editor.match_selection_size(true));
+        let (min, max) = editor.document.object(&other).unwrap().bounds().unwrap();
+        assert!((max.x - min.x - 20.0).abs() < 1e-9, "width not matched");
+        assert!((max.y - min.y - 10.0).abs() < 1e-9, "height should stay");
+        assert!((f64::midpoint(min.x, max.x) - 35.0).abs() < 1e-9);
+        assert!((f64::midpoint(min.y, max.y) - 25.0).abs() < 1e-9);
+        assert!(editor.undo().is_some());
+        let (min, max) = editor.document.object(&other).unwrap().bounds().unwrap();
+        assert!((max.x - min.x - 10.0).abs() < 1e-9, "undo did not restore");
+    }
+
+    #[test]
+    fn match_height_uses_the_first_selected_object_as_reference() {
+        let mut editor = editor();
+        let reference = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 30.0))
+            .unwrap();
+        let other = editor
+            .add_rectangle(Point2::new(20.0, 10.0), Point2::new(40.0, 20.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(reference);
+        editor.selection.add(other.clone());
+        assert!(editor.match_selection_size(false));
+        let (min, max) = editor.document.object(&other).unwrap().bounds().unwrap();
+        assert!((max.y - min.y - 30.0).abs() < 1e-9, "height not matched");
+        assert!((max.x - min.x - 20.0).abs() < 1e-9, "width should stay");
+    }
+
+    #[test]
+    fn match_size_needs_two_editable_objects_and_a_change() {
+        let mut editor = editor();
+        editor.add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+        assert!(!editor.match_selection_size(true));
+        assert!(!editor.match_selection_size(false));
+        editor.add_rectangle(Point2::new(20.0, 20.0), Point2::new(30.0, 30.0));
+        editor.select_all();
+        assert!(!editor.match_selection_size(true), "nothing to change");
+        let locked = editor
+            .add_rectangle(Point2::new(40.0, 20.0), Point2::new(70.0, 30.0))
+            .unwrap();
+        editor.document.object_mut(&locked).unwrap().locked = true;
+        editor.select_all();
+        editor.selection.add(locked);
+        assert!(
+            !editor.match_selection_size(true),
+            "the locked object is the only different one"
+        );
     }
 
     #[test]
