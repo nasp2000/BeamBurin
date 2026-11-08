@@ -1037,7 +1037,7 @@ impl BeamBurinApp {
         ui.horizontal_wrapped(|ui| {
             ui.label("Image mask");
             if ui
-                .add_enabled(image && vectors, egui::Button::new("Mask").small())
+                .add_enabled(image && vectors, egui::Button::new("Apply mask").small())
                 .on_hover_text("Use the selected closed shapes as the image mask")
                 .clicked()
             {
