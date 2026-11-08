@@ -151,6 +151,26 @@ pub fn process_luma(
     height: usize,
     settings: &ImageSettings,
 ) -> Result<RasterBitmap> {
+    process_luma_masked(luma, width, height, settings, None)
+}
+
+/// Process luminance with an optional exclusion mask.
+///
+/// An excluded pixel is forced to zero power after dithering, so a colour mask
+/// holds for every mode, including inverted and grayscale runs. `exclude` must
+/// have one entry per pixel when it is present.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+pub fn process_luma_masked(
+    luma: &[u8],
+    width: usize,
+    height: usize,
+    settings: &ImageSettings,
+    exclude: Option<&[bool]>,
+) -> Result<RasterBitmap> {
     if width == 0 || height == 0 {
         return Err(BeamError::InvalidInput("image has no pixels".to_string()));
     }
@@ -160,6 +180,13 @@ pub fn process_luma(
         ));
     }
     settings.validate().map_err(BeamError::InvalidInput)?;
+    if let Some(exclude) = exclude
+        && exclude.len() != width * height
+    {
+        return Err(BeamError::InvalidInput(
+            "the colour mask does not match the image".to_string(),
+        ));
+    }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let quantize = |value: f32| value.round().clamp(0.0, 255.0) as u8;
@@ -180,7 +207,7 @@ pub fn process_luma(
         );
     }
 
-    let power = match settings.mode {
+    let mut power = match settings.mode {
         ImageMode::Threshold => adjusted
             .iter()
             .map(|value| if *value < settings.threshold { 255 } else { 0 })
@@ -245,6 +272,13 @@ pub fn process_luma(
         // Grayscale keeps the prepared tone as the power.
         ImageMode::Grayscale => adjusted.iter().map(|value| 255 - value).collect(),
     };
+    if let Some(exclude) = exclude {
+        for (value, skipped) in power.iter_mut().zip(exclude) {
+            if *skipped {
+                *value = 0;
+            }
+        }
+    }
     Ok(RasterBitmap {
         width,
         height,
@@ -553,10 +587,16 @@ pub fn process_object(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<RasterBitmap> {
-    let luma = prepared_luma(path, image, None)?;
-    let width = usize::try_from(luma.width()).unwrap_or(0);
-    let height = usize::try_from(luma.height()).unwrap_or(0);
-    process_luma(luma.as_raw(), width, height, &image.settings)
+    let prepared = prepared_image(path, image, None)?;
+    let width = usize::try_from(prepared.luma.width()).unwrap_or(0);
+    let height = usize::try_from(prepared.luma.height()).unwrap_or(0);
+    process_luma_masked(
+        prepared.luma.as_raw(),
+        width,
+        height,
+        &image.settings,
+        prepared.exclude.as_deref(),
+    )
 }
 
 /// Process an image at a bounded preview resolution.
@@ -570,10 +610,16 @@ pub fn process_object_preview(
     image: &crate::objects::ImageObject,
     max_side: u32,
 ) -> Result<RasterBitmap> {
-    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
-    let width = usize::try_from(luma.width()).unwrap_or(0);
-    let height = usize::try_from(luma.height()).unwrap_or(0);
-    process_luma(luma.as_raw(), width, height, &image.settings)
+    let prepared = prepared_image(path, image, Some(max_side.max(1)))?;
+    let width = usize::try_from(prepared.luma.width()).unwrap_or(0);
+    let height = usize::try_from(prepared.luma.height()).unwrap_or(0);
+    process_luma_masked(
+        prepared.luma.as_raw(),
+        width,
+        height,
+        &image.settings,
+        prepared.exclude.as_deref(),
+    )
 }
 
 /// Cached bounded source, keyed by everything that changes the decoded pixels.
@@ -628,30 +674,36 @@ fn preview_key(
     key
 }
 
-/// Apply crop, flips, rotation and working size, returning the prepared source.
-fn prepared_luma(
+/// Bounded source and its optional colour-mask exclusion buffer.
+struct PreparedImage {
+    luma: Arc<image::GrayImage>,
+    exclude: Option<Vec<bool>>,
+}
+
+/// Apply crop, flips, rotation and working size, returning the prepared source
+/// and the colour-mask exclusion buffer.
+fn prepared_image(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
     max_side: Option<u32>,
-) -> Result<Arc<image::GrayImage>> {
+) -> Result<PreparedImage> {
     image.validate().map_err(BeamError::InvalidInput)?;
     let key = max_side.map(|max_side| preview_key(path, image, max_side));
+    let mask_colours = image.mask_rgb();
     if let Some(key) = &key
         && let Ok(cache) = preview_cache().lock()
         && let Some(entry) = cache.as_ref()
         && &entry.key == key
     {
         let mut luma = luma_from_rgb(&entry.rgb, &image.settings);
-        apply_colour_mask(
-            &entry.rgb,
-            &mut luma,
-            &image.mask_rgb(),
-            image.mask_tolerance,
-        );
+        let exclude = colour_exclusion(&entry.rgb, &mask_colours, image.mask_tolerance);
         if image.settings.despeckle {
             luma = despeckle(&luma);
         }
-        return Ok(Arc::new(luma));
+        return Ok(PreparedImage {
+            luma: Arc::new(luma),
+            exclude,
+        });
     }
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
@@ -701,8 +753,7 @@ fn prepared_luma(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
-    let mask = image.mask_rgb();
-    let mut luma = if max_side.is_some() || !mask.is_empty() {
+    let (mut luma, exclude) = if max_side.is_some() || !mask_colours.is_empty() {
         let rgb = Arc::new(picture.to_rgb8());
         drop(picture);
         if max_side.is_some()
@@ -714,19 +765,22 @@ fn prepared_luma(
                 rgb: Arc::clone(&rgb),
             });
         }
-        let mut luma = luma_from_rgb(&rgb, &image.settings);
-        apply_colour_mask(&rgb, &mut luma, &mask, image.mask_tolerance);
-        luma
+        let exclude = colour_exclusion(&rgb, &mask_colours, image.mask_tolerance);
+        (luma_from_rgb(&rgb, &image.settings), exclude)
     } else if uses_default_gray(&image.settings) {
-        picture.to_luma8()
+        (picture.to_luma8(), None)
     } else {
-        luma_with_weights(&picture, &image.settings)
+        let rgb = picture.to_rgb8();
+        (luma_with_weights(&rgb, &image.settings), None)
     };
     drop(picture);
     if image.settings.despeckle {
         luma = despeckle(&luma);
     }
-    Ok(Arc::new(luma))
+    Ok(PreparedImage {
+        luma: Arc::new(luma),
+        exclude,
+    })
 }
 
 fn uses_default_gray(settings: &ImageSettings) -> bool {
@@ -746,27 +800,26 @@ fn luma_from_rgb(picture: &image::RgbImage, settings: &ImageSettings) -> image::
     luma_with_weights(picture, settings)
 }
 
-/// Replace pixels close to a mask colour with white, so the colour is treated
-/// as background by every engraving mode.
-fn apply_colour_mask(
+/// Mark pixels close to a mask colour as excluded, or `None` without colours.
+fn colour_exclusion(
     rgb: &image::RgbImage,
-    luma: &mut image::GrayImage,
-    mask: &[[u8; 3]],
+    colours: &[[u8; 3]],
     tolerance: u8,
-) {
-    if mask.is_empty() {
-        return;
+) -> Option<Vec<bool>> {
+    if colours.is_empty() {
+        return None;
     }
-    for (pixel, out) in rgb.pixels().zip(luma.pixels_mut()) {
-        let matched = mask.iter().any(|colour| {
-            pixel[0].abs_diff(colour[0]) <= tolerance
-                && pixel[1].abs_diff(colour[1]) <= tolerance
-                && pixel[2].abs_diff(colour[2]) <= tolerance
-        });
-        if matched {
-            *out = image::Luma([255]);
-        }
-    }
+    Some(
+        rgb.pixels()
+            .map(|pixel| {
+                colours.iter().any(|colour| {
+                    pixel[0].abs_diff(colour[0]) <= tolerance
+                        && pixel[1].abs_diff(colour[1]) <= tolerance
+                        && pixel[2].abs_diff(colour[2]) <= tolerance
+                })
+            })
+            .collect(),
+    )
 }
 
 /// Convert to luminance with user weights, normalised so they need not sum to 1.
@@ -811,8 +864,11 @@ pub fn histogram(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<[u64; 256]> {
-    let luma = prepared_luma(path, image, None)?;
-    Ok(histogram_of(luma.as_raw()))
+    let prepared = prepared_image(path, image, None)?;
+    Ok(histogram_of_masked(
+        prepared.luma.as_raw(),
+        prepared.exclude.as_deref(),
+    ))
 }
 
 /// Histogram of a bounded preview, for the image dialog.
@@ -821,14 +877,25 @@ pub fn histogram_preview(
     image: &crate::objects::ImageObject,
     max_side: u32,
 ) -> Result<[u64; 256]> {
-    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
-    Ok(histogram_of(luma.as_raw()))
+    let prepared = prepared_image(path, image, Some(max_side.max(1)))?;
+    Ok(histogram_of_masked(
+        prepared.luma.as_raw(),
+        prepared.exclude.as_deref(),
+    ))
 }
 
 /// Count luminance values into 256 bins.
 pub fn histogram_of(luma: &[u8]) -> [u64; 256] {
+    histogram_of_masked(luma, None)
+}
+
+/// Count luminance values, skipping pixels the colour mask excludes.
+pub fn histogram_of_masked(luma: &[u8], exclude: Option<&[bool]>) -> [u64; 256] {
     let mut bins = [0u64; 256];
-    for value in luma {
+    for (index, value) in luma.iter().enumerate() {
+        if exclude.is_some_and(|exclude| exclude.get(index).copied().unwrap_or(false)) {
+            continue;
+        }
         bins[usize::from(*value)] += 1;
     }
     bins
@@ -843,8 +910,11 @@ pub fn auto_levels(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
 ) -> Result<(u8, u8)> {
-    let luma = prepared_luma(path, image, None)?;
-    Ok(auto_clip(luma.as_raw()))
+    let prepared = prepared_image(path, image, None)?;
+    Ok(auto_clip_masked(
+        prepared.luma.as_raw(),
+        prepared.exclude.as_deref(),
+    ))
 }
 
 /// Automatic clip levels from a bounded preview.
@@ -853,20 +923,28 @@ pub fn auto_levels_preview(
     image: &crate::objects::ImageObject,
     max_side: u32,
 ) -> Result<(u8, u8)> {
-    let luma = prepared_luma(path, image, Some(max_side.max(1)))?;
-    Ok(auto_clip(luma.as_raw()))
+    let prepared = prepared_image(path, image, Some(max_side.max(1)))?;
+    Ok(auto_clip_masked(
+        prepared.luma.as_raw(),
+        prepared.exclude.as_deref(),
+    ))
 }
 
 /// Percentile clip levels for a luminance buffer.
 pub fn auto_clip(luma: &[u8]) -> (u8, u8) {
+    auto_clip_masked(luma, None)
+}
+
+/// Percentile clip levels, ignoring pixels the colour mask excludes.
+pub fn auto_clip_masked(luma: &[u8], exclude: Option<&[bool]>) -> (u8, u8) {
     if luma.is_empty() {
         return (0, 255);
     }
-    let mut histogram = [0u64; 256];
-    for value in luma {
-        histogram[usize::from(*value)] += 1;
+    let histogram = histogram_of_masked(luma, exclude);
+    let total: u64 = histogram.iter().sum();
+    if total == 0 {
+        return (0, 255);
     }
-    let total = u64::try_from(luma.len()).unwrap_or(u64::MAX);
     let tail = total / 200;
     let mut accumulated = 0u64;
     let mut black = 0u8;
@@ -1010,7 +1088,12 @@ mod object_tests {
         object.mask_colours = vec!["#ff0000".to_string()];
         object.mask_tolerance = 8;
         let after = histogram_preview(&path, &object, 64).unwrap();
-        assert_eq!(after[255], 16, "the red half was not masked");
+        assert_eq!(
+            after.iter().sum::<u64>(),
+            16,
+            "the masked pixels were counted"
+        );
+        assert_eq!(after[255], 0, "the red half was not masked");
         assert_ne!(before, after, "the cache kept the unmasked source");
         let bitmap = process_object_preview(&path, &object, 64).unwrap();
         for y in 0..4 {
@@ -1022,6 +1105,13 @@ mod object_tests {
                 );
             }
         }
+        object.settings.mode = ImageMode::Grayscale;
+        let gray = process_object_preview(&path, &object, 64).unwrap();
+        assert_eq!(gray.power_at(0, 0), 0, "grayscale burned the masked colour");
+        assert!(
+            gray.power_at(7, 0) > 0,
+            "grayscale lost the unmasked colour"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -1101,7 +1191,6 @@ mod object_tests {
         picture.put_pixel(0, 0, image::Rgb([255, 0, 0]));
         picture.put_pixel(1, 0, image::Rgb([0, 255, 0]));
         picture.put_pixel(2, 0, image::Rgb([0, 0, 255]));
-        let picture = image::DynamicImage::ImageRgb8(picture);
         let mut settings = ImageSettings {
             gray_red: 1.0,
             gray_green: 0.0,
