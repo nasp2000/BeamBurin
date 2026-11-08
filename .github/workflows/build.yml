@@ -19,7 +19,7 @@ env:
 
 jobs:
   quality:
-    name: Format, clippy and tests
+    name: Format, clippy and doctests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,8 +39,8 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Tests
-        run: cargo test --workspace --locked
+      - name: Documentation tests
+        run: cargo test --workspace --locked --doc
 
   deny:
     name: Dependency licences and advisories
@@ -120,12 +120,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x86_64 1/2
+            shard: 1/2
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x86_64 2/2
+            shard: 2/2
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x86_64
+            shard: ""
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             name: linux-aarch64
+            shard: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -149,7 +159,22 @@ jobs:
             libxcb1 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 \
             libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
 
+      - name: Install cargo-nextest
+        if: matrix.shard != ''
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Tests on the sharded target
+        if: matrix.shard != ''
+        env:
+          RUSTFLAGS: ${{ startsWith(matrix.os, 'windows') && '-C target-feature=+crt-static' || '' }}
+        run: |
+          cargo nextest run --workspace --locked --target ${{ matrix.target }} \
+            --partition count:${{ matrix.shard }} --no-fail-fast
+
       - name: Tests on the target platform
+        if: matrix.shard == ''
         env:
           RUSTFLAGS: ${{ startsWith(matrix.os, 'windows') && '-C target-feature=+crt-static' || '' }}
         run: cargo test --workspace --locked --target ${{ matrix.target }}
