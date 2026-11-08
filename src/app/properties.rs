@@ -440,6 +440,21 @@ impl BeamBurinApp {
                             });
                         text.align = align;
                         ui.end_row();
+                        ui.label("Vertical");
+                        let mut valign = text.vertical_align;
+                        egui::ComboBox::from_id_salt("text_valign")
+                            .selected_text(valign.label())
+                            .show_ui(ui, |ui| {
+                                for candidate in [
+                                    crate::objects::TextVAlign::Bottom,
+                                    crate::objects::TextVAlign::Middle,
+                                    crate::objects::TextVAlign::Top,
+                                ] {
+                                    ui.selectable_value(&mut valign, candidate, candidate.label());
+                                }
+                            });
+                        text.vertical_align = valign;
+                        ui.end_row();
                     });
                 ui.weak("Use Shift+Enter in the content field for a second line.");
             }

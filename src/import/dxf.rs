@@ -485,6 +485,7 @@ impl Context<'_> {
             line_spacing: 1.2,
             align,
             uppercase: false,
+            vertical_align: crate::objects::TextVAlign::Bottom,
         };
         let transform = parent.compose(&Transform2::rotate_around(rotation, x, y));
         self.document

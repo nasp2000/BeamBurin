@@ -90,6 +90,21 @@ impl BeamBurinApp {
                             });
                         self.text_editor_draft.align = align;
                         ui.end_row();
+                        ui.label("Vertical");
+                        let mut valign = self.text_editor_draft.vertical_align;
+                        egui::ComboBox::from_id_salt("text_editor_valign")
+                            .selected_text(valign.label())
+                            .show_ui(ui, |ui| {
+                                for candidate in [
+                                    crate::objects::TextVAlign::Bottom,
+                                    crate::objects::TextVAlign::Middle,
+                                    crate::objects::TextVAlign::Top,
+                                ] {
+                                    ui.selectable_value(&mut valign, candidate, candidate.label());
+                                }
+                            });
+                        self.text_editor_draft.vertical_align = valign;
+                        ui.end_row();
                         ui.label("Upper case");
                         ui.checkbox(&mut self.text_editor_draft.uppercase, "Force upper case");
                         ui.end_row();

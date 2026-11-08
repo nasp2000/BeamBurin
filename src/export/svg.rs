@@ -133,7 +133,9 @@ fn write_object(
                     return;
                 }
             }
-            let world = object.transform.apply(Point2::new(text.x, text.y));
+            let world = object
+                .transform
+                .apply(Point2::new(text.x, text.block_bottom()));
             let scale = transform_scale(&object.transform);
             let anchor = match text.align {
                 crate::objects::TextAlign::Left => "start",

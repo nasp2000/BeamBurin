@@ -21,6 +21,28 @@ impl TextAlign {
     }
 }
 
+/// Vertical alignment of a text block around its anchor point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextVAlign {
+    /// The anchor is the bottom of the block.
+    #[default]
+    Bottom,
+    /// The anchor is the vertical centre of the block.
+    Middle,
+    /// The anchor is the top of the block.
+    Top,
+}
+
+impl TextVAlign {
+    pub fn label(self) -> &'static str {
+        match self {
+            TextVAlign::Bottom => "Bottom",
+            TextVAlign::Middle => "Middle",
+            TextVAlign::Top => "Top",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextObject {
     pub content: String,
@@ -41,6 +63,9 @@ pub struct TextObject {
     /// Draw the content in upper case without changing what is stored.
     #[serde(default)]
     pub uppercase: bool,
+    /// Vertical placement of the block around the anchor.
+    #[serde(default)]
+    pub vertical_align: TextVAlign,
 }
 
 fn default_line_spacing() -> f64 {
@@ -59,6 +84,7 @@ impl Default for TextObject {
             line_spacing: default_line_spacing(),
             align: TextAlign::Left,
             uppercase: false,
+            vertical_align: TextVAlign::Bottom,
         }
     }
 }
@@ -148,19 +174,30 @@ impl TextObject {
         self.block_width()
     }
 
+    /// Bottom of the block after applying the vertical alignment.
+    pub fn block_bottom(&self) -> f64 {
+        let height = self.block_height();
+        match self.vertical_align {
+            TextVAlign::Bottom => self.y,
+            TextVAlign::Middle => self.y - height / 2.0,
+            TextVAlign::Top => self.y - height,
+        }
+    }
+
     /// Approximate bounding box in local coordinates.
     pub fn bounds(&self) -> (Point2, Point2) {
         let left = self.left();
+        let bottom = self.block_bottom();
         (
-            Point2::new(left, self.y),
-            Point2::new(left + self.block_width(), self.y + self.block_height()),
+            Point2::new(left, bottom),
+            Point2::new(left + self.block_width(), bottom + self.block_height()),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{TextAlign, TextObject};
+    use super::{TextAlign, TextObject, TextVAlign};
 
     fn sample() -> TextObject {
         TextObject {
@@ -286,11 +323,32 @@ mod tests {
     }
 
     #[test]
+    fn vertical_alignment_moves_the_block_around_the_anchor() {
+        let mut text = TextObject {
+            content: "A\nB".to_string(),
+            size: 10.0,
+            line_spacing: 2.0,
+            y: 50.0,
+            ..TextObject::default()
+        };
+        let height = text.block_height();
+        assert!((text.block_bottom() - 50.0).abs() < 1e-9);
+        text.vertical_align = TextVAlign::Middle;
+        assert!((text.block_bottom() - (50.0 - height / 2.0)).abs() < 1e-9);
+        text.vertical_align = TextVAlign::Top;
+        assert!((text.block_bottom() - (50.0 - height)).abs() < 1e-9);
+        let (min, max) = text.bounds();
+        assert!((max.y - 50.0).abs() < 1e-9);
+        assert!((min.y - (50.0 - height)).abs() < 1e-9);
+    }
+
+    #[test]
     fn old_projects_without_metadata_still_load() {
         let old = r#"{"content":"Hi","font":"sans","size":5.0,"x":0.0,"y":0.0}"#;
         let text: TextObject = serde_json::from_str(old).unwrap();
         assert_eq!(text.align, TextAlign::Left);
         assert_eq!(text.letter_spacing, 0.0);
         assert!((text.line_spacing - 1.2).abs() < 1e-9);
+        assert_eq!(text.vertical_align, TextVAlign::Bottom);
     }
 }

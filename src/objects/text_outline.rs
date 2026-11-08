@@ -41,7 +41,7 @@ pub fn text_to_paths_with_font(text: &TextObject, data: &[u8]) -> Result<Vec<Pat
     // Millimetres per font unit.
     let factor = text.size / f64::from(units);
     let ascent = f64::from(font.ascent_unscaled()) * factor;
-    let top = text.y + text.block_height();
+    let top = text.block_bottom() + text.block_height();
     let left = text.left();
     let mut paths = Vec::new();
     let lines = text.rendered_lines();

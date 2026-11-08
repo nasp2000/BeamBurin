@@ -634,9 +634,10 @@ fn paint_object(
                 );
                 // Draw from the block's top-left; `left` already applies the
                 // text alignment, so the layout itself stays left-aligned.
-                let top_left = object
-                    .transform
-                    .apply(Point2::new(text.left(), text.y + text.block_height()));
+                let top_left = object.transform.apply(Point2::new(
+                    text.left(),
+                    text.block_bottom() + text.block_height(),
+                ));
                 painter.galley(
                     screen_pos(rect, editor, top_left),
                     painter.layout_job(job),
