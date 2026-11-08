@@ -626,7 +626,7 @@ mod tests {
         assert_eq!(image.settings.midtone_shift, 0.0);
         assert_eq!(image.settings.highlight_lift, 0.0);
         assert_eq!(image.settings.enhance_denoise, 0.0);
-        assert!(image.mask_colours.is_empty());
+        assert_eq!(image.mask_colours.len(), 0);
         assert_eq!(image.mask_tolerance, 24);
         assert_eq!(image.effective_size_px(), (10, 5));
     }
@@ -645,7 +645,7 @@ mod tests {
         image.mask_colours.push("red".to_string());
         assert!(image.validate().is_err());
         image.mask_colours = (0..21)
-            .map(|index| format!("#{:02x}{:02x}{:02x}", index, index, index))
+            .map(|index| format!("#{index:02x}{index:02x}{index:02x}"))
             .collect();
         assert!(image.validate().is_err());
     }

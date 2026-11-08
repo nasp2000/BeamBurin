@@ -160,6 +160,7 @@ pub fn process_luma(
 /// holds for every mode, including inverted and grayscale runs. `exclude` must
 /// have one entry per pixel when it is present.
 #[allow(
+    clippy::too_many_lines,
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss

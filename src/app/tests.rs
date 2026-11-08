@@ -3733,12 +3733,12 @@ fn the_image_colour_mask_toggles_and_cancels() {
         };
         image.mask_colours.clone()
     };
-    let button = "Mask colour #ff0000";
+    let button = "Mask colour #e53935";
     harness.get_by_label(button).click_accesskit();
     harness.run();
     assert_eq!(
         colours_of(harness.state()),
-        vec!["#ff0000".to_string()],
+        vec!["#e53935".to_string()],
         "the mask colour was not selected"
     );
     harness.get_by_label(button).click_accesskit();
