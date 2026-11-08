@@ -4,7 +4,7 @@
 //! `assets/external/files/` and verifies its SHA-256 before this test runs. The
 //! test is ignored in the normal suite because the files are not committed.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 fn root() -> PathBuf {
@@ -71,7 +71,12 @@ fn assert_importable(entry: &Entry) {
         outcome.document.layers.len(),
         outcome.warnings.len()
     );
-    if entry.name.ends_with(".svg") || entry.name.ends_with(".dxf") {
+    let extension = entry
+        .path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("dxf") {
         assert!(
             !outcome.document.objects.is_empty(),
             "{} imported no objects",
