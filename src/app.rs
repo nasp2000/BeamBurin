@@ -1828,7 +1828,6 @@ impl BeamBurinApp {
         self.shortcuts(ui);
         self.menu_bar(ui);
         self.toolbar(ui);
-        self.color_palette(ui);
         self.status_bar(ui);
         self.tool_strip(ui);
         if self.show_layers_panel {

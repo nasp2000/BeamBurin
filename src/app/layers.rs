@@ -51,6 +51,8 @@ impl BeamBurinApp {
             .resizable(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
+                self.color_palette(ui);
+                ui.separator();
                 ui.label(egui::RichText::new("Cuts / Layers").strong());
                 let before = self.editor.document.clone();
                 let mut message: Option<String> = None;
@@ -915,98 +917,117 @@ impl BeamBurinApp {
     }
     /// Compact colour strip: applies the colour to the selection, or makes it
     /// the colour of the active layer so the next shapes use it.
+    ///
+    /// The palette lives at the top of the Cuts / Layers panel in two rows, so
+    /// it stays next to the cut entries instead of taking a strip from the
+    /// canvas.
     pub(super) fn color_palette(&mut self, ui: &mut Ui) {
-        egui::Panel::bottom("color_palette").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Colour");
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let active = self
-                    .editor
-                    .document
-                    .layer(&self.editor.active_layer_id)
-                    .map(|layer| layer.color.to_ascii_lowercase());
-                for colour in DRAWING_COLOURS {
-                    let (r, g, b) = parse_hex_color(colour).unwrap_or((0, 0, 0));
-                    let selected = active.as_deref() == Some(colour);
-                    let cut = self.editor.operation_for_colour(colour).and_then(|id| {
-                        self.editor
-                            .document
-                            .operations
-                            .iter()
-                            .find(|operation| operation.id == id)
-                            .map(|operation| {
-                                format!(
-                                    "{} · {:.0} mm/min · {:.0}%",
-                                    operation.name, operation.params.speed, operation.params.power
-                                )
-                            })
+        let previous_spacing = ui.spacing().item_spacing.x;
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let active = self
+            .editor
+            .document
+            .layer(&self.editor.active_layer_id)
+            .map(|layer| layer.color.to_ascii_lowercase());
+        egui::Grid::new("drawing_colour_grid")
+            .num_columns(2)
+            .spacing([6.0, 2.0])
+            .show(ui, |ui| {
+                for (row, colours) in DRAWING_COLOURS.chunks(10).enumerate() {
+                    if row == 0 {
+                        ui.label("Colour");
+                    } else {
+                        ui.label("");
+                    }
+                    ui.horizontal(|ui| {
+                        for colour in colours {
+                            self.drawing_colour_button(ui, colour, active.as_deref());
+                        }
                     });
-                    let response = ui.add(
-                        egui::Button::new("")
-                            .fill(Color32::from_rgb(r, g, b))
-                            .min_size(egui::vec2(18.0, 18.0))
-                            .stroke(if selected {
-                                egui::Stroke::new(2.0, Color32::WHITE)
-                            } else {
-                                egui::Stroke::NONE
-                            }),
-                    );
-                    if cut.is_some() {
-                        let luminance =
-                            (0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b))
-                                / 255.0;
-                        let ink = if luminance > 0.6 {
-                            Color32::BLACK
-                        } else {
-                            Color32::WHITE
-                        };
-                        ui.painter().circle_filled(
-                            response.rect.right_bottom() + egui::vec2(-3.5, -3.5),
-                            2.0,
-                            ink,
-                        );
-                    }
-                    response.widget_info(|| {
-                        egui::WidgetInfo::labeled(
-                            egui::WidgetType::Button,
-                            true,
-                            format!("Drawing colour {colour}"),
-                        )
-                    });
-                    let tip = cut.as_ref().map_or_else(
-                        || format!("Use {colour} — no cut entry"),
-                        |cut| format!("Use {colour}\nCut {cut}"),
-                    );
-                    if response.on_hover_text(tip).clicked() {
-                        self.apply_drawing_colour(colour);
-                    }
-                }
-                if let Some(active) = &active {
-                    if !DRAWING_COLOURS
-                        .iter()
-                        .any(|colour| colour.eq_ignore_ascii_case(active))
-                    {
-                        ui.separator();
-                        let (r, g, b) = parse_hex_color(active).unwrap_or((0, 0, 0));
-                        let response = ui.add(
-                            egui::Button::new("")
-                                .fill(Color32::from_rgb(r, g, b))
-                                .min_size(egui::vec2(14.0, 14.0))
-                                .stroke(egui::Stroke::new(1.0, Color32::WHITE)),
-                        );
-                        response.widget_info(|| {
-                            egui::WidgetInfo::labeled(
-                                egui::WidgetType::Button,
-                                true,
-                                format!("Custom colour {active}"),
-                            )
-                        });
-                        ui.weak(active.clone());
-                        response.on_hover_text("Custom colour outside the palette");
-                    }
+                    ui.end_row();
                 }
             });
+        if let Some(active) = &active
+            && !DRAWING_COLOURS
+                .iter()
+                .any(|colour| colour.eq_ignore_ascii_case(active))
+        {
+            ui.horizontal(|ui| {
+                let (r, g, b) = parse_hex_color(active).unwrap_or((0, 0, 0));
+                let response = ui.add(
+                    egui::Button::new("")
+                        .fill(Color32::from_rgb(r, g, b))
+                        .min_size(egui::vec2(18.0, 18.0))
+                        .stroke(egui::Stroke::new(1.0, Color32::WHITE)),
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Button,
+                        true,
+                        format!("Custom colour {active}"),
+                    )
+                });
+                ui.weak(active.clone());
+                response.on_hover_text("Custom colour outside the palette");
+            });
+        }
+        ui.spacing_mut().item_spacing.x = previous_spacing;
+    }
+
+    fn drawing_colour_button(&mut self, ui: &mut Ui, colour: &str, active: Option<&str>) {
+        let (r, g, b) = parse_hex_color(colour).unwrap_or((0, 0, 0));
+        let selected = active == Some(colour);
+        let cut = self.editor.operation_for_colour(colour).and_then(|id| {
+            self.editor
+                .document
+                .operations
+                .iter()
+                .find(|operation| operation.id == id)
+                .map(|operation| {
+                    format!(
+                        "{} · {:.0} mm/min · {:.0}%",
+                        operation.name, operation.params.speed, operation.params.power
+                    )
+                })
         });
+        let response = ui.add(
+            egui::Button::new("")
+                .fill(Color32::from_rgb(r, g, b))
+                .min_size(egui::vec2(18.0, 18.0))
+                .stroke(if selected {
+                    egui::Stroke::new(2.0, Color32::WHITE)
+                } else {
+                    egui::Stroke::NONE
+                }),
+        );
+        if cut.is_some() {
+            let luminance =
+                (0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b)) / 255.0;
+            let ink = if luminance > 0.6 {
+                Color32::BLACK
+            } else {
+                Color32::WHITE
+            };
+            ui.painter().circle_filled(
+                response.rect.right_bottom() + egui::vec2(-3.5, -3.5),
+                2.0,
+                ink,
+            );
+        }
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                true,
+                format!("Drawing colour {colour}"),
+            )
+        });
+        let tip = cut.as_ref().map_or_else(
+            || format!("Use {colour} — no cut entry"),
+            |cut| format!("Use {colour}\nCut {cut}"),
+        );
+        if response.on_hover_text(tip).clicked() {
+            self.apply_drawing_colour(colour);
+        }
     }
 
     fn apply_drawing_colour(&mut self, colour: &str) {
