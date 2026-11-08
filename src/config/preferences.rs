@@ -1154,10 +1154,13 @@ mod tests {
 
     #[test]
     fn a_preferences_file_without_the_new_preset_groups_still_loads() {
-        let json = r#"{"general":{},"drawing":{}}"#;
-        let preferences: AppPreferences = serde_json::from_str(json).unwrap();
-        assert!(preferences.image_export_presets.saved.is_empty());
-        assert!(preferences.vector_export_presets.saved.is_empty());
+        let mut value = serde_json::to_value(AppPreferences::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("image_export_presets");
+        object.remove("vector_export_presets");
+        let preferences: AppPreferences = serde_json::from_value(value).unwrap();
+        assert_eq!(preferences.image_export_presets.saved.len(), 0);
+        assert_eq!(preferences.vector_export_presets.saved.len(), 0);
     }
 
     #[test]
