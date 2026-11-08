@@ -481,6 +481,9 @@ pub struct ImageExportPreset {
     pub custom_size: bool,
     pub width_px: u32,
     pub height_px: u32,
+    /// Keep the aspect ratio when a custom pixel size is used.
+    #[serde(default = "default_true")]
+    pub keep_aspect: bool,
 }
 
 impl ImageExportPreset {
@@ -1068,7 +1071,15 @@ mod tests {
             custom_size: true,
             width_px: 2480,
             height_px: 3508,
+            keep_aspect: true,
         }
+    }
+
+    #[test]
+    fn an_image_preset_without_the_aspect_link_still_loads() {
+        let json = r#"{"name":"Old","dpi":300,"transparent":false,"margin_mm":0,"offset_x_mm":0,"offset_y_mm":0,"custom_size":true,"width_px":100,"height_px":100}"#;
+        let preset: ImageExportPreset = serde_json::from_str(json).unwrap();
+        assert!(preset.keep_aspect);
     }
 
     #[test]

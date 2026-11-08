@@ -4077,6 +4077,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.export_presets_open = true;
     app.export_image_dpi = 300.0;
     app.export_image_margin_mm = 4.0;
+    app.export_image_custom_size = true;
+    app.export_image_keep_aspect = false;
     app.image_export_preset_name = "Photo".to_string();
     app.export_dxf_text_paths = true;
     app.export_dxf_arcs = true;
@@ -4105,6 +4107,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
         .expect("the image preset disappeared");
     assert!((image.dpi - 300.0).abs() < f64::EPSILON);
     assert!((image.margin_mm - 4.0).abs() < f64::EPSILON);
+    assert!(!image.keep_aspect, "the aspect link was not saved");
     let vector = preferences
         .vector_export_presets
         .find("DXF arcs")
@@ -4118,11 +4121,16 @@ fn the_export_presets_window_saves_image_and_vector_options() {
 
     let state = harness.state_mut();
     state.export_image_dpi = 96.0;
+    state.export_image_keep_aspect = true;
     state.export_dxf_arcs = false;
     state.export_vector_margin_mm = 0.0;
     state.apply_image_export_preset(&image);
     state.apply_vector_export_preset(&vector);
     assert!((state.export_image_dpi - 300.0).abs() < f64::EPSILON);
+    assert!(
+        !state.export_image_keep_aspect,
+        "the preset aspect link was not applied"
+    );
     assert!(state.export_dxf_arcs, "the vector preset was not applied");
     assert!(
         (state.export_vector_margin_mm - 6.0).abs() < f64::EPSILON,
