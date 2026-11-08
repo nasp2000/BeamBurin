@@ -944,13 +944,22 @@ impl BeamBurinApp {
             ui.horizontal(|ui| {
                 ui.label(&preset.name);
                 ui.weak(format!(
-                    "{:.0} dpi · {:.1} mm margin · {} x {} px{}",
+                    "{:.0} dpi · {:.1} mm margin · {} x {} px{}{}",
                     preset.dpi,
                     preset.margin_mm,
                     preset.width_px,
                     preset.height_px,
                     if preset.transparent {
                         " · transparent"
+                    } else {
+                        ""
+                    },
+                    if preset.custom_size {
+                        if preset.keep_aspect {
+                            " · fit"
+                        } else {
+                            " · stretch"
+                        }
                     } else {
                         ""
                     }
@@ -1044,14 +1053,19 @@ impl BeamBurinApp {
             ui.horizontal(|ui| {
                 ui.label(&preset.name);
                 ui.weak(format!(
-                    "{} · {}{}",
+                    "{} · {}{}{}",
                     preset.format.to_uppercase(),
                     if preset.text_as_paths {
                         "text as paths"
                     } else {
                         "text as text"
                     },
-                    if preset.arcs { " · arcs" } else { "" }
+                    if preset.arcs { " · arcs" } else { "" },
+                    if preset.margin_mm > 0.0 {
+                        format!(" · {:.1} mm margin", preset.margin_mm)
+                    } else {
+                        String::new()
+                    }
                 ));
                 if ui.button("Apply").clicked() {
                     apply = Some(preset.name.clone());
