@@ -262,6 +262,8 @@ mod tests {
                 crop: None,
                 mask_colours: Vec::new(),
                 mask_tolerance: 24,
+                mask_paths: Vec::new(),
+                mask_invert: false,
             }),
         ));
         document.add_object(crate::document::Object::new(

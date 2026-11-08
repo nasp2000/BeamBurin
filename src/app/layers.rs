@@ -52,6 +52,7 @@ impl BeamBurinApp {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 self.color_palette(ui);
+                self.image_mask_tools(ui);
                 ui.separator();
                 ui.label(egui::RichText::new("Cuts / Layers").strong());
                 let before = self.editor.document.clone();
@@ -1028,6 +1029,191 @@ impl BeamBurinApp {
         if response.on_hover_text(tip).clicked() {
             self.apply_drawing_colour(colour);
         }
+    }
+
+    /// Four small tools that use selected vector shapes as an image mask.
+    fn image_mask_tools(&mut self, ui: &mut Ui) {
+        let (image, vectors, has_mask) = self.image_mask_selection();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Image mask");
+            if ui
+                .add_enabled(image && vectors, egui::Button::new("Mask").small())
+                .on_hover_text("Use the selected closed shapes as the image mask")
+                .clicked()
+            {
+                self.apply_image_vector_mask(false);
+            }
+            if ui
+                .add_enabled(image && vectors, egui::Button::new("Mask + keep").small())
+                .on_hover_text("Mask the image and keep the shapes for cutting")
+                .clicked()
+            {
+                self.apply_image_vector_mask(true);
+            }
+            if ui
+                .add_enabled(image && has_mask, egui::Button::new("Invert").small())
+                .on_hover_text("Keep the pixels outside the mask instead of inside")
+                .clicked()
+            {
+                self.set_image_mask_inverted(!self.image_mask_is_inverted());
+            }
+            if ui
+                .add_enabled(image && has_mask, egui::Button::new("Clear").small())
+                .on_hover_text("Remove the vector mask from the image")
+                .clicked()
+            {
+                self.clear_image_mask();
+            }
+        });
+    }
+
+    fn image_mask_selection(&self) -> (bool, bool, bool) {
+        let mut images = 0usize;
+        let mut vectors = false;
+        let mut has_mask = false;
+        for id in self.editor.selection.ids() {
+            let Some(object) = self.editor.document.object(id) else {
+                continue;
+            };
+            match &object.shape {
+                crate::document::Shape::Image(image) => {
+                    images += 1;
+                    has_mask = !image.mask_paths.is_empty();
+                }
+                crate::document::Shape::Text(_) => {}
+                _ => {
+                    if object.world_path().is_closed() {
+                        vectors = true;
+                    }
+                }
+            }
+        }
+        (images == 1, vectors, has_mask)
+    }
+
+    fn selected_image_id(&self) -> Option<String> {
+        self.editor.selection.ids().iter().find_map(|id| {
+            self.editor
+                .document
+                .object(id)
+                .filter(|object| matches!(&object.shape, crate::document::Shape::Image(_)))
+                .map(|_| id.clone())
+        })
+    }
+
+    fn image_mask_is_inverted(&self) -> bool {
+        self.selected_image_id().is_some_and(|id| {
+            self.editor
+                .document
+                .object(&id)
+                .and_then(|object| match &object.shape {
+                    crate::document::Shape::Image(image) => Some(image.mask_invert),
+                    _ => None,
+                })
+                .unwrap_or(false)
+        })
+    }
+
+    pub(super) fn apply_image_vector_mask(&mut self, keep_vectors: bool) {
+        let ids = self.editor.selection.ids().to_vec();
+        let mut image_id: Option<String> = None;
+        let mut vector_ids = Vec::new();
+        for id in &ids {
+            let Some(object) = self.editor.document.object(id) else {
+                continue;
+            };
+            match &object.shape {
+                crate::document::Shape::Image(_) => {
+                    if image_id.is_some() {
+                        self.status = "Select exactly one image and the mask shapes".to_string();
+                        return;
+                    }
+                    image_id = Some(id.clone());
+                }
+                crate::document::Shape::Text(_) => {}
+                _ => {
+                    if object.world_path().is_closed() {
+                        vector_ids.push(id.clone());
+                    }
+                }
+            }
+        }
+        let Some(image_id) = image_id else {
+            self.status = "Select an image and at least one closed shape".to_string();
+            return;
+        };
+        if vector_ids.is_empty() {
+            self.status = "Select at least one closed shape to use as the mask".to_string();
+            return;
+        }
+        let Some(inverse) = self
+            .editor
+            .document
+            .object(&image_id)
+            .and_then(|object| object.transform.invert())
+        else {
+            self.status = "The image transform cannot be inverted".to_string();
+            return;
+        };
+        let paths: Vec<_> = vector_ids
+            .iter()
+            .filter_map(|id| self.editor.document.object(id))
+            .map(|object| object.world_path().transform(&inverse))
+            .collect();
+        if paths.is_empty() {
+            self.status = "No closed shape could be used as the mask".to_string();
+            return;
+        }
+        self.editor.record_action("Mask image");
+        if let Some(object) = self.editor.document.object_mut(&image_id)
+            && let crate::document::Shape::Image(image) = &mut object.shape
+        {
+            image.mask_paths = paths;
+            image.mask_invert = false;
+        }
+        if !keep_vectors {
+            for id in &vector_ids {
+                self.editor.document.remove_object(id);
+            }
+            self.editor.selection.clear();
+            self.editor.selection.add(image_id);
+        }
+        self.status = if keep_vectors {
+            "Masked the image and kept the shapes".to_string()
+        } else {
+            "Masked the image and baked the shapes in".to_string()
+        };
+    }
+
+    pub(super) fn set_image_mask_inverted(&mut self, invert: bool) {
+        let Some(id) = self.selected_image_id() else {
+            return;
+        };
+        self.editor.record_action("Invert image mask");
+        if let Some(object) = self.editor.document.object_mut(&id)
+            && let crate::document::Shape::Image(image) = &mut object.shape
+        {
+            image.mask_invert = invert;
+        }
+        self.status = if invert {
+            "Image mask inverted".to_string()
+        } else {
+            "Image mask restored".to_string()
+        };
+    }
+
+    pub(super) fn clear_image_mask(&mut self) {
+        let Some(id) = self.selected_image_id() else {
+            return;
+        };
+        self.editor.record_action("Clear image mask");
+        if let Some(object) = self.editor.document.object_mut(&id)
+            && let crate::document::Shape::Image(image) = &mut object.shape
+        {
+            image.mask_paths.clear();
+            image.mask_invert = false;
+        }
+        self.status = "Image mask cleared".to_string();
     }
 
     fn apply_drawing_colour(&mut self, colour: &str) {

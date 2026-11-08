@@ -3766,6 +3766,56 @@ fn the_image_colour_mask_toggles_and_cancels() {
 }
 
 #[test]
+fn the_mask_tools_apply_invert_and_clear_a_vector_mask() {
+    let mut app = ui_test_app();
+    let layer = app.editor.active_layer_id.clone();
+    let image_object = crate::document::Object::new(
+        layer,
+        crate::document::Shape::Image(crate::objects::ImageObject::new(
+            "photo.png",
+            100,
+            100,
+            96.0,
+        )),
+    );
+    let image_id = image_object.id.clone();
+    app.editor.document.add_object(image_object);
+    let vector = app
+        .editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(20.0, 20.0))
+        .expect("the mask rectangle was not added");
+    app.editor.selection.clear();
+    app.editor.selection.add(image_id.clone());
+    app.editor.selection.add(vector.clone());
+    app.apply_image_vector_mask(false);
+    let image = |app: &BeamBurinApp| {
+        let object = app
+            .editor
+            .document
+            .object(&image_id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        image.clone()
+    };
+    let masked = image(&app);
+    assert_eq!(masked.mask_paths.len(), 1, "the mask path was not stored");
+    assert!(masked.mask_paths[0].is_closed());
+    assert!(
+        app.editor.document.object(&vector).is_none(),
+        "the mask shape was not baked in"
+    );
+    assert!(app.editor.selection.contains(&image_id));
+    app.set_image_mask_inverted(true);
+    assert!(image(&app).mask_invert, "the mask was not inverted");
+    app.clear_image_mask();
+    let cleared = image(&app);
+    assert!(cleared.mask_paths.is_empty(), "the mask was not cleared");
+    assert!(!cleared.mask_invert);
+}
+
+#[test]
 fn the_image_adjust_duplicates_and_deletes_a_preset() {
     use egui_kittest::kittest::Queryable as _;
 

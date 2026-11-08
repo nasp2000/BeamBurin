@@ -674,9 +674,10 @@ fn preview_key(
     });
     let settings = &image.settings;
     let mut key = String::new();
+    let mask_key = format!("{:?}", image.mask_paths);
     let _ = write!(
         key,
-        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{max_side}",
+        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{}|{}|{max_side}",
         path.display(),
         image.width_px,
         image.height_px,
@@ -687,6 +688,8 @@ fn preview_key(
         settings.flip_vertical,
         image.mask_colours.join(","),
         image.mask_tolerance,
+        mask_key,
+        image.mask_invert,
     );
     key
 }
@@ -799,8 +802,10 @@ fn prepared_image(
         return Ok(PreparedImage { luma, exclude });
     }
     let picture = load_prepared_picture(path, image, max_side)?;
+    let prepared_width = usize::try_from(picture.width()).unwrap_or(0);
+    let prepared_height = usize::try_from(picture.height()).unwrap_or(0);
     let mut cache_rgb: Option<Arc<image::RgbImage>> = None;
-    let (mut luma, exclude) = if max_side.is_some() || !mask_colours.is_empty() {
+    let (mut luma, colour_exclude) = if max_side.is_some() || !mask_colours.is_empty() {
         let rgb = Arc::new(picture.to_rgb8());
         drop(picture);
         let exclude = colour_exclusion(&rgb, &mask_colours, image.mask_tolerance);
@@ -819,6 +824,17 @@ fn prepared_image(
     if image.settings.despeckle {
         luma = despeckle(&luma);
     }
+    let exclude = combine_exclusions(
+        colour_exclude,
+        vector_mask_exclusion(
+            &image.mask_paths,
+            image.mask_invert,
+            prepared_width,
+            prepared_height,
+            image.width_mm(),
+            image.height_mm(),
+        ),
+    );
     let luma = Arc::new(luma);
     if max_side.is_some()
         && let Some(key) = key
@@ -834,6 +850,64 @@ fn prepared_image(
         });
     }
     Ok(PreparedImage { luma, exclude })
+}
+
+/// Merge two exclusion buffers; a pixel is excluded if either source excludes it.
+fn combine_exclusions(
+    mut first: Option<Vec<bool>>,
+    second: Option<Vec<bool>>,
+) -> Option<Vec<bool>> {
+    match (&mut first, second) {
+        (Some(first), Some(second)) => {
+            for (left, right) in first.iter_mut().zip(second) {
+                *left |= right;
+            }
+        }
+        (None, Some(second)) => first = Some(second),
+        _ => {}
+    }
+    first
+}
+
+/// Mark pixels outside the closed vector mask, in image-local millimetres.
+#[allow(clippy::cast_precision_loss)]
+fn vector_mask_exclusion(
+    paths: &[crate::geometry::Path],
+    invert: bool,
+    width: usize,
+    height: usize,
+    width_mm: f64,
+    height_mm: f64,
+) -> Option<Vec<bool>> {
+    if paths.is_empty() || width == 0 || height == 0 || width_mm <= 0.0 || height_mm <= 0.0 {
+        return None;
+    }
+    let polygons: Vec<Vec<(f64, f64)>> = paths
+        .iter()
+        .filter(|path| path.is_closed())
+        .map(|path| {
+            path.flatten(0.2)
+                .into_iter()
+                .map(|point| (point.x, point.y))
+                .collect::<Vec<(f64, f64)>>()
+        })
+        .filter(|polygon| polygon.len() >= 3)
+        .collect();
+    if polygons.is_empty() {
+        return None;
+    }
+    let mut exclude = vec![false; width * height];
+    for y in 0..height {
+        let local_y = height_mm * (1.0 - (y as f64 + 0.5) / height as f64);
+        for x in 0..width {
+            let local_x = width_mm * (x as f64 + 0.5) / width as f64;
+            let inside = polygons.iter().fold(false, |acc, polygon| {
+                acc ^ crate::geometry::polygon::contains_point(polygon, local_x, local_y)
+            });
+            exclude[y * width + x] = inside == invert;
+        }
+    }
+    Some(exclude)
 }
 
 fn uses_default_gray(settings: &ImageSettings) -> bool {
@@ -1165,6 +1239,46 @@ mod object_tests {
             gray.power_at(7, 0) > 0,
             "grayscale lost the unmasked colour"
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_vector_mask_keeps_the_inside_pixels() {
+        let path = std::env::temp_dir().join("bw_raster_vector_mask.png");
+        let mut picture = image::RgbImage::new(8, 8);
+        for pixel in picture.pixels_mut() {
+            *pixel = image::Rgb([0, 0, 255]);
+        }
+        picture.save(&path).unwrap();
+        let mut object = ImageObject::new(path.to_string_lossy(), 8, 8, 96.0);
+        let width = object.width_mm();
+        let height = object.height_mm();
+        object.mask_paths = vec![crate::geometry::Path::from_points(
+            &[
+                (0.0, 0.0),
+                (width / 2.0, 0.0),
+                (width / 2.0, height),
+                (0.0, height),
+            ],
+            true,
+        )];
+        let bitmap = process_object_preview(&path, &object, 64).unwrap();
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(bitmap.get(x, y), x < 4, "mask mismatch at {x},{y}");
+            }
+        }
+        object.mask_invert = true;
+        let inverted = process_object_preview(&path, &object, 64).unwrap();
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(
+                    inverted.get(x, y),
+                    x >= 4,
+                    "inverted mask mismatch at {x},{y}"
+                );
+            }
+        }
         let _ = std::fs::remove_file(&path);
     }
 

@@ -1044,6 +1044,8 @@ struct ImagePreview {
     crop: Option<crate::objects::ImageCrop>,
     mask_colours: Vec<String>,
     mask_tolerance: u8,
+    mask_paths: Vec<crate::geometry::Path>,
+    mask_invert: bool,
     stats: crate::raster::RasterStats,
 }
 
@@ -1057,6 +1059,8 @@ struct BurnPreview {
     crop: Option<crate::objects::ImageCrop>,
     mask_colours: Vec<String>,
     mask_tolerance: u8,
+    mask_paths: Vec<crate::geometry::Path>,
+    mask_invert: bool,
     texture: egui::TextureHandle,
 }
 
@@ -1067,6 +1071,8 @@ struct InvertPreview {
     crop: Option<crate::objects::ImageCrop>,
     mask_colours: Vec<String>,
     mask_tolerance: u8,
+    mask_paths: Vec<crate::geometry::Path>,
+    mask_invert: bool,
     texture: egui::TextureHandle,
 }
 
@@ -1080,6 +1086,8 @@ struct ImageHistogram {
     crop: Option<crate::objects::ImageCrop>,
     mask_colours: Vec<String>,
     mask_tolerance: u8,
+    mask_paths: Vec<crate::geometry::Path>,
+    mask_invert: bool,
     bins: [u64; 256],
 }
 
@@ -1116,6 +1124,8 @@ impl BeamBurinApp {
                     && preview.crop == image.crop
                     && preview.mask_colours == image.mask_colours
                     && preview.mask_tolerance == image.mask_tolerance
+                    && preview.mask_paths == image.mask_paths
+                    && preview.mask_invert == image.mask_invert
             })
         });
         for (id, image) in needed {
@@ -1134,6 +1144,8 @@ impl BeamBurinApp {
             let crop = image.crop;
             let mask_colours = image.mask_colours.clone();
             let mask_tolerance = image.mask_tolerance;
+            let mask_paths = image.mask_paths.clone();
+            let mask_invert = image.mask_invert;
             let stats = crate::raster::RasterStats::of(&bitmap);
             let texture = ctx.load_texture(
                 format!("image-preview-{id}"),
@@ -1149,6 +1161,8 @@ impl BeamBurinApp {
                     crop,
                     mask_colours,
                     mask_tolerance,
+                    mask_paths,
+                    mask_invert,
                     stats,
                 },
             );

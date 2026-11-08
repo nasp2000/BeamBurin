@@ -1147,6 +1147,8 @@ impl BeamBurinApp {
                 && cache.crop == image.crop
                 && cache.mask_colours == image.mask_colours
                 && cache.mask_tolerance == image.mask_tolerance
+                && cache.mask_paths == image.mask_paths
+                && cache.mask_invert == image.mask_invert
             {
                 return cache.bins;
             }
@@ -1163,6 +1165,8 @@ impl BeamBurinApp {
             crop: image.crop,
             mask_colours: image.mask_colours.clone(),
             mask_tolerance: image.mask_tolerance,
+            mask_paths: image.mask_paths.clone(),
+            mask_invert: image.mask_invert,
             bins,
         });
         bins

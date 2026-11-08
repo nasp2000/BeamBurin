@@ -314,6 +314,12 @@ pub struct ImageObject {
     /// Per-channel tolerance of the colour mask, 0..=255.
     #[serde(default = "default_mask_tolerance")]
     pub mask_tolerance: u8,
+    /// Closed vector paths in image-local millimetres used as a mask.
+    #[serde(default)]
+    pub mask_paths: Vec<crate::geometry::Path>,
+    /// Keep the pixels outside the vector mask instead of inside.
+    #[serde(default)]
+    pub mask_invert: bool,
 }
 
 fn default_mask_tolerance() -> u8 {
@@ -420,6 +426,8 @@ impl ImageObject {
             crop: None,
             mask_colours: Vec::new(),
             mask_tolerance: default_mask_tolerance(),
+            mask_paths: Vec::new(),
+            mask_invert: false,
         }
     }
 
@@ -451,6 +459,11 @@ impl ImageObject {
         for colour in &self.mask_colours {
             if parse_mask_colour(colour).is_none() {
                 return Err(format!("invalid image mask colour: {colour}"));
+            }
+        }
+        for path in &self.mask_paths {
+            if !path.is_closed() {
+                return Err("image mask paths must be closed".to_string());
             }
         }
         Ok(())

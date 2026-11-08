@@ -483,6 +483,8 @@ impl BeamBurinApp {
                 && preview.crop == image.crop
                 && preview.mask_colours == image.mask_colours
                 && preview.mask_tolerance == image.mask_tolerance
+                && preview.mask_paths == image.mask_paths
+                && preview.mask_invert == image.mask_invert
         });
         if !current {
             let bitmap = crate::raster::process_object_preview(
@@ -502,6 +504,8 @@ impl BeamBurinApp {
                 crop: image.crop,
                 mask_colours: image.mask_colours.clone(),
                 mask_tolerance: image.mask_tolerance,
+                mask_paths: image.mask_paths.clone(),
+                mask_invert: image.mask_invert,
                 texture,
             });
         }
@@ -522,6 +526,8 @@ impl BeamBurinApp {
                 && preview.crop == image.crop
                 && preview.mask_colours == image.mask_colours
                 && preview.mask_tolerance == image.mask_tolerance
+                && preview.mask_paths == image.mask_paths
+                && preview.mask_invert == image.mask_invert
         });
         if !current {
             let bitmap = crate::raster::process_object_preview(
@@ -541,6 +547,8 @@ impl BeamBurinApp {
                 crop: image.crop,
                 mask_colours: image.mask_colours.clone(),
                 mask_tolerance: image.mask_tolerance,
+                mask_paths: image.mask_paths.clone(),
+                mask_invert: image.mask_invert,
                 texture,
             });
         }
