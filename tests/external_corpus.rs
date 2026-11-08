@@ -85,7 +85,11 @@ fn assert_importable(entry: &Entry) {
         outcome.document.layers.len(),
         outcome.warnings.len()
     );
-    if extension.eq_ignore_ascii_case("svg") || extension.eq_ignore_ascii_case("dxf") {
+    if extension.eq_ignore_ascii_case("svg")
+        || extension.eq_ignore_ascii_case("dxf")
+        || extension.eq_ignore_ascii_case("plt")
+        || extension.eq_ignore_ascii_case("hpgl")
+    {
         assert!(
             !outcome.document.objects.is_empty(),
             "{} imported no objects",

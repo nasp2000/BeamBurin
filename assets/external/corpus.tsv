@@ -1,4 +1,8 @@
 # name	sha256	url
 tiger.svg	5211e169283f43ab8ad7ea7998d917d5fbb3c568ac85c1a0217e86792822684d	https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tiger.svg
+inkscape-bracket.svg	32aa8c83d14defc152b573ed47ab9e3554f21339026e33ad53fd132c921cd682	https://raw.githubusercontent.com/knix008/TestSimulator/15e6dfd20e00ad81e10154c80c823f33d78a4be5/MyCADMultiOSV20/samples/drawings/inkscape-bracket.svg
+freecad-plate.svg	7bd47a0434dca6ce40553a2ac6f013803cd245ca859e451020dccc3badffc020	https://raw.githubusercontent.com/knix008/TestSimulator/15e6dfd20e00ad81e10154c80c823f33d78a4be5/MyCADMultiOSV20/samples/drawings/freecad-plate.svg
 dummy.pdf	3df79d34abbca99308e79cb94461c1893582604d68329a41fd4bec1885e6adb4	https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
 usa.dxf	30230c4a07f91ed9e27b057567ae62f3341a9c8fcb0955baeadad614dae64de5	https://raw.githubusercontent.com/mozman/ezdxf/master/examples/addons/drawing/data/usa.dxf
+hatches.dxf	2dc2930b4f7d5fb16698437e4f6972986e580a81b2b5d36a780b4311f85fb326	https://raw.githubusercontent.com/mozman/ezdxf/master/examples_dxf/hatches_1.dxf
+hpgl-plotter-demo.plt	d576de4bb9e822141ca47a1377bbdf43b23d2140885ec59a7ed10ebf74475a5c	https://raw.githubusercontent.com/knix008/TestSimulator/15e6dfd20e00ad81e10154c80c823f33d78a4be5/MyCADMultiOSV20/samples/drawings/hpgl-plotter-demo.plt
