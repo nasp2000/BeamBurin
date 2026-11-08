@@ -60,41 +60,49 @@ impl BeamBurinApp {
             return;
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
-        let export_area = if selection_only {
-            self.editor
-                .selected_bounds()
-                .map(|(min, max)| crate::export::Area {
-                    x: min.x,
-                    y: min.y,
-                    width: (max.x - min.x).max(0.01),
-                    height: (max.y - min.y).max(0.01),
-                })
-        } else if mode == FileMode::ExportImage && self.export_image_drawing {
-            self.editor.visible_bounds().and_then(|(min, max)| {
-                let x = min.x.max(0.0);
-                let y = min.y.max(0.0);
-                let max_x = max.x.min(self.editor.document.width_mm);
-                let max_y = max.y.min(self.editor.document.height_mm);
-                (max_x > x && max_y > y).then_some(crate::export::Area {
-                    x,
-                    y,
-                    width: max_x - x,
-                    height: max_y - y,
-                })
+        let selection_area = self
+            .editor
+            .selected_bounds()
+            .map(|(min, max)| crate::export::Area {
+                x: min.x,
+                y: min.y,
+                width: (max.x - min.x).max(0.01),
+                height: (max.y - min.y).max(0.01),
+            });
+        let drawing_area = self.editor.visible_bounds().and_then(|(min, max)| {
+            let x = min.x.max(0.0);
+            let y = min.y.max(0.0);
+            let max_x = max.x.min(self.editor.document.width_mm);
+            let max_y = max.y.min(self.editor.document.height_mm);
+            (max_x > x && max_y > y).then_some(crate::export::Area {
+                x,
+                y,
+                width: max_x - x,
+                height: max_y - y,
             })
+        });
+        let export_area = if selection_only {
+            selection_area
+        } else if mode == FileMode::ExportImage && self.export_image_drawing {
+            drawing_area
         } else {
             None
         };
-        let vector_area = if selection_only
-            && matches!(
-                mode,
-                FileMode::ExportSvg
-                    | FileMode::ExportDxf
-                    | FileMode::ExportPdf
-                    | FileMode::ExportEps
-                    | FileMode::ExportHpgl
-            ) {
-            export_area.map(|area| {
+        let vector_mode = matches!(
+            mode,
+            FileMode::ExportSvg
+                | FileMode::ExportDxf
+                | FileMode::ExportPdf
+                | FileMode::ExportEps
+                | FileMode::ExportHpgl
+        );
+        let vector_area = if vector_mode && (selection_only || self.export_vector_drawing) {
+            let area = if selection_only {
+                selection_area
+            } else {
+                drawing_area
+            };
+            area.map(|area| {
                 crate::export::expand_area(
                     area,
                     self.export_vector_margin_mm,
@@ -103,7 +111,7 @@ impl BeamBurinApp {
                 )
             })
         } else {
-            export_area
+            None
         };
         let png_options = crate::export::PngOptions {
             dpi: self.export_image_dpi,
@@ -140,6 +148,7 @@ impl BeamBurinApp {
         let offset_origin = self.export_offset_origin;
         self.export_subset = false;
         self.export_offset_origin = false;
+        self.export_vector_drawing = false;
         let document = if selection_only {
             self.editor.document.subset(self.editor.selection.ids())
         } else {

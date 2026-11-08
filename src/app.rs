@@ -617,6 +617,7 @@ pub struct BeamBurinApp {
     export_vector_selection: bool,
     export_vector_text_paths: bool,
     export_vector_margin_mm: f64,
+    export_vector_drawing: bool,
     export_vector_layer_ids: Vec<String>,
     recover_next: bool,
     pen_nodes: Vec<crate::geometry::path::Node>,

@@ -459,6 +459,7 @@ impl BeamBurinApp {
     pub(super) fn vector_export_region(
         &self,
         selection: bool,
+        drawing: bool,
         has_selection: bool,
     ) -> crate::export::Area {
         use crate::export::Area;
@@ -481,6 +482,29 @@ impl BeamBurinApp {
                     },
                     self.export_vector_margin_mm,
                 ),
+                None => (page, 0.0),
+            }
+        } else if drawing {
+            match self.editor.visible_bounds() {
+                Some((min, max)) => {
+                    let x = min.x.max(0.0);
+                    let y = min.y.max(0.0);
+                    let max_x = max.x.min(document.width_mm);
+                    let max_y = max.y.min(document.height_mm);
+                    if max_x > x && max_y > y {
+                        (
+                            Area {
+                                x,
+                                y,
+                                width: max_x - x,
+                                height: max_y - y,
+                            },
+                            self.export_vector_margin_mm,
+                        )
+                    } else {
+                        (page, 0.0)
+                    }
+                }
                 None => (page, 0.0),
             }
         } else {
@@ -511,6 +535,7 @@ impl BeamBurinApp {
 
     /// Open the DXF export options; `selection` preselects the origin crop.
     pub(super) fn open_export_dxf(&mut self, selection: bool) {
+        self.export_vector_drawing = false;
         self.export_dxf_selection = selection && !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         refresh_layer_selection(&mut self.export_dxf_layer_ids, &layers);
@@ -524,7 +549,11 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let region = self.vector_export_region(self.export_dxf_selection, has_selection);
+        let region = self.vector_export_region(
+            self.export_dxf_selection,
+            self.export_vector_drawing,
+            has_selection,
+        );
         let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new("Export DXF")
             .pivot(egui::Align2::CENTER_CENTER)
@@ -538,7 +567,15 @@ impl BeamBurinApp {
                 }
                 ui.label("Origin");
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.export_dxf_selection, false, "Whole page");
+                    let whole = !self.export_dxf_selection && !self.export_vector_drawing;
+                    if ui.radio(whole, "Whole page").clicked() {
+                        self.export_dxf_selection = false;
+                        self.export_vector_drawing = false;
+                    }
+                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                        self.export_dxf_selection = false;
+                        self.export_vector_drawing = true;
+                    }
                     if ui
                         .add_enabled(
                             has_selection,
@@ -550,6 +587,7 @@ impl BeamBurinApp {
                         .clicked()
                     {
                         self.export_dxf_selection = true;
+                        self.export_vector_drawing = false;
                     }
                 });
                 if self.export_dxf_selection && !has_selection {
@@ -557,7 +595,7 @@ impl BeamBurinApp {
                 }
                 vector_margin_row(
                     ui,
-                    self.export_dxf_selection && has_selection,
+                    (self.export_dxf_selection && has_selection) || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
                 );
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
@@ -614,6 +652,7 @@ impl BeamBurinApp {
     /// Open the PDF, EPS or HPGL options; `mode` picks the format.
     pub(super) fn open_export_vector(&mut self, mode: FileMode, selection: bool) {
         self.export_vector_mode = mode;
+        self.export_vector_drawing = false;
         self.export_vector_selection = selection && !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         refresh_layer_selection(&mut self.export_vector_layer_ids, &layers);
@@ -634,7 +673,11 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let region = self.vector_export_region(self.export_vector_selection, has_selection);
+        let region = self.vector_export_region(
+            self.export_vector_selection,
+            self.export_vector_drawing,
+            has_selection,
+        );
         let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new(title)
             .pivot(egui::Align2::CENTER_CENTER)
@@ -648,7 +691,15 @@ impl BeamBurinApp {
                 }
                 ui.label(if hpgl { "Origin" } else { "Area" });
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.export_vector_selection, false, "Whole page");
+                    let whole = !self.export_vector_selection && !self.export_vector_drawing;
+                    if ui.radio(whole, "Whole page").clicked() {
+                        self.export_vector_selection = false;
+                        self.export_vector_drawing = false;
+                    }
+                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                        self.export_vector_selection = false;
+                        self.export_vector_drawing = true;
+                    }
                     if ui
                         .add_enabled(
                             has_selection,
@@ -660,6 +711,7 @@ impl BeamBurinApp {
                         .clicked()
                     {
                         self.export_vector_selection = true;
+                        self.export_vector_drawing = false;
                     }
                 });
                 if self.export_vector_selection && !has_selection {
@@ -667,7 +719,8 @@ impl BeamBurinApp {
                 }
                 vector_margin_row(
                     ui,
-                    self.export_vector_selection && has_selection,
+                    (self.export_vector_selection && has_selection)
+                        || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
                 );
                 ui.checkbox(&mut self.export_vector_text_paths, "Text as paths");
@@ -714,6 +767,7 @@ impl BeamBurinApp {
 
     /// Open the SVG export options; `selection` preselects the crop.
     pub(super) fn open_export_svg(&mut self, selection: bool) {
+        self.export_vector_drawing = false;
         self.export_svg_selection = selection && !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         refresh_layer_selection(&mut self.export_svg_layer_ids, &layers);
@@ -727,7 +781,11 @@ impl BeamBurinApp {
         let has_selection = !self.editor.selection.is_empty();
         let layers = layer_rows(&self.editor.document);
         let active_layer_id = self.editor.active_layer_id.clone();
-        let region = self.vector_export_region(self.export_svg_selection, has_selection);
+        let region = self.vector_export_region(
+            self.export_svg_selection,
+            self.export_vector_drawing,
+            has_selection,
+        );
         let (width_mm, height_mm) = (region.width, region.height);
         egui::Window::new("Export SVG")
             .pivot(egui::Align2::CENTER_CENTER)
@@ -741,7 +799,15 @@ impl BeamBurinApp {
                 }
                 ui.label("Area");
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.export_svg_selection, false, "Whole page");
+                    let whole = !self.export_svg_selection && !self.export_vector_drawing;
+                    if ui.radio(whole, "Whole page").clicked() {
+                        self.export_svg_selection = false;
+                        self.export_vector_drawing = false;
+                    }
+                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                        self.export_svg_selection = false;
+                        self.export_vector_drawing = true;
+                    }
                     if ui
                         .add_enabled(
                             has_selection,
@@ -753,6 +819,7 @@ impl BeamBurinApp {
                         .clicked()
                     {
                         self.export_svg_selection = true;
+                        self.export_vector_drawing = false;
                     }
                 });
                 if self.export_svg_selection && !has_selection {
@@ -760,7 +827,7 @@ impl BeamBurinApp {
                 }
                 vector_margin_row(
                     ui,
-                    self.export_svg_selection && has_selection,
+                    (self.export_svg_selection && has_selection) || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
                 );
                 ui.label("Layers");

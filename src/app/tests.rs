@@ -2646,6 +2646,42 @@ fn exporting_the_selection_as_svg_keeps_the_margin() {
 }
 
 #[test]
+fn exporting_svg_from_the_drawing_area_crops_to_the_content() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("svg_drawing_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    app.editor.selection.clear();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export SVG...").click();
+    harness.run();
+    harness.get_by_label("Drawing").click();
+    harness.run();
+    assert!(
+        harness.state().export_vector_drawing,
+        "the drawing area was not selected"
+    );
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.svg");
+    let text = std::fs::read_to_string(&path).expect("cannot read the SVG");
+    assert!(
+        text.contains("width=\"20mm\" height=\"15mm\" viewBox=\"0 0 20 15\""),
+        "the drawing area does not match the content: {text}"
+    );
+}
+
+#[test]
 fn exporting_svg_from_only_the_active_layer() {
     use egui_kittest::kittest::Queryable as _;
 
