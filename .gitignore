@@ -5,3 +5,4 @@
 *.nc
 *.gcode
 !assets/examples/expected/*.nc
+assets/external/files/

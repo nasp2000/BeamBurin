@@ -1,0 +1,4 @@
+# name	sha256	url
+tiger.svg	5211e169283f43ab8ad7ea7998d917d5fbb3c568ac85c1a0217e86792822684d	https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tiger.svg
+dummy.pdf	3df79d34abbca99308e79cb94461c1893582604d68329a41fd4bec1885e6adb4	https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
+usa.dxf	30230c4a07f91ed9e27b057567ae62f3341a9c8fcb0955baeadad614dae64de5	https://raw.githubusercontent.com/mozman/ezdxf/master/examples/addons/drawing/data/usa.dxf
