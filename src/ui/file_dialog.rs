@@ -258,9 +258,9 @@ impl FileDialog {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([780.0, 780.0])
-            .min_width(640.0)
-            .min_height(640.0)
+            .default_size([800.0, 860.0])
+            .min_width(700.0)
+            .min_height(760.0)
             .max_width(900.0)
             .open(&mut open)
             .show(ctx, |ui| {
@@ -338,10 +338,11 @@ impl FileDialog {
                     );
                     ui.separator();
                     ui.vertical(|ui| {
+                        let list_height = (ui.available_height() - 56.0).clamp(320.0, 620.0);
                         egui::Frame::group(ui.style()).show(ui, |ui| {
                             egui::ScrollArea::vertical()
                                 .id_salt("dialog_files")
-                                .max_height(300.0)
+                                .max_height(list_height)
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| match self.listing(ui) {
                                     ListingAction::None => {}
