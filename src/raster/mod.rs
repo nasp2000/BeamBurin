@@ -11,8 +11,9 @@ pub const MAX_PIXELS: u64 = 50_000_000;
 ///
 /// The canvas texture is much smaller than the source, so damping the preview
 /// before the tone and dithering passes keeps slider changes responsive without
-/// affecting the full-resolution job path.
-pub const PREVIEW_MAX_SIDE: u32 = 512;
+/// affecting the full-resolution job path. 1024 px keeps the large photo sharp
+/// on screen while the bounded cache makes repeated frames cheap.
+pub const PREVIEW_MAX_SIDE: u32 = 1024;
 
 /// Largest side processed before vectorizing or tracing a photo.
 pub const TRACE_MAX_SIDE: u32 = 1024;
