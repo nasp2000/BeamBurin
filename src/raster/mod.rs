@@ -768,12 +768,14 @@ fn prepared_image(
         let exclude = colour_exclusion(&rgb, &mask_colours, image.mask_tolerance);
         (luma_from_rgb(&rgb, &image.settings), exclude)
     } else if uses_default_gray(&image.settings) {
-        (picture.to_luma8(), None)
+        let luma = picture.to_luma8();
+        drop(picture);
+        (luma, None)
     } else {
         let rgb = picture.to_rgb8();
+        drop(picture);
         (luma_with_weights(&rgb, &image.settings), None)
     };
-    drop(picture);
     if image.settings.despeckle {
         luma = despeckle(&luma);
     }
