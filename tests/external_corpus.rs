@@ -89,6 +89,7 @@ fn assert_importable(entry: &Entry) {
         || extension.eq_ignore_ascii_case("dxf")
         || extension.eq_ignore_ascii_case("plt")
         || extension.eq_ignore_ascii_case("hpgl")
+        || extension.eq_ignore_ascii_case("pdf")
     {
         assert!(
             !outcome.document.objects.is_empty(),
