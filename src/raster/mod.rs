@@ -634,6 +634,21 @@ pub fn process_object_preview(
 struct PreviewCache {
     key: String,
     rgb: Arc<image::RgbImage>,
+    /// Grey weights and despeckle, which change the luminance but not the RGB.
+    luma_key: String,
+    luma: Arc<image::GrayImage>,
+    exclude: Option<Vec<bool>>,
+}
+
+/// Settings that change the luminance derived from the cached RGB.
+fn derived_luma_key(settings: &ImageSettings) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        settings.gray_red.to_bits(),
+        settings.gray_green.to_bits(),
+        settings.gray_blue.to_bits(),
+        settings.despeckle
+    )
 }
 
 fn preview_cache() -> &'static Mutex<Option<PreviewCache>> {
@@ -691,20 +706,38 @@ fn prepared_image(
     image.validate().map_err(BeamError::InvalidInput)?;
     let key = max_side.map(|max_side| preview_key(path, image, max_side));
     let mask_colours = image.mask_rgb();
+    let settings_key = derived_luma_key(&image.settings);
     if let Some(key) = &key
-        && let Ok(cache) = preview_cache().lock()
-        && let Some(entry) = cache.as_ref()
-        && &entry.key == key
+        && let Some((rgb, exclude, cached_luma)) = preview_cache().lock().ok().and_then(|cache| {
+            let entry = cache.as_ref()?;
+            if &entry.key != key {
+                return None;
+            }
+            Some((
+                Arc::clone(&entry.rgb),
+                entry.exclude.clone(),
+                (entry.luma_key == settings_key).then(|| Arc::clone(&entry.luma)),
+            ))
+        })
     {
-        let mut luma = luma_from_rgb(&entry.rgb, &image.settings);
-        let exclude = colour_exclusion(&entry.rgb, &mask_colours, image.mask_tolerance);
-        if image.settings.despeckle {
-            luma = despeckle(&luma);
-        }
-        return Ok(PreparedImage {
-            luma: Arc::new(luma),
-            exclude,
-        });
+        let luma = if let Some(luma) = cached_luma {
+            luma
+        } else {
+            let mut luma = luma_from_rgb(&rgb, &image.settings);
+            if image.settings.despeckle {
+                luma = despeckle(&luma);
+            }
+            let luma = Arc::new(luma);
+            if let Ok(mut cache) = preview_cache().lock()
+                && let Some(entry) = cache.as_mut()
+                && &entry.key == key
+            {
+                entry.luma_key.clone_from(&settings_key);
+                entry.luma = Arc::clone(&luma);
+            }
+            luma
+        };
+        return Ok(PreparedImage { luma, exclude });
     }
     // Check the source header before decoding: crop, rotation and a smaller
     // working size do not reduce the memory the decoder needs for the file.
@@ -754,20 +787,14 @@ fn prepared_image(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
+    let mut cache_rgb: Option<Arc<image::RgbImage>> = None;
     let (mut luma, exclude) = if max_side.is_some() || !mask_colours.is_empty() {
         let rgb = Arc::new(picture.to_rgb8());
         drop(picture);
-        if max_side.is_some()
-            && let Some(key) = key
-            && let Ok(mut cache) = preview_cache().lock()
-        {
-            *cache = Some(PreviewCache {
-                key,
-                rgb: Arc::clone(&rgb),
-            });
-        }
         let exclude = colour_exclusion(&rgb, &mask_colours, image.mask_tolerance);
-        (luma_from_rgb(&rgb, &image.settings), exclude)
+        let luma = luma_from_rgb(&rgb, &image.settings);
+        cache_rgb = Some(rgb);
+        (luma, exclude)
     } else if uses_default_gray(&image.settings) {
         let luma = picture.to_luma8();
         drop(picture);
@@ -780,10 +807,21 @@ fn prepared_image(
     if image.settings.despeckle {
         luma = despeckle(&luma);
     }
-    Ok(PreparedImage {
-        luma: Arc::new(luma),
-        exclude,
-    })
+    let luma = Arc::new(luma);
+    if max_side.is_some()
+        && let Some(key) = key
+        && let Some(rgb) = cache_rgb
+        && let Ok(mut cache) = preview_cache().lock()
+    {
+        *cache = Some(PreviewCache {
+            key,
+            rgb,
+            luma_key: settings_key,
+            luma: Arc::clone(&luma),
+            exclude: exclude.clone(),
+        });
+    }
+    Ok(PreparedImage { luma, exclude })
 }
 
 fn uses_default_gray(settings: &ImageSettings) -> bool {
