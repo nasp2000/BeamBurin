@@ -935,11 +935,11 @@ mod object_tests {
         assert_eq!(red, red_again, "the cached preview changed by itself");
         assert_eq!(red[255], 32 * 64, "the red half should be white");
         assert_eq!(red[0], 32 * 64, "the blue half should be black");
-        object.settings.gray_red = 0.0;
-        object.settings.gray_blue = 1.0;
-        let blue = histogram_preview(&path, &object, 64).unwrap();
-        assert_eq!(blue[255], 32 * 64, "the cache kept the old grey weights");
-        assert_ne!(red, blue);
+        object.settings.gray_red = 0.5;
+        object.settings.gray_blue = 0.5;
+        let mixed = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(mixed[128], 64 * 64, "the cache kept the old grey weights");
+        assert_ne!(red, mixed);
         let _ = std::fs::remove_file(&path);
     }
 
