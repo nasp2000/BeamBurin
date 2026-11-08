@@ -627,6 +627,31 @@ impl BeamBurinApp {
                                     );
                                 });
                             }
+                            ui.horizontal(|ui| {
+                                ui.strong("Colour mask");
+                                ui.weak("Treat these colours as background");
+                                if !image.mask_colours.is_empty()
+                                    && ui.button("Clear colours").clicked()
+                                {
+                                    image.mask_colours.clear();
+                                }
+                            });
+                            for row in super::layers::DRAWING_COLOURS.chunks(10) {
+                                ui.horizontal(|ui| {
+                                    for colour in row {
+                                        image_mask_colour_button(ui, &mut image, colour);
+                                    }
+                                });
+                            }
+                            ui.horizontal(|ui| {
+                                ui.label("Tolerance");
+                                ui.add(
+                                    egui::DragValue::new(&mut image.mask_tolerance)
+                                        .range(0..=255)
+                                        .speed(1),
+                                );
+                                ui.weak("per channel, 0 matches only the exact colour");
+                            });
                             egui::Grid::new("image_adjust_settings")
                                 .num_columns(2)
                                 .spacing([12.0, 6.0])
@@ -1029,6 +1054,8 @@ impl BeamBurinApp {
                     };
                     current.settings = original.settings;
                     current.crop = original.crop;
+                    current.mask_colours.clone_from(&original.mask_colours);
+                    current.mask_tolerance = original.mask_tolerance;
                 }
             } else if let Some(current) = self
                 .editor
@@ -1069,6 +1096,13 @@ impl BeamBurinApp {
                     document_changed = true;
                 }
                 current.crop = image.crop;
+                if current.mask_colours != image.mask_colours
+                    || current.mask_tolerance != image.mask_tolerance
+                {
+                    current.mask_colours.clone_from(&image.mask_colours);
+                    current.mask_tolerance = image.mask_tolerance;
+                    document_changed = true;
+                }
             }
         }
         if apply_all {
@@ -1108,7 +1142,11 @@ impl BeamBurinApp {
         image: &crate::objects::ImageObject,
     ) -> [u64; 256] {
         if let Some(cache) = &self.image_histogram {
-            if cache.object_id == id && cache.settings == image.settings && cache.crop == image.crop
+            if cache.object_id == id
+                && cache.settings == image.settings
+                && cache.crop == image.crop
+                && cache.mask_colours == image.mask_colours
+                && cache.mask_tolerance == image.mask_tolerance
             {
                 return cache.bins;
             }
@@ -1123,6 +1161,8 @@ impl BeamBurinApp {
             object_id: id.to_string(),
             settings: image.settings,
             crop: image.crop,
+            mask_colours: image.mask_colours.clone(),
+            mask_tolerance: image.mask_tolerance,
             bins,
         });
         bins
@@ -1191,5 +1231,49 @@ fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256], settings: &crate::object
             [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
             egui::Stroke::new(1.0, visuals.text_color()),
         );
+    }
+}
+
+/// One palette swatch that toggles a colour in the image colour mask.
+fn image_mask_colour_button(
+    ui: &mut egui::Ui,
+    image: &mut crate::objects::ImageObject,
+    colour: &str,
+) {
+    let (r, g, b) = crate::color::parse_hex_color(colour).unwrap_or((0, 0, 0));
+    let selected = image
+        .mask_colours
+        .iter()
+        .any(|value| value.eq_ignore_ascii_case(colour));
+    let response = ui.add(
+        egui::Button::new("")
+            .fill(egui::Color32::from_rgb(r, g, b))
+            .min_size(egui::vec2(18.0, 18.0))
+            .stroke(if selected {
+                egui::Stroke::new(2.0, egui::Color32::WHITE)
+            } else {
+                egui::Stroke::NONE
+            }),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            true,
+            format!("Mask colour {colour}"),
+        )
+    });
+    let tip = if selected {
+        format!("Stop masking {colour}")
+    } else {
+        format!("Mask {colour}")
+    };
+    if response.on_hover_text(tip).clicked() {
+        if selected {
+            image
+                .mask_colours
+                .retain(|value| !value.eq_ignore_ascii_case(colour));
+        } else {
+            image.mask_colours.push(colour.to_string());
+        }
     }
 }

@@ -3700,6 +3700,64 @@ fn the_image_mask_can_be_cleared_and_cancelled() {
 }
 
 #[test]
+fn the_image_colour_mask_toggles_and_cancels() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("colour_mask_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document
+        .objects
+        .first()
+        .expect("the import produced no object")
+        .id
+        .clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust_snapshot = Some(app.editor.document.clone());
+    app.image_adjust = Some(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    let colours_of = |app: &BeamBurinApp| {
+        let object = app
+            .editor
+            .document
+            .object(&id)
+            .expect("the image disappeared");
+        let crate::document::Shape::Image(image) = &object.shape else {
+            panic!("the object is not an image");
+        };
+        image.mask_colours.clone()
+    };
+    let button = "Mask colour #ff0000";
+    harness.get_by_label(button).click_accesskit();
+    harness.run();
+    assert_eq!(
+        colours_of(harness.state()),
+        vec!["#ff0000".to_string()],
+        "the mask colour was not selected"
+    );
+    harness.get_by_label(button).click_accesskit();
+    harness.run();
+    assert!(
+        colours_of(harness.state()).is_empty(),
+        "the mask colour was not deselected"
+    );
+    harness.get_by_label(button).click_accesskit();
+    harness.run();
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        colours_of(harness.state()).is_empty(),
+        "Cancel kept the colour mask"
+    );
+}
+
+#[test]
 fn the_image_adjust_duplicates_and_deletes_a_preset() {
     use egui_kittest::kittest::Queryable as _;
 

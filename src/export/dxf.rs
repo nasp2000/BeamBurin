@@ -553,6 +553,8 @@ mod tests {
                 dpi: 96.0,
                 settings: crate::objects::ImageSettings::default(),
                 crop: None,
+                mask_colours: Vec::new(),
+                mask_tolerance: 24,
             }),
         ));
         let mut filled = Object::new(layer_id.clone(), Shape::Ellipse { rx: 4.0, ry: 2.0 });

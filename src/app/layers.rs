@@ -2,7 +2,7 @@ use super::{BeamBurinApp, Color32, FileMode, LayerRow, Ui, parse_hex_color, to_h
 
 /// Drawing colours offered at the bottom of the window. They are also the
 /// colours a layer can use for its cut configuration.
-const DRAWING_COLOURS: [&str; 20] = [
+pub(super) const DRAWING_COLOURS: [&str; 20] = [
     "#000000", "#1e88e5", "#e53935", "#43a047", "#fdd835", "#8e24aa", "#00acc1", "#fb8c00",
     "#6d4c41", "#546e7a", "#d81b60", "#7cb342", "#3949ab", "#00897b", "#f4511e", "#c0ca33",
     "#5e35b1", "#039be5", "#ffb300", "#757575",

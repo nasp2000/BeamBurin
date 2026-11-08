@@ -613,7 +613,7 @@ fn preview_key(
     let mut key = String::new();
     let _ = write!(
         key,
-        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{max_side}",
+        "{}|{length}|{modified}|{}|{}|{}|{crop:?}|{}|{}|{}|{}|{}|{}|{max_side}",
         path.display(),
         image.width_px,
         image.height_px,
@@ -622,6 +622,8 @@ fn preview_key(
         settings.target_height_px,
         settings.flip_horizontal,
         settings.flip_vertical,
+        image.mask_colours.join(","),
+        image.mask_tolerance,
     );
     key
 }
@@ -640,6 +642,12 @@ fn prepared_luma(
         && &entry.key == key
     {
         let mut luma = luma_from_rgb(&entry.rgb, &image.settings);
+        apply_colour_mask(
+            &entry.rgb,
+            &mut luma,
+            &image.mask_rgb(),
+            image.mask_tolerance,
+        );
         if image.settings.despeckle {
             luma = despeckle(&luma);
         }
@@ -693,10 +701,12 @@ fn prepared_luma(
             "image has {pixels} pixels; the limit is {MAX_PIXELS}"
         )));
     }
-    let mut luma = if max_side.is_some() {
+    let mask = image.mask_rgb();
+    let mut luma = if max_side.is_some() || !mask.is_empty() {
         let rgb = Arc::new(picture.to_rgb8());
         drop(picture);
-        if let Some(key) = key
+        if max_side.is_some()
+            && let Some(key) = key
             && let Ok(mut cache) = preview_cache().lock()
         {
             *cache = Some(PreviewCache {
@@ -704,7 +714,9 @@ fn prepared_luma(
                 rgb: Arc::clone(&rgb),
             });
         }
-        luma_from_rgb(&rgb, &image.settings)
+        let mut luma = luma_from_rgb(&rgb, &image.settings);
+        apply_colour_mask(&rgb, &mut luma, &mask, image.mask_tolerance);
+        luma
     } else if uses_default_gray(&image.settings) {
         picture.to_luma8()
     } else {
@@ -732,6 +744,29 @@ fn luma_from_rgb(picture: &image::RgbImage, settings: &ImageSettings) -> image::
         });
     }
     luma_with_weights(picture, settings)
+}
+
+/// Replace pixels close to a mask colour with white, so the colour is treated
+/// as background by every engraving mode.
+fn apply_colour_mask(
+    rgb: &image::RgbImage,
+    luma: &mut image::GrayImage,
+    mask: &[[u8; 3]],
+    tolerance: u8,
+) {
+    if mask.is_empty() {
+        return;
+    }
+    for (pixel, out) in rgb.pixels().zip(luma.pixels_mut()) {
+        let matched = mask.iter().any(|colour| {
+            pixel[0].abs_diff(colour[0]) <= tolerance
+                && pixel[1].abs_diff(colour[1]) <= tolerance
+                && pixel[2].abs_diff(colour[2]) <= tolerance
+        });
+        if matched {
+            *out = image::Luma([255]);
+        }
+    }
 }
 
 /// Convert to luminance with user weights, normalised so they need not sum to 1.
@@ -955,6 +990,38 @@ mod object_tests {
         let mixed = histogram_preview(&path, &object, 64).unwrap();
         assert_eq!(mixed[128], 64 * 64, "the cache kept the old grey weights");
         assert_ne!(red, mixed);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_colour_mask_treats_the_colour_as_background() {
+        let path = std::env::temp_dir().join("bw_raster_colour_mask.png");
+        let mut picture = image::RgbImage::new(8, 4);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = if x < 4 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            };
+        }
+        picture.save(&path).unwrap();
+        let mut object = ImageObject::new(path.to_string_lossy(), 8, 4, 96.0);
+        let before = histogram_preview(&path, &object, 64).unwrap();
+        object.mask_colours = vec!["#ff0000".to_string()];
+        object.mask_tolerance = 8;
+        let after = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(after[255], 16, "the red half was not masked");
+        assert_ne!(before, after, "the cache kept the unmasked source");
+        let bitmap = process_object_preview(&path, &object, 64).unwrap();
+        for y in 0..4 {
+            for x in 0..8 {
+                assert_eq!(
+                    bitmap.get(x, y),
+                    x >= 4,
+                    "the colour mask is wrong at {x},{y}"
+                );
+            }
+        }
         let _ = std::fs::remove_file(&path);
     }
 

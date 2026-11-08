@@ -260,6 +260,8 @@ mod tests {
                 dpi: 96.0,
                 settings: crate::objects::ImageSettings::default(),
                 crop: None,
+                mask_colours: Vec::new(),
+                mask_tolerance: 24,
             }),
         ));
         document.add_object(crate::document::Object::new(

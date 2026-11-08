@@ -1038,6 +1038,8 @@ struct ImagePreview {
     path: String,
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
+    mask_colours: Vec<String>,
+    mask_tolerance: u8,
     stats: crate::raster::RasterStats,
 }
 
@@ -1049,6 +1051,8 @@ struct BurnPreview {
     object_id: String,
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
+    mask_colours: Vec<String>,
+    mask_tolerance: u8,
     texture: egui::TextureHandle,
 }
 
@@ -1057,6 +1061,8 @@ struct InvertPreview {
     object_id: String,
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
+    mask_colours: Vec<String>,
+    mask_tolerance: u8,
     texture: egui::TextureHandle,
 }
 
@@ -1068,6 +1074,8 @@ struct ImageHistogram {
     object_id: String,
     settings: crate::objects::ImageSettings,
     crop: Option<crate::objects::ImageCrop>,
+    mask_colours: Vec<String>,
+    mask_tolerance: u8,
     bins: [u64; 256],
 }
 
@@ -1102,6 +1110,8 @@ impl BeamBurinApp {
                     && preview.path == image.path
                     && preview.settings == image.settings
                     && preview.crop == image.crop
+                    && preview.mask_colours == image.mask_colours
+                    && preview.mask_tolerance == image.mask_tolerance
             })
         });
         for (id, image) in needed {
@@ -1118,6 +1128,8 @@ impl BeamBurinApp {
             let path = image.path.clone();
             let settings = image.settings;
             let crop = image.crop;
+            let mask_colours = image.mask_colours.clone();
+            let mask_tolerance = image.mask_tolerance;
             let stats = crate::raster::RasterStats::of(&bitmap);
             let texture = ctx.load_texture(
                 format!("image-preview-{id}"),
@@ -1131,6 +1143,8 @@ impl BeamBurinApp {
                     path,
                     settings,
                     crop,
+                    mask_colours,
+                    mask_tolerance,
                     stats,
                 },
             );

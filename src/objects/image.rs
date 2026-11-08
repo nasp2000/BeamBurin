@@ -308,6 +308,29 @@ pub struct ImageObject {
     /// Optional crop of the source image, applied before rotation.
     #[serde(default)]
     pub crop: Option<ImageCrop>,
+    /// Palette colours treated as background, in `#rrggbb` form.
+    #[serde(default)]
+    pub mask_colours: Vec<String>,
+    /// Per-channel tolerance of the colour mask, 0..=255.
+    #[serde(default = "default_mask_tolerance")]
+    pub mask_tolerance: u8,
+}
+
+fn default_mask_tolerance() -> u8 {
+    24
+}
+
+/// Parse a `#rrggbb` colour used by the image colour mask.
+pub fn parse_mask_colour(value: &str) -> Option<[u8; 3]> {
+    let digits = value.strip_prefix('#')?.as_bytes();
+    if digits.len() != 6 {
+        return None;
+    }
+    let channel = |start: usize| -> Option<u8> {
+        let pair = std::str::from_utf8(&digits[start..start + 2]).ok()?;
+        u8::from_str_radix(pair, 16).ok()
+    };
+    Some([channel(0)?, channel(2)?, channel(4)?])
 }
 
 /// Resolution below which the interface warns that detail may be lost.
@@ -395,6 +418,8 @@ impl ImageObject {
             dpi,
             settings: ImageSettings::default(),
             crop: None,
+            mask_colours: Vec::new(),
+            mask_tolerance: default_mask_tolerance(),
         }
     }
 
@@ -420,7 +445,23 @@ impl ImageObject {
                 return Err("image crop extends past the source".to_string());
             }
         }
+        if self.mask_colours.len() > 20 {
+            return Err("at most 20 image mask colours can be selected".to_string());
+        }
+        for colour in &self.mask_colours {
+            if parse_mask_colour(colour).is_none() {
+                return Err(format!("invalid image mask colour: {colour}"));
+            }
+        }
         Ok(())
+    }
+
+    /// Colours of the mask that parse, in RGB order.
+    pub fn mask_rgb(&self) -> Vec<[u8; 3]> {
+        self.mask_colours
+            .iter()
+            .filter_map(|colour| parse_mask_colour(colour))
+            .collect()
     }
 
     /// Size in pixels after cropping.
@@ -585,7 +626,28 @@ mod tests {
         assert_eq!(image.settings.midtone_shift, 0.0);
         assert_eq!(image.settings.highlight_lift, 0.0);
         assert_eq!(image.settings.enhance_denoise, 0.0);
+        assert!(image.mask_colours.is_empty());
+        assert_eq!(image.mask_tolerance, 24);
         assert_eq!(image.effective_size_px(), (10, 5));
+    }
+
+    #[test]
+    fn colour_mask_colours_and_tolerance_are_validated() {
+        let mut image = ImageObject::new("img.png", 100, 50, 96.0);
+        assert!(image.validate().is_ok());
+        assert_eq!(parse_mask_colour("#1E88E5"), Some([30, 136, 229]));
+        assert_eq!(parse_mask_colour("1e88e5"), None);
+        assert_eq!(parse_mask_colour("#1e88e"), None);
+        assert_eq!(parse_mask_colour("#1e88ez"), None);
+        image.mask_colours = vec!["#000000".to_string(), "#ffffff".to_string()];
+        assert!(image.validate().is_ok());
+        assert_eq!(image.mask_rgb(), vec![[0, 0, 0], [255, 255, 255]]);
+        image.mask_colours.push("red".to_string());
+        assert!(image.validate().is_err());
+        image.mask_colours = (0..21)
+            .map(|index| format!("#{:02x}{:02x}{:02x}", index, index, index))
+            .collect();
+        assert!(image.validate().is_err());
     }
 
     #[test]
