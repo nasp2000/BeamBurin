@@ -2547,6 +2547,14 @@ fn exporting_svg_from_the_dialog_writes_the_file() {
         harness.state().export_svg_text_paths,
         "the text-as-paths switch did not apply"
     );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Embed images")
+        .click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().export_svg_embed_images,
+        "the embed-images switch did not apply"
+    );
     harness.get_by_label("Export").click();
     harness.run();
     harness.get_by_label("Export").click();
@@ -4095,6 +4103,17 @@ fn the_export_presets_window_saves_image_and_vector_options() {
         .get_by_label("Save vector options")
         .click_accesskit();
     harness.run();
+    {
+        let state = harness.state_mut();
+        state.export_svg_embed_images = true;
+        state.vector_export_preset_name = "SVG embedded".to_string();
+        state.vector_export_preset_format = "svg".to_string();
+    }
+    harness.run();
+    harness
+        .get_by_label("Save vector options")
+        .click_accesskit();
+    harness.run();
 
     let preferences = &harness.state().preferences;
     assert_eq!(
@@ -4118,8 +4137,14 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!(vector.arcs);
     assert!((vector.margin_mm - 6.0).abs() < f64::EPSILON);
     assert_eq!(vector.dxf_unit, "in");
+    let svg = preferences
+        .vector_export_presets
+        .find("SVG embedded")
+        .expect("the SVG preset disappeared");
+    assert!(svg.embed_images, "the SVG preset lost the embedding switch");
     let image = image.clone();
     let vector = vector.clone();
+    let svg = svg.clone();
 
     let state = harness.state_mut();
     state.export_image_dpi = 96.0;
@@ -4127,8 +4152,14 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     state.export_dxf_arcs = false;
     state.export_dxf_unit = crate::export::DxfUnit::Millimetres;
     state.export_vector_margin_mm = 0.0;
+    state.export_svg_embed_images = false;
     state.apply_image_export_preset(&image);
     state.apply_vector_export_preset(&vector);
+    state.apply_vector_export_preset(&svg);
+    assert!(
+        state.export_svg_embed_images,
+        "the SVG preset embedding switch was not applied"
+    );
     assert!((state.export_image_dpi - 300.0).abs() < f64::EPSILON);
     assert!(
         !state.export_image_keep_aspect,

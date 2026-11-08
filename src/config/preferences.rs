@@ -532,6 +532,9 @@ pub struct VectorExportPreset {
     /// DXF drawing unit; `mm` or `in`.
     #[serde(default = "default_dxf_unit")]
     pub dxf_unit: String,
+    /// Embed raster images as data URIs (SVG only).
+    #[serde(default)]
+    pub embed_images: bool,
 }
 
 fn default_dxf_unit() -> String {
@@ -1144,6 +1147,7 @@ mod tests {
             arcs: true,
             margin_mm: 0.0,
             dxf_unit: "mm".to_string(),
+            embed_images: false,
         }
     }
 

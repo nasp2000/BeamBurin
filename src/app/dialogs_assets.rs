@@ -495,7 +495,10 @@ impl BeamBurinApp {
     ) {
         self.export_vector_margin_mm = preset.margin_mm;
         match preset.format.as_str() {
-            "svg" => self.export_svg_text_paths = preset.text_as_paths,
+            "svg" => {
+                self.export_svg_text_paths = preset.text_as_paths;
+                self.export_svg_embed_images = preset.embed_images;
+            }
             "dxf" => {
                 self.export_dxf_text_paths = preset.text_as_paths;
                 self.export_dxf_arcs = preset.arcs;
@@ -768,6 +771,8 @@ impl BeamBurinApp {
                     &active_layer_id,
                 );
                 ui.checkbox(&mut self.export_svg_text_paths, "Text as paths");
+                ui.checkbox(&mut self.export_svg_embed_images, "Embed images")
+                    .on_hover_text("Write PNG, JPEG, GIF and WebP pixels into the SVG");
                 ui.weak(format!("{width_mm:.1} x {height_mm:.1} mm"));
                 ui.weak("Selected layers only; hidden layers are skipped.");
                 let can_export = !self.export_svg_layer_ids.is_empty();
@@ -1094,6 +1099,7 @@ impl BeamBurinApp {
         if save {
             let name = self.vector_export_preset_name.trim().to_string();
             let format = self.vector_export_preset_format.clone();
+            let embed_images = format == "svg" && self.export_svg_embed_images;
             let (text_as_paths, arcs) = match format.as_str() {
                 "svg" => (self.export_svg_text_paths, false),
                 "dxf" => (self.export_dxf_text_paths, self.export_dxf_arcs),
@@ -1106,6 +1112,7 @@ impl BeamBurinApp {
                 arcs,
                 margin_mm: self.export_vector_margin_mm,
                 dxf_unit: self.export_dxf_unit.id().to_string(),
+                embed_images,
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {

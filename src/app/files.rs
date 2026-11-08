@@ -122,6 +122,7 @@ impl BeamBurinApp {
         let svg_options = crate::export::SvgOptions {
             area: vector_area,
             text_as_paths: self.export_svg_text_paths,
+            embed_images: self.export_svg_embed_images,
             layer_ids: if self.export_svg_layer_ids.is_empty() {
                 None
             } else {

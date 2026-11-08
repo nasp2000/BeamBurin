@@ -15,6 +15,8 @@ pub struct SvgOptions {
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
     pub layer_ids: Option<Vec<String>>,
+    /// Embed readable PNG, JPEG, GIF and WebP images as data URIs.
+    pub embed_images: bool,
 }
 
 /// Export visible document content as SVG.
@@ -63,7 +65,14 @@ pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<S
             .iter()
             .filter(|object| object.layer_id == layer.id && object.visible)
         {
-            write_object(&mut out, object, layer.rgb(), view, options.text_as_paths);
+            write_object(
+                &mut out,
+                object,
+                layer.rgb(),
+                view,
+                options.text_as_paths,
+                options.embed_images,
+            );
         }
         out.push_str("  </g>\n");
     }
@@ -97,6 +106,7 @@ fn write_object(
     layer_rgb: (u8, u8, u8),
     view: View,
     text_as_paths: bool,
+    embed_images: bool,
 ) {
     let style = &object.style;
     let (stroke, fill) = effective_colors(object, style, layer_rgb);
@@ -185,10 +195,15 @@ fn write_object(
             let Some((min, max)) = object.bounds() else {
                 return;
             };
+            let href = if embed_images {
+                embed_image(&image.path).unwrap_or_else(|| escape(&image.path))
+            } else {
+                escape(&image.path)
+            };
             let _ = writeln!(
                 out,
                 "    <image href=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
-                escape(&image.path),
+                href,
                 fmt_num(view.x(min.x)),
                 fmt_num(view.y(max.y)),
                 fmt_num(max.x - min.x),
@@ -303,6 +318,47 @@ pub fn bake_transform(path: &Path, transform: &Transform2) -> Path {
     path.transform(transform)
 }
 
+/// Base64-encode a byte slice for an SVG data URI.
+fn base64(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        out.push(TABLE[usize::from(first >> 2)] as char);
+        out.push(TABLE[usize::from((first & 0b11) << 4 | second >> 4)] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[usize::from((second & 0b1111) << 2 | third >> 6)] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[usize::from(third & 0b11_1111)] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// Data URI for a readable image, or `None` when it cannot be embedded.
+fn embed_image(path: &str) -> Option<String> {
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())?
+        .to_ascii_lowercase();
+    let mime = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    let bytes = std::fs::read(path).ok()?;
+    Some(format!("data:{mime};base64,{}", base64(&bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +370,48 @@ mod tests {
         let svg = export_svg(&doc).unwrap();
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn embedded_images_become_data_uris() {
+        let path = std::env::temp_dir().join("bw_svg_embed.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([1, 2, 3, 255]))
+            .save(&path)
+            .unwrap();
+        let mut doc = Document::default();
+        let layer_id = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            layer_id,
+            Shape::Image(crate::objects::ImageObject::new(
+                path.to_string_lossy(),
+                2,
+                2,
+                96.0,
+            )),
+        ));
+        let plain = export_svg(&doc).unwrap();
+        assert!(plain.contains("href=\"/tmp/") || plain.contains("href=\""));
+        assert!(!plain.contains("data:image/png;base64,"));
+        let embedded = export_svg_with_options(
+            &doc,
+            &SvgOptions {
+                embed_images: true,
+                ..SvgOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(embedded.contains("data:image/png;base64,"), "{embedded}");
+        assert!(!embedded.contains(&path.to_string_lossy().to_string()));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn base64_matches_the_reference_encoding() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"hello"), "aGVsbG8=");
     }
 
     #[test]
@@ -410,6 +508,7 @@ mod tests {
                 }),
                 text_as_paths: false,
                 layer_ids: None,
+                embed_images: false,
             },
         )
         .unwrap();
@@ -447,6 +546,7 @@ mod tests {
                 }),
                 text_as_paths: false,
                 layer_ids: None,
+                embed_images: false,
             },
         )
         .unwrap();
@@ -474,6 +574,7 @@ mod tests {
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,
+                embed_images: false,
             },
         )
         .unwrap();
@@ -495,6 +596,7 @@ mod tests {
                 }),
                 text_as_paths: false,
                 layer_ids: None,
+                embed_images: false,
             },
         )
         .unwrap_err();
@@ -508,6 +610,7 @@ mod tests {
             }),
             text_as_paths: false,
             layer_ids: None,
+            embed_images: false,
         };
         assert!(export_svg_with_options(&doc, &empty).is_err());
     }
@@ -539,6 +642,7 @@ mod tests {
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![second.clone()]),
+                embed_images: false,
             },
         )
         .unwrap();
@@ -583,6 +687,7 @@ mod tests {
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![first.clone(), second.clone()]),
+                embed_images: false,
             },
         )
         .unwrap();
