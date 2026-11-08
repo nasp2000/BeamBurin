@@ -3928,3 +3928,57 @@ fn the_palette_creates_a_cut_entry_for_the_active_layer() {
     );
     assert_eq!(document.operations[0].params.color, "#1e88e5");
 }
+
+#[test]
+fn the_export_presets_window_saves_image_and_vector_options() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    app.export_image_dpi = 300.0;
+    app.export_image_margin_mm = 4.0;
+    app.image_export_preset_name = "Photo".to_string();
+    app.export_dxf_text_paths = true;
+    app.export_dxf_arcs = true;
+    app.vector_export_preset_name = "DXF arcs".to_string();
+    app.vector_export_preset_format = "dxf".to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+
+    harness.get_by_label("Save image options").click_accesskit();
+    harness.run();
+    harness
+        .get_by_label("Save vector options")
+        .click_accesskit();
+    harness.run();
+
+    let preferences = &harness.state().preferences;
+    assert_eq!(
+        preferences.image_export_presets.saved.len(),
+        1,
+        "the image preset was not saved"
+    );
+    let image = preferences
+        .image_export_presets
+        .find("Photo")
+        .expect("the image preset disappeared");
+    assert!((image.dpi - 300.0).abs() < f64::EPSILON);
+    assert!((image.margin_mm - 4.0).abs() < f64::EPSILON);
+    let vector = preferences
+        .vector_export_presets
+        .find("DXF arcs")
+        .expect("the vector preset disappeared");
+    assert_eq!(vector.format, "dxf");
+    assert!(vector.text_as_paths);
+    assert!(vector.arcs);
+    let image = image.clone();
+    let vector = vector.clone();
+
+    let state = harness.state_mut();
+    state.export_image_dpi = 96.0;
+    state.export_dxf_arcs = false;
+    state.apply_image_export_preset(&image);
+    state.apply_vector_export_preset(&vector);
+    assert!((state.export_image_dpi - 300.0).abs() < f64::EPSILON);
+    assert!(state.export_dxf_arcs, "the vector preset was not applied");
+}

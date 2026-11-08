@@ -440,6 +440,34 @@ impl BeamBurinApp {
         self.gcode_origin = preset.origin;
     }
 
+    pub(super) fn apply_image_export_preset(
+        &mut self,
+        preset: &crate::config::preferences::ImageExportPreset,
+    ) {
+        self.export_image_dpi = preset.dpi;
+        self.export_image_transparent = preset.transparent;
+        self.export_image_margin_mm = preset.margin_mm;
+        self.export_image_offset_x_mm = preset.offset_x_mm;
+        self.export_image_offset_y_mm = preset.offset_y_mm;
+        self.export_image_custom_size = preset.custom_size;
+        self.export_image_width_px = preset.width_px;
+        self.export_image_height_px = preset.height_px;
+    }
+
+    pub(super) fn apply_vector_export_preset(
+        &mut self,
+        preset: &crate::config::preferences::VectorExportPreset,
+    ) {
+        match preset.format.as_str() {
+            "svg" => self.export_svg_text_paths = preset.text_as_paths,
+            "dxf" => {
+                self.export_dxf_text_paths = preset.text_as_paths;
+                self.export_dxf_arcs = preset.arcs;
+            }
+            _ => self.export_vector_text_paths = preset.text_as_paths,
+        }
+    }
+
     /// Open the DXF export options; `selection` preselects the origin crop.
     pub(super) fn open_export_dxf(&mut self, selection: bool) {
         self.export_dxf_selection = selection && !self.editor.selection.is_empty();
@@ -741,10 +769,8 @@ impl BeamBurinApp {
 
     pub(super) fn export_presets_window(&mut self, ctx: &egui::Context) {
         let mut open = self.export_presets_open;
-        let mut save = false;
-        let mut apply: Option<String> = None;
-        let mut delete: Option<String> = None;
         let mut close_requested = false;
+        let mut stored = false;
         egui::Window::new("Export presets")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -753,48 +779,18 @@ impl BeamBurinApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(
-                    "An export preset stores the G-code dialect, decimals, comments, \
-                 travel moves, line endings, arcs and smoothing.",
+                    "A preset stores output options only; the document, the selection and \
+                 the layer set stay with each export.",
                 );
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.export_preset_name)
-                            .hint_text("Preset name")
-                            .desired_width(200.0),
-                    );
-                    if ui
-                        .add_enabled(
-                            !self.export_preset_name.trim().is_empty(),
-                            egui::Button::new("Save current options"),
-                        )
-                        .on_hover_text("An existing name is replaced")
-                        .clicked()
-                    {
-                        save = true;
-                    }
-                });
-                ui.separator();
-                if self.preferences.export_presets.saved.is_empty() {
-                    ui.weak("No export presets saved yet.");
-                }
-                for preset in &self.preferences.export_presets.saved {
-                    ui.horizontal(|ui| {
-                        ui.label(&preset.name);
-                        ui.weak(format!(
-                            "{} · {} decimals · {} smooth{}",
-                            preset.dialect,
-                            preset.decimals,
-                            preset.smooth_mm,
-                            if preset.arcs { " · arcs" } else { "" }
-                        ));
-                        if ui.button("Apply").clicked() {
-                            apply = Some(preset.name.clone());
-                        }
-                        if ui.button("Delete").clicked() {
-                            delete = Some(preset.name.clone());
-                        }
-                    });
-                }
+                egui::CollapsingHeader::new("G-code")
+                    .default_open(true)
+                    .show(ui, |ui| stored |= self.gcode_presets_section(ui));
+                egui::CollapsingHeader::new("Image (PNG)")
+                    .default_open(true)
+                    .show(ui, |ui| stored |= self.image_presets_section(ui));
+                egui::CollapsingHeader::new("Vector (SVG, DXF, PDF, EPS, HPGL)")
+                    .default_open(true)
+                    .show(ui, |ui| stored |= self.vector_presets_section(ui));
                 ui.separator();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
@@ -806,6 +802,64 @@ impl BeamBurinApp {
                     }
                 });
             });
+        if stored {
+            match self.preferences.save(&self.preferences_path) {
+                Ok(()) => {}
+                Err(error) => self.status = format!("Cannot save preferences: {error}"),
+            }
+        }
+        if close_requested {
+            open = false;
+        }
+        self.export_presets_open = open;
+    }
+
+    fn gcode_presets_section(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut save = false;
+        let mut apply: Option<String> = None;
+        let mut delete: Option<String> = None;
+        ui.label(
+            "Dialect, decimals, comments, travel moves, line endings, arcs, smoothing \
+             and the job origin.",
+        );
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.export_preset_name)
+                    .hint_text("Preset name")
+                    .desired_width(200.0),
+            );
+            if ui
+                .add_enabled(
+                    !self.export_preset_name.trim().is_empty(),
+                    egui::Button::new("Save G-code options"),
+                )
+                .on_hover_text("An existing name is replaced")
+                .clicked()
+            {
+                save = true;
+            }
+        });
+        if self.preferences.export_presets.saved.is_empty() {
+            ui.weak("No G-code presets saved yet.");
+        }
+        for preset in &self.preferences.export_presets.saved {
+            ui.horizontal(|ui| {
+                ui.label(&preset.name);
+                ui.weak(format!(
+                    "{} · {} decimals · {} smooth{}",
+                    preset.dialect,
+                    preset.decimals,
+                    preset.smooth_mm,
+                    if preset.arcs { " · arcs" } else { "" }
+                ));
+                if ui.button("Apply").clicked() {
+                    apply = Some(preset.name.clone());
+                }
+                if ui.button("Delete").clicked() {
+                    delete = Some(preset.name.clone());
+                }
+            });
+        }
         let mut stored = false;
         if save {
             let name = self.export_preset_name.trim().to_string();
@@ -840,16 +894,193 @@ impl BeamBurinApp {
                 stored = true;
             }
         }
-        if stored {
-            match self.preferences.save(&self.preferences_path) {
-                Ok(()) => {}
-                Err(error) => self.status = format!("Cannot save preferences: {error}"),
+        stored
+    }
+
+    fn image_presets_section(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut save = false;
+        let mut apply: Option<String> = None;
+        let mut delete: Option<String> = None;
+        ui.label(
+            "Resolution, transparency, margin, offset and a custom pixel size. \
+             The area (page, selection or drawing) is chosen per export.",
+        );
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.image_export_preset_name)
+                    .hint_text("Preset name")
+                    .desired_width(200.0),
+            );
+            if ui
+                .add_enabled(
+                    !self.image_export_preset_name.trim().is_empty(),
+                    egui::Button::new("Save image options"),
+                )
+                .on_hover_text("An existing name is replaced")
+                .clicked()
+            {
+                save = true;
+            }
+        });
+        if self.preferences.image_export_presets.saved.is_empty() {
+            ui.weak("No image presets saved yet.");
+        }
+        for preset in &self.preferences.image_export_presets.saved {
+            ui.horizontal(|ui| {
+                ui.label(&preset.name);
+                ui.weak(format!(
+                    "{:.0} dpi · {:.1} mm margin · {} x {} px{}",
+                    preset.dpi,
+                    preset.margin_mm,
+                    preset.width_px,
+                    preset.height_px,
+                    if preset.transparent {
+                        " · transparent"
+                    } else {
+                        ""
+                    }
+                ));
+                if ui.button("Apply").clicked() {
+                    apply = Some(preset.name.clone());
+                }
+                if ui.button("Delete").clicked() {
+                    delete = Some(preset.name.clone());
+                }
+            });
+        }
+        let mut stored = false;
+        if save {
+            let name = self.image_export_preset_name.trim().to_string();
+            let preset = crate::config::preferences::ImageExportPreset {
+                name: name.clone(),
+                dpi: self.export_image_dpi,
+                transparent: self.export_image_transparent,
+                margin_mm: self.export_image_margin_mm,
+                offset_x_mm: self.export_image_offset_x_mm,
+                offset_y_mm: self.export_image_offset_y_mm,
+                custom_size: self.export_image_custom_size,
+                width_px: self.export_image_width_px,
+                height_px: self.export_image_height_px,
+            };
+            match self.preferences.image_export_presets.upsert(preset) {
+                Ok(()) => {
+                    self.status = format!("Image preset '{name}' saved");
+                    stored = true;
+                }
+                Err(error) => self.status = error,
             }
         }
-        if close_requested {
-            open = false;
+        if let Some(name) = apply {
+            if let Some(preset) = self.preferences.image_export_presets.find(&name).cloned() {
+                self.apply_image_export_preset(&preset);
+                self.status = format!("Image preset '{name}' applied");
+            }
         }
-        self.export_presets_open = open;
+        if let Some(name) = delete {
+            if self.preferences.image_export_presets.remove(&name) {
+                self.status = format!("Image preset '{name}' deleted");
+                stored = true;
+            }
+        }
+        stored
+    }
+
+    fn vector_presets_section(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut save = false;
+        let mut apply: Option<String> = None;
+        let mut delete: Option<String> = None;
+        ui.label(
+            "Text as paths and, for DXF, circles and ellipses as curves. \
+             The area and the layers are chosen per export.",
+        );
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("vector_preset_format")
+                .selected_text(self.vector_export_preset_format.to_uppercase())
+                .show_ui(ui, |ui| {
+                    for format in ["svg", "dxf", "pdf", "eps", "hpgl"] {
+                        ui.selectable_value(
+                            &mut self.vector_export_preset_format,
+                            format.to_string(),
+                            format.to_uppercase(),
+                        );
+                    }
+                });
+            ui.add(
+                egui::TextEdit::singleline(&mut self.vector_export_preset_name)
+                    .hint_text("Preset name")
+                    .desired_width(200.0),
+            );
+            if ui
+                .add_enabled(
+                    !self.vector_export_preset_name.trim().is_empty(),
+                    egui::Button::new("Save vector options"),
+                )
+                .on_hover_text("An existing name is replaced")
+                .clicked()
+            {
+                save = true;
+            }
+        });
+        if self.preferences.vector_export_presets.saved.is_empty() {
+            ui.weak("No vector presets saved yet.");
+        }
+        for preset in &self.preferences.vector_export_presets.saved {
+            ui.horizontal(|ui| {
+                ui.label(&preset.name);
+                ui.weak(format!(
+                    "{} · {}{}",
+                    preset.format.to_uppercase(),
+                    if preset.text_as_paths {
+                        "text as paths"
+                    } else {
+                        "text as text"
+                    },
+                    if preset.arcs { " · arcs" } else { "" }
+                ));
+                if ui.button("Apply").clicked() {
+                    apply = Some(preset.name.clone());
+                }
+                if ui.button("Delete").clicked() {
+                    delete = Some(preset.name.clone());
+                }
+            });
+        }
+        let mut stored = false;
+        if save {
+            let name = self.vector_export_preset_name.trim().to_string();
+            let format = self.vector_export_preset_format.clone();
+            let (text_as_paths, arcs) = match format.as_str() {
+                "svg" => (self.export_svg_text_paths, false),
+                "dxf" => (self.export_dxf_text_paths, self.export_dxf_arcs),
+                _ => (self.export_vector_text_paths, false),
+            };
+            let preset = crate::config::preferences::VectorExportPreset {
+                name: name.clone(),
+                format,
+                text_as_paths,
+                arcs,
+            };
+            match self.preferences.vector_export_presets.upsert(preset) {
+                Ok(()) => {
+                    self.status = format!("Vector preset '{name}' saved");
+                    stored = true;
+                }
+                Err(error) => self.status = error,
+            }
+        }
+        if let Some(name) = apply {
+            if let Some(preset) = self.preferences.vector_export_presets.find(&name).cloned() {
+                self.apply_vector_export_preset(&preset);
+                self.status = format!("Vector preset '{name}' applied");
+            }
+        }
+        if let Some(name) = delete {
+            if self.preferences.vector_export_presets.remove(&name) {
+                self.status = format!("Vector preset '{name}' deleted");
+                stored = true;
+            }
+        }
+        stored
     }
 
     pub(super) fn registration_marks_window(&mut self, ctx: &egui::Context) {

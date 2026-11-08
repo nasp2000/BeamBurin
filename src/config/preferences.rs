@@ -469,6 +469,183 @@ impl ExportPresetPrefs {
     }
 }
 
+/// A saved set of image (PNG) export options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageExportPreset {
+    pub name: String,
+    pub dpi: f64,
+    pub transparent: bool,
+    pub margin_mm: f64,
+    pub offset_x_mm: f64,
+    pub offset_y_mm: f64,
+    pub custom_size: bool,
+    pub width_px: u32,
+    pub height_px: u32,
+}
+
+impl ImageExportPreset {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("an image preset needs a name".to_string());
+        }
+        if self.name.chars().count() > 60 {
+            return Err("an image preset name is limited to 60 characters".to_string());
+        }
+        if !self.dpi.is_finite() || !(10.0..=2400.0).contains(&self.dpi) {
+            return Err("image resolution must be between 10 and 2400 dpi".to_string());
+        }
+        if !self.margin_mm.is_finite() || !(0.0..=100.0).contains(&self.margin_mm) {
+            return Err("image margin must be between 0 and 100 mm".to_string());
+        }
+        for (axis, value) in [("X", self.offset_x_mm), ("Y", self.offset_y_mm)] {
+            if !value.is_finite() || !(-1000.0..=1000.0).contains(&value) {
+                return Err(format!(
+                    "image {axis} offset must be between -1000 and 1000 mm"
+                ));
+            }
+        }
+        if !(1..=100_000).contains(&self.width_px) || !(1..=100_000).contains(&self.height_px) {
+            return Err("image size must be between 1 and 100000 pixels".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// A saved set of vector export options.
+///
+/// The format selects which dialog receives the preset; the layer selection and
+/// the area stay with the document, because they change per export.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VectorExportPreset {
+    pub name: String,
+    /// `svg`, `dxf`, `pdf`, `eps` or `hpgl`.
+    pub format: String,
+    pub text_as_paths: bool,
+    /// Only used by DXF.
+    pub arcs: bool,
+}
+
+impl VectorExportPreset {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("a vector preset needs a name".to_string());
+        }
+        if self.name.chars().count() > 60 {
+            return Err("a vector preset name is limited to 60 characters".to_string());
+        }
+        if !matches!(self.format.as_str(), "svg" | "dxf" | "pdf" | "eps" | "hpgl") {
+            return Err(format!("unknown vector format: {}", self.format));
+        }
+        Ok(())
+    }
+}
+
+/// Saved image export presets, in the order they were created.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ImageExportPresetPrefs {
+    #[serde(default)]
+    pub saved: Vec<ImageExportPreset>,
+}
+
+impl ImageExportPresetPrefs {
+    pub fn upsert(&mut self, preset: ImageExportPreset) -> Result<(), String> {
+        preset.validate()?;
+        let name = preset.name.trim().to_string();
+        let mut preset = preset;
+        preset.name.clone_from(&name);
+        if let Some(existing) = self.saved.iter_mut().find(|entry| entry.name == name) {
+            *existing = preset;
+            return Ok(());
+        }
+        if self.saved.len() >= MAX_EXPORT_PRESETS {
+            return Err(format!(
+                "at most {MAX_EXPORT_PRESETS} image presets can be saved; delete one first"
+            ));
+        }
+        self.saved.push(preset);
+        Ok(())
+    }
+
+    pub fn remove(&mut self, name: &str) -> bool {
+        let before = self.saved.len();
+        self.saved.retain(|preset| preset.name != name);
+        self.saved.len() != before
+    }
+
+    pub fn find(&self, name: &str) -> Option<&ImageExportPreset> {
+        self.saved.iter().find(|preset| preset.name == name)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.saved.len() > MAX_EXPORT_PRESETS {
+            return Err(format!(
+                "at most {MAX_EXPORT_PRESETS} image presets can be saved"
+            ));
+        }
+        let mut names = std::collections::HashSet::new();
+        for preset in &self.saved {
+            preset.validate()?;
+            if !names.insert(preset.name.trim()) {
+                return Err(format!("duplicate image preset name: {}", preset.name));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Saved vector export presets, in the order they were created.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct VectorExportPresetPrefs {
+    #[serde(default)]
+    pub saved: Vec<VectorExportPreset>,
+}
+
+impl VectorExportPresetPrefs {
+    pub fn upsert(&mut self, preset: VectorExportPreset) -> Result<(), String> {
+        preset.validate()?;
+        let name = preset.name.trim().to_string();
+        let mut preset = preset;
+        preset.name.clone_from(&name);
+        if let Some(existing) = self.saved.iter_mut().find(|entry| entry.name == name) {
+            *existing = preset;
+            return Ok(());
+        }
+        if self.saved.len() >= MAX_EXPORT_PRESETS {
+            return Err(format!(
+                "at most {MAX_EXPORT_PRESETS} vector presets can be saved; delete one first"
+            ));
+        }
+        self.saved.push(preset);
+        Ok(())
+    }
+
+    pub fn remove(&mut self, name: &str) -> bool {
+        let before = self.saved.len();
+        self.saved.retain(|preset| preset.name != name);
+        self.saved.len() != before
+    }
+
+    pub fn find(&self, name: &str) -> Option<&VectorExportPreset> {
+        self.saved.iter().find(|preset| preset.name == name)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.saved.len() > MAX_EXPORT_PRESETS {
+            return Err(format!(
+                "at most {MAX_EXPORT_PRESETS} vector presets can be saved"
+            ));
+        }
+        let mut names = std::collections::HashSet::new();
+        for preset in &self.saved {
+            preset.validate()?;
+            if !names.insert(preset.name.trim()) {
+                return Err(format!("duplicate vector preset name: {}", preset.name));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppPreferences {
     pub general: GeneralPrefs,
@@ -481,6 +658,10 @@ pub struct AppPreferences {
     pub interface_presets: InterfacePresetPrefs,
     #[serde(default)]
     pub export_presets: ExportPresetPrefs,
+    #[serde(default)]
+    pub image_export_presets: ImageExportPresetPrefs,
+    #[serde(default)]
+    pub vector_export_presets: VectorExportPresetPrefs,
 }
 
 fn default_snap_step() -> f64 {
@@ -531,6 +712,8 @@ impl AppPreferences {
         self.shortcuts.validate()?;
         self.interface_presets.validate()?;
         self.export_presets.validate()?;
+        self.image_export_presets.validate()?;
+        self.vector_export_presets.validate()?;
         Ok(())
     }
 
@@ -866,6 +1049,115 @@ mod tests {
                 .unwrap();
         }
         assert!(presets.upsert(sample_export("One too many")).is_err());
+    }
+
+    fn sample_image(name: &str) -> ImageExportPreset {
+        ImageExportPreset {
+            name: name.to_string(),
+            dpi: 300.0,
+            transparent: false,
+            margin_mm: 5.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            custom_size: true,
+            width_px: 2480,
+            height_px: 3508,
+        }
+    }
+
+    #[test]
+    fn image_presets_are_saved_replaced_and_removed() {
+        let mut presets = ImageExportPresetPrefs::default();
+        presets.upsert(sample_image("Photo")).unwrap();
+        presets.upsert(sample_image("Draft")).unwrap();
+        assert_eq!(presets.saved.len(), 2);
+        let mut replaced = sample_image("Photo");
+        replaced.dpi = 600.0;
+        presets.upsert(replaced).unwrap();
+        assert_eq!(presets.saved.len(), 2);
+        assert!((presets.find("Photo").unwrap().dpi - 600.0).abs() < f64::EPSILON);
+        assert!(presets.remove("Photo"));
+        assert!(!presets.remove("Photo"));
+        assert_eq!(presets.saved.len(), 1);
+    }
+
+    #[test]
+    fn image_presets_are_validated() {
+        let mut presets = ImageExportPresetPrefs::default();
+        let mut bad = sample_image("  ");
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.name = "Bad".to_string();
+        bad.dpi = 5.0;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.dpi = 300.0;
+        bad.margin_mm = -1.0;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.margin_mm = 0.0;
+        bad.offset_x_mm = f64::NAN;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.offset_x_mm = 0.0;
+        bad.width_px = 0;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.width_px = 2480;
+        assert!(presets.upsert(bad).is_ok());
+
+        let mut duplicate = ImageExportPresetPrefs {
+            saved: vec![sample_image("Same"), sample_image("Same")],
+        };
+        assert!(duplicate.validate().is_err());
+        duplicate.saved.pop();
+        assert!(duplicate.validate().is_ok());
+    }
+
+    fn sample_vector(name: &str) -> VectorExportPreset {
+        VectorExportPreset {
+            name: name.to_string(),
+            format: "dxf".to_string(),
+            text_as_paths: true,
+            arcs: true,
+        }
+    }
+
+    #[test]
+    fn vector_presets_are_saved_replaced_and_removed() {
+        let mut presets = VectorExportPresetPrefs::default();
+        presets.upsert(sample_vector("Cut")).unwrap();
+        presets.upsert(sample_vector("Engrave")).unwrap();
+        assert_eq!(presets.saved.len(), 2);
+        let mut replaced = sample_vector("Cut");
+        replaced.format = "svg".to_string();
+        presets.upsert(replaced).unwrap();
+        assert_eq!(presets.find("Cut").unwrap().format, "svg");
+        assert!(presets.remove("Cut"));
+        assert!(!presets.remove("Cut"));
+        assert_eq!(presets.saved.len(), 1);
+    }
+
+    #[test]
+    fn vector_presets_are_validated() {
+        let mut presets = VectorExportPresetPrefs::default();
+        let mut bad = sample_vector("  ");
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.name = "Bad".to_string();
+        bad.format = "dwf".to_string();
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.format = "hpgl".to_string();
+        assert!(presets.upsert(bad).is_ok());
+
+        let mut duplicate = VectorExportPresetPrefs {
+            saved: vec![sample_vector("Same"), sample_vector("Same")],
+        };
+        assert!(duplicate.validate().is_err());
+        duplicate.saved.pop();
+        assert!(duplicate.validate().is_ok());
+    }
+
+    #[test]
+    fn a_preferences_file_without_the_new_preset_groups_still_loads() {
+        let json = r#"{"general":{},"drawing":{}}"#;
+        let preferences: AppPreferences = serde_json::from_str(json).unwrap();
+        assert!(preferences.image_export_presets.saved.is_empty());
+        assert!(preferences.vector_export_presets.saved.is_empty());
     }
 
     #[test]
