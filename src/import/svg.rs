@@ -661,11 +661,65 @@ fn clip_objects(
         }
         let path = object.world_path();
         if !path.closed {
-            warnings.push(format!(
-                "{label} was not applied to open path '{}'",
-                object.name
-            ));
-            replaced.push(object);
+            applied = true;
+            let points = path.flatten(0.1);
+            let mut runs: Vec<Vec<Point2>> = Vec::new();
+            let mut current: Vec<Point2> = Vec::new();
+            for pair in points.windows(2) {
+                let from = pair[0];
+                let to = pair[1];
+                let intervals = inside_intervals(from, to, contours);
+                if intervals.is_empty() {
+                    if current.len() >= 2 {
+                        runs.push(std::mem::take(&mut current));
+                    } else {
+                        current.clear();
+                    }
+                    continue;
+                }
+                for (start, end) in intervals {
+                    let p0 = Point2::new(
+                        from.x + (to.x - from.x) * start,
+                        from.y + (to.y - from.y) * start,
+                    );
+                    let p1 = Point2::new(
+                        from.x + (to.x - from.x) * end,
+                        from.y + (to.y - from.y) * end,
+                    );
+                    if current.last().is_some_and(|last| last.distance(p0) > 1e-6) {
+                        if current.len() >= 2 {
+                            runs.push(std::mem::take(&mut current));
+                        } else {
+                            current.clear();
+                        }
+                    }
+                    if current.is_empty() {
+                        current.push(p0);
+                    }
+                    current.push(p1);
+                    if end < 1.0 - 1e-6 {
+                        if current.len() >= 2 {
+                            runs.push(std::mem::take(&mut current));
+                        } else {
+                            current.clear();
+                        }
+                    }
+                }
+            }
+            if current.len() >= 2 {
+                runs.push(current);
+            }
+            for run in runs {
+                let mut open = Object::new(object.layer_id.clone(), Shape::Path(open_path(&run)))
+                    .with_style(object.style.clone());
+                open.name = format!("{} clipped", object.name);
+                open.color.clone_from(&object.color);
+                open.operation_id.clone_from(&object.operation_id);
+                open.group_id.clone_from(&object.group_id);
+                open.visible = object.visible;
+                open.locked = object.locked;
+                doc.add_object(open);
+            }
             continue;
         }
         let mut pieces = vec![
@@ -723,6 +777,81 @@ fn clip_objects(
     if applied {
         warnings.push(format!("{label} #{id} was applied as straight segments"));
     }
+}
+
+/// Build an open path from a polyline.
+fn open_path(points: &[Point2]) -> Path {
+    let mut path = Path::new();
+    for pair in points.windows(2) {
+        path.push(Segment::Line {
+            from: pair[0],
+            to: pair[1],
+        });
+    }
+    path
+}
+
+/// Parameters along a segment that lie inside any clip contour.
+fn inside_intervals(from: Point2, to: Point2, contours: &[Vec<(f64, f64)>]) -> Vec<(f64, f64)> {
+    let mut intervals: Vec<(f64, f64)> = contours
+        .iter()
+        .flat_map(|contour| polygon_intervals(from, to, contour))
+        .collect();
+    intervals.sort_by(|left, right| left.0.total_cmp(&right.0));
+    let mut merged: Vec<(f64, f64)> = Vec::new();
+    for (start, end) in intervals {
+        if let Some(last) = merged.last_mut()
+            && start <= last.1 + 1e-9
+        {
+            last.1 = last.1.max(end);
+            continue;
+        }
+        merged.push((start, end));
+    }
+    merged
+}
+
+/// Parameters along a segment where it lies inside a polygon.
+#[allow(clippy::cast_precision_loss)]
+fn polygon_intervals(from: Point2, to: Point2, polygon: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    if dx.abs() < 1e-12 && dy.abs() < 1e-12 {
+        return Vec::new();
+    }
+    let mut cuts = vec![0.0, 1.0];
+    for index in 0..polygon.len() {
+        let a = polygon[index];
+        let b = polygon[(index + 1) % polygon.len()];
+        let ex = b.0 - a.0;
+        let ey = b.1 - a.1;
+        let path_cross_edge = dx * ey - dy * ex;
+        if path_cross_edge.abs() < 1e-12 {
+            continue;
+        }
+        let t = ((a.0 - from.x) * ey - (a.1 - from.y) * ex) / path_cross_edge;
+        let s = ((a.0 - from.x) * dy - (a.1 - from.y) * dx) / path_cross_edge;
+        if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&s) {
+            cuts.push(t);
+        }
+    }
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup_by(|left, right| (*left - *right).abs() < 1e-9);
+    let mut intervals: Vec<(f64, f64)> = Vec::new();
+    for window in cuts.windows(2) {
+        let middle = f64::midpoint(window[0], window[1]);
+        let point = Point2::new(from.x + dx * middle, from.y + dy * middle);
+        if crate::geometry::boolean::point_in_polygon(point.x, point.y, polygon) {
+            if let Some(last) = intervals.last_mut()
+                && (last.1 - window[0]).abs() < 1e-9
+            {
+                last.1 = window[1];
+                continue;
+            }
+            intervals.push((window[0], window[1]));
+        }
+    }
+    intervals
 }
 
 /// Flatten the geometry of one clipPath child in document coordinates.
@@ -2075,6 +2204,22 @@ mod tests {
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
         );
+    }
+
+    #[test]
+    fn a_clip_path_trims_an_open_path() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><clipPath id="c"><rect x="2" y="2" width="6" height="6"/></clipPath></defs><line x1="0" y1="5" x2="10" y2="5" clip-path="url(#c)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 2.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 8.0).abs() < 1e-6, "{max:?}");
+        let Shape::Path(path) = &report.document.objects[0].shape else {
+            panic!("the clipped line is not a path");
+        };
+        assert!(!path.closed);
     }
 
     #[test]
