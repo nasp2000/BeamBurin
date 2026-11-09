@@ -37,50 +37,52 @@ pub struct Playback {
 impl Playback {
     /// Flatten every toolpath, repeating its moves for each pass.
     pub fn from_toolpaths(toolpaths: &[Toolpath], travel_speed_mm_min: f64) -> Self {
+        let mut playback = Self::default();
+        for toolpath in toolpaths {
+            playback.append_toolpath(toolpath, travel_speed_mm_min);
+        }
+        playback
+    }
+
+    /// Append one toolpath to an existing playback.
+    ///
+    /// Used by the preview to build segments from streamed raster bands without
+    /// keeping the whole move list alive.
+    pub fn append_toolpath(&mut self, toolpath: &Toolpath, travel_speed_mm_min: f64) {
         let travel_speed = if travel_speed_mm_min > 0.0 {
             travel_speed_mm_min
         } else {
             3000.0
         };
-        let mut segments = Vec::new();
-        let mut total_length = 0.0;
-        let mut duration_seconds = 0.0;
-        for toolpath in toolpaths {
-            let passes = toolpath.passes.max(1);
-            for pass in 1..=passes {
-                let mut previous: Option<Point2> = None;
-                for movement in &toolpath.moves {
-                    let to = Point2::new(movement.x, movement.y);
-                    if let Some(from) = previous {
-                        let length = from.distance(to);
-                        let (speed, power) = match movement.kind {
-                            MoveKind::Cut => (toolpath.speed, toolpath.power),
-                            MoveKind::Travel => (travel_speed, 0.0),
-                        };
-                        if length > 0.0 {
-                            total_length += length;
-                            if speed > 0.0 {
-                                duration_seconds += length / speed * 60.0;
-                            }
-                            segments.push(PlaybackSegment {
-                                from,
-                                to,
-                                kind: movement.kind,
-                                length,
-                                speed,
-                                power,
-                                pass,
-                            });
+        let passes = toolpath.passes.max(1);
+        for pass in 1..=passes {
+            let mut previous: Option<Point2> = None;
+            for movement in &toolpath.moves {
+                let to = Point2::new(movement.x, movement.y);
+                if let Some(from) = previous {
+                    let length = from.distance(to);
+                    let (speed, power) = match movement.kind {
+                        MoveKind::Cut => (toolpath.speed, toolpath.power),
+                        MoveKind::Travel => (travel_speed, 0.0),
+                    };
+                    if length > 0.0 {
+                        self.total_length += length;
+                        if speed > 0.0 {
+                            self.duration_seconds += length / speed * 60.0;
                         }
+                        self.segments.push(PlaybackSegment {
+                            from,
+                            to,
+                            kind: movement.kind,
+                            length,
+                            speed,
+                            power,
+                            pass,
+                        });
                     }
-                    previous = Some(to);
                 }
+                previous = Some(to);
             }
-        }
-        Self {
-            segments,
-            total_length,
-            duration_seconds,
         }
     }
 

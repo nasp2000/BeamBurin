@@ -1763,7 +1763,7 @@ pub fn export_job_cancellable(
     let temporary = path.with_extension("nc.tmp");
     let file = File::create(&temporary)?;
     let mut file = BufWriter::new(file);
-    let report = stream_job(document, options, cancel, &mut file);
+    let report = stream_job(document, options, cancel, &mut file, None);
     let result = match report {
         Ok(report) => {
             file.flush()?;
@@ -1795,6 +1795,7 @@ fn stream_job<W: Write>(
     options: &JobOptions,
     cancel: &dyn Fn() -> bool,
     sink: &mut W,
+    playback: Option<&mut crate::gcode::Playback>,
 ) -> Result<JobReport> {
     document.validate().map_err(BeamError::InvalidInput)?;
     let mut warnings = Vec::new();
@@ -1948,6 +1949,7 @@ fn stream_job<W: Write>(
     };
     flush(&mut buffer, &mut bytes, &mut lines)?;
     let mut paths = 0;
+    let mut playback = playback;
     for item in &mut items {
         if cancel() {
             return Err(cancelled());
@@ -1956,6 +1958,9 @@ fn stream_job<W: Write>(
             JobItem::Toolpath(toolpath) => {
                 writer.toolpath(&mut buffer, toolpath, &mut state);
                 flush(&mut buffer, &mut bytes, &mut lines)?;
+                if let Some(playback) = playback.as_deref_mut() {
+                    playback.append_toolpath(toolpath, options.travel_speed_mm_min);
+                }
                 paths += 1;
             }
             JobItem::Raster(raster) => {
@@ -1983,6 +1988,9 @@ fn stream_job<W: Write>(
                     validate_bounds(document, std::slice::from_ref(&band))?;
                     seconds +=
                         estimate_seconds(std::slice::from_ref(&band), options.travel_speed_mm_min);
+                    if let Some(playback) = playback.as_deref_mut() {
+                        playback.append_toolpath(&band, options.travel_speed_mm_min);
+                    }
                     writer.toolpath(&mut buffer, &band, &mut state);
                     flush(&mut buffer, &mut bytes, &mut lines)?;
                 }
@@ -2023,19 +2031,20 @@ pub fn render_report_cancellable(
     options: &JobOptions,
     cancel: &dyn Fn() -> bool,
 ) -> Result<JobReport> {
-    stream_job(document, options, cancel, &mut std::io::sink())
+    stream_job(document, options, cancel, &mut std::io::sink(), None)
 }
 
-/// First `head_lines` lines of the job plus the full report.
+/// First `head_lines` lines, the full report and the playback timeline.
 pub fn render_preview_cancellable(
     document: &Document,
     options: &JobOptions,
     head_lines: usize,
     cancel: &dyn Fn() -> bool,
-) -> Result<(String, JobReport)> {
+) -> Result<(String, JobReport, crate::gcode::Playback)> {
     let mut sink = HeadSink::new(head_lines);
-    let report = stream_job(document, options, cancel, &mut sink)?;
-    Ok((sink.head, report))
+    let mut playback = crate::gcode::Playback::default();
+    let report = stream_job(document, options, cancel, &mut sink, Some(&mut playback))?;
+    Ok((sink.head, report, playback))
 }
 
 struct HeadSink {
@@ -2841,16 +2850,17 @@ mod tests {
     #[test]
     fn streaming_preview_keeps_only_the_head() {
         let path = std::env::temp_dir().join("beamburin_stream_head.png");
-        let image = image::GrayImage::from_pixel(4, 2, image::Luma([255]));
+        let image = image::GrayImage::from_pixel(4, 2, image::Luma([0]));
         image.save(&path).unwrap();
         let document = image_document(&path);
         let options = JobOptions::default();
         let (full, report) = render_job(&document, &options).unwrap();
-        let (head, preview) =
+        let (head, preview, playback) =
             render_preview_cancellable(&document, &options, 3, &|| false).unwrap();
         assert_eq!(head.lines().count(), 3);
         assert_eq!(preview.lines, report.lines);
         assert!(full.starts_with(&head));
+        assert!(!playback.is_empty(), "the preview has no playback segments");
         let _ = std::fs::remove_file(&path);
     }
 

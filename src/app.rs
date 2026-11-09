@@ -1851,11 +1851,7 @@ impl BeamBurinApp {
             GCODE_PREVIEW_LINES,
             &|| false,
         ) {
-            Ok((preview, report)) => {
-                let (toolpaths, _) =
-                    crate::gcode::planned_toolpaths(&self.editor.document, &options);
-                let playback =
-                    crate::gcode::Playback::from_toolpaths(&toolpaths, options.travel_speed_mm_min);
+            Ok((preview, report, playback)) => {
                 self.playback_progress = self.playback_progress.min(playback.total_length);
                 self.playback = Some(playback);
                 self.playback_error = None;
