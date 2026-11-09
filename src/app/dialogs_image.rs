@@ -331,10 +331,8 @@ impl BeamBurinApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
-            .resizable(true)
-            .default_size([960.0, 712.0])
-            .max_width(1000.0)
-            .max_height(900.0)
+            .resizable(false)
+            .fixed_size([960.0, 712.0])
             .show(ctx, |ui| {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
@@ -343,7 +341,11 @@ impl BeamBurinApp {
                 let preview_width = ((ui.available_width() - 44.0) / 2.0).clamp(260.0, 450.0);
                 let preview_height = 340.0;
                 ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(preview_width, preview_height + 28.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.set_width(preview_width);
                         ui.allocate_ui(egui::vec2(preview_width, preview_height), |ui| {
                             ui.vertical_centered(|ui| {
                                 if let Some(texture) = &original_texture {
@@ -362,7 +364,11 @@ impl BeamBurinApp {
                         });
                     });
                     ui.separator();
-                    ui.vertical(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(preview_width, preview_height + 28.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.set_width(preview_width);
                         ui.allocate_ui(egui::vec2(preview_width, preview_height), |ui| {
                             ui.vertical_centered(|ui| {
                                 let texture = burn_texture
