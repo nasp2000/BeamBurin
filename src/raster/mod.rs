@@ -1,5 +1,7 @@
 use std::fmt::Write as _;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
+#[cfg(not(test))]
+use std::sync::{Mutex, OnceLock};
 
 use crate::errors::{BeamError, Result};
 use crate::objects::{ImageMode, ImageSettings};
@@ -667,9 +669,24 @@ fn decode_count() -> usize {
     DECODE_COUNT.with(std::cell::Cell::get)
 }
 
-fn preview_cache() -> &'static Mutex<Option<PreviewCache>> {
+#[cfg(not(test))]
+fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Option<R> {
     static CACHE: OnceLock<Mutex<Option<PreviewCache>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(None))
+    CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .map(|mut cache| f(&mut cache))
+}
+
+#[cfg(test)]
+#[allow(clippy::unnecessary_wraps)]
+fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Option<R> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<Option<PreviewCache>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    Some(CACHE.with(|cache| f(&mut cache.borrow_mut())))
 }
 
 fn preview_key(
@@ -788,7 +805,7 @@ fn prepared_image(
     let mask_colours = image.mask_rgb();
     let settings_key = derived_luma_key(&image.settings);
     if let Some(key) = &key
-        && let Some((rgb, exclude, cached_luma)) = preview_cache().lock().ok().and_then(|cache| {
+        && let Some(Some((rgb, exclude, cached_luma))) = with_preview_cache(|cache| {
             let entry = cache.as_ref()?;
             if &entry.key != key {
                 return None;
@@ -809,13 +826,14 @@ fn prepared_image(
                 luma = despeckle(&luma);
             }
             let luma = Arc::new(luma);
-            if let Ok(mut cache) = preview_cache().lock()
-                && let Some(entry) = cache.as_mut()
-                && &entry.key == key
-            {
-                entry.luma_key.clone_from(&settings_key);
-                entry.luma = Arc::clone(&luma);
-            }
+            let _ = with_preview_cache(|cache| {
+                if let Some(entry) = cache.as_mut()
+                    && &entry.key == key
+                {
+                    entry.luma_key.clone_from(&settings_key);
+                    entry.luma = Arc::clone(&luma);
+                }
+            });
             luma
         };
         return Ok(PreparedImage { luma, exclude });
@@ -859,14 +877,15 @@ fn prepared_image(
     if max_side.is_some()
         && let Some(key) = key
         && let Some(rgb) = cache_rgb
-        && let Ok(mut cache) = preview_cache().lock()
     {
-        *cache = Some(PreviewCache {
-            key,
-            rgb,
-            luma_key: settings_key,
-            luma: Arc::clone(&luma),
-            exclude: exclude.clone(),
+        let _ = with_preview_cache(|cache| {
+            *cache = Some(PreviewCache {
+                key,
+                rgb,
+                luma_key: settings_key,
+                luma: Arc::clone(&luma),
+                exclude: exclude.clone(),
+            });
         });
     }
     Ok(PreparedImage { luma, exclude })

@@ -71,11 +71,12 @@ impl BeamBurinApp {
             .num_columns(2)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
-                ui.label("Name");
-                ui.text_edit_singleline(&mut self.editor.document.name);
+                let name_label = ui.label("Name");
+                ui.text_edit_singleline(&mut self.editor.document.name)
+                    .labelled_by(name_label.id);
                 ui.end_row();
 
-                ui.label("Width (mm)");
+                let width_label = ui.label("Width (mm)");
                 let mut width = self.editor.document.width_mm;
                 if ui
                     .add(
@@ -83,13 +84,14 @@ impl BeamBurinApp {
                             .speed(0.5)
                             .range(0.1..=10000.0),
                     )
+                    .labelled_by(width_label.id)
                     .changed()
                 {
                     self.editor.document.width_mm = width;
                 }
                 ui.end_row();
 
-                ui.label("Height (mm)");
+                let height_label = ui.label("Height (mm)");
                 let mut height = self.editor.document.height_mm;
                 if ui
                     .add(
@@ -97,13 +99,14 @@ impl BeamBurinApp {
                             .speed(0.5)
                             .range(0.1..=10000.0),
                     )
+                    .labelled_by(height_label.id)
                     .changed()
                 {
                     self.editor.document.height_mm = height;
                 }
                 ui.end_row();
 
-                ui.label("Unit");
+                let unit_label = ui.label("Unit");
                 egui::ComboBox::from_id_salt("document_unit")
                     .selected_text(self.editor.document.unit.label())
                     .show_ui(ui, |ui| {
@@ -115,7 +118,9 @@ impl BeamBurinApp {
                         ] {
                             ui.selectable_value(&mut self.editor.document.unit, unit, unit.label());
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(unit_label.id);
                 ui.end_row();
             });
         ui.separator();
@@ -142,11 +147,12 @@ impl BeamBurinApp {
             .num_columns(2)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
-                ui.label("Name");
-                ui.text_edit_singleline(&mut object.name);
+                let name_label = ui.label("Name");
+                ui.text_edit_singleline(&mut object.name)
+                    .labelled_by(name_label.id);
                 ui.end_row();
 
-                ui.label("Layer");
+                let layer_label = ui.label("Layer");
                 let current = layers
                     .iter()
                     .find(|(layer_id, _)| layer_id == &object.layer_id)
@@ -157,7 +163,9 @@ impl BeamBurinApp {
                         for (layer_id, name) in &layers {
                             ui.selectable_value(&mut object.layer_id, layer_id.clone(), name);
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(layer_label.id);
                 ui.end_row();
 
                 ui.label("Visible");
@@ -392,8 +400,9 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([8.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("Content");
-                        ui.text_edit_singleline(&mut text.content);
+                        let content_label = ui.label("Content");
+                        ui.text_edit_singleline(&mut text.content)
+                            .labelled_by(content_label.id);
                         ui.end_row();
                         ui.label("Font");
                         let mut font = text.font.clone();
@@ -431,7 +440,7 @@ impl BeamBurinApp {
                             ui.checkbox(&mut text.italic, "Italic");
                         });
                         ui.end_row();
-                        ui.label("Align");
+                        let align_label = ui.label("Align");
                         let mut align = text.align;
                         egui::ComboBox::from_id_salt("text_align")
                             .selected_text(align.label())
@@ -443,10 +452,12 @@ impl BeamBurinApp {
                                 ] {
                                     ui.selectable_value(&mut align, candidate, candidate.label());
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(align_label.id);
                         text.align = align;
                         ui.end_row();
-                        ui.label("Vertical");
+                        let valign_label = ui.label("Vertical");
                         let mut valign = text.vertical_align;
                         egui::ComboBox::from_id_salt("text_valign")
                             .selected_text(valign.label())
@@ -458,7 +469,9 @@ impl BeamBurinApp {
                                 ] {
                                     ui.selectable_value(&mut valign, candidate, candidate.label());
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(valign_label.id);
                         text.vertical_align = valign;
                         ui.end_row();
                     });
@@ -468,7 +481,9 @@ impl BeamBurinApp {
                 use crate::objects::ImageMode;
                 ui.label("Image");
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut image.path);
+                    let path_label = ui.label("Path");
+                    ui.text_edit_singleline(&mut image.path)
+                        .labelled_by(path_label.id);
                     if ui.button("Relink...").clicked() {
                         relink_request = true;
                     }
@@ -502,7 +517,7 @@ impl BeamBurinApp {
                 ui.separator();
                 ui.label("Transform (non-destructive)");
                 ui.horizontal(|ui| {
-                    ui.label("Rotation");
+                    let rotation_label = ui.label("Rotation");
                     let mut rotation = image.settings.rotation_degrees;
                     egui::ComboBox::from_id_salt("image_rotation")
                         .selected_text(format!("{rotation:.0} deg"))
@@ -514,7 +529,9 @@ impl BeamBurinApp {
                                     format!("{candidate:.0} deg"),
                                 );
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(rotation_label.id);
                     image.settings.rotation_degrees = rotation;
                 });
                 ui.horizontal(|ui| {

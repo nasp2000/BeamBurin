@@ -260,6 +260,13 @@ impl BeamBurinApp {
                                             }
                                         }
                                     });
+                            mode_combo.response.widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::ComboBox,
+                                    true,
+                                    format!("{name} mode"),
+                                )
+                            });
                             if let Some(entry) = operation {
                                 mode_combo.response.on_hover_text(format!(
                                     "{} · {:.0} mm/min · {:.0}%",

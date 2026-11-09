@@ -292,9 +292,11 @@ impl FileDialog {
                             self.navigate(home);
                         }
                     }
-                    let width = (ui.available_width() - 170.0).max(120.0);
+                    let width = (ui.available_width() - 210.0).max(120.0);
+                    let path_label = ui.label("Path");
                     let response = ui
-                        .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(width));
+                        .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(width))
+                        .labelled_by(path_label.id);
                     let go = ui.button("Go").clicked()
                         || (response.lost_focus()
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
@@ -366,9 +368,10 @@ impl FileDialog {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label("File name:");
+                    let name_label = ui.label("File name:");
                     let response = ui
-                        .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0));
+                        .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0))
+                        .labelled_by(name_label.id);
                     if response.lost_focus()
                         && ui.input(|input| input.key_pressed(egui::Key::Enter))
                     {

@@ -2040,7 +2040,7 @@ fn section_icon(section: crate::config::preferences::Section) -> Icon {
 fn font_picker(ui: &mut Ui, id: &str, value: &mut String) -> bool {
     let mut changed = false;
     let choices = crate::textfont::names();
-    egui::ComboBox::from_id_salt(id)
+    let response = egui::ComboBox::from_id_salt(id)
         .selected_text(value.clone())
         .width(240.0)
         .show_ui(ui, |ui| {
@@ -2056,7 +2056,9 @@ fn font_picker(ui: &mut Ui, id: &str, value: &mut String) -> bool {
                         }
                     }
                 });
-        });
+        })
+        .response;
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, "Font"));
     changed
 }
 

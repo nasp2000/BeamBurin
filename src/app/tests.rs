@@ -4316,3 +4316,133 @@ fn the_export_presets_window_saves_image_and_vector_options() {
         "the preset margin was not applied"
     );
 }
+
+#[test]
+fn the_main_dialogs_expose_named_accessibility_nodes() {
+    use egui_kittest::kittest::NodeT as _;
+    use egui_kittest::kittest::Queryable as _;
+
+    fn unnamed_interactive(harness: &egui_kittest::Harness<'static, BeamBurinApp>) -> Vec<String> {
+        let mut unnamed = Vec::new();
+        for node in harness.root().children_recursive() {
+            let accesskit = node.accesskit_node();
+            let role = accesskit.role();
+            let label = accesskit.label().unwrap_or_default();
+            let value = accesskit.value().unwrap_or_default();
+            let interactive = matches!(
+                role,
+                egui::accesskit::Role::Button
+                    | egui::accesskit::Role::CheckBox
+                    | egui::accesskit::Role::ComboBox
+                    | egui::accesskit::Role::Slider
+                    | egui::accesskit::Role::SpinButton
+                    | egui::accesskit::Role::TextInput
+                    | egui::accesskit::Role::RadioButton
+                    | egui::accesskit::Role::MenuItem
+                    | egui::accesskit::Role::Tab
+            );
+            if interactive && label.trim().is_empty() {
+                unnamed.push(format!("{role:?} value={value:?}"));
+            }
+        }
+        unnamed
+    }
+
+    let mut audits: Vec<(&str, Vec<String>)> = Vec::new();
+
+    let mut app = ui_test_app();
+    app.open_dialog(FileMode::OpenProject);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("file dialog", unnamed_interactive(&harness)));
+    harness.get_by_label("Path").focus();
+    harness.run();
+    assert!(
+        harness.get_by_label("Path").is_focused(),
+        "the path field did not take focus"
+    );
+    harness.get_by_label("File name:").focus();
+    harness.run();
+    assert!(
+        harness.get_by_label("File name:").is_focused(),
+        "the file name field did not take focus"
+    );
+
+    let directory = ui_temp_path("a11y_image");
+    std::fs::create_dir_all(&directory).expect("temp");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&path).expect("import");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("adjust image", unnamed_interactive(&harness)));
+    harness.get_by_label("More options").click_accesskit();
+    harness.run();
+    audits.push(("adjust image more", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.open_export_svg(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("export svg", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("export presets", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.open_export_image(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("export png", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.open_export_dxf(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("export dxf", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.open_export_vector(FileMode::ExportPdf, false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("export pdf", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.preview_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("preview", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.cuts_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("cuts", unnamed_interactive(&harness)));
+
+    for (name, unnamed) in audits {
+        assert!(
+            unnamed.is_empty(),
+            "{name} has interactive nodes without an accessible name: {unnamed:?}"
+        );
+    }
+
+    let mut app = ui_test_app();
+    app.status = "Accessibility status".to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness
+            .query_by_label_contains("Accessibility status")
+            .is_some(),
+        "the status bar is not exposed as a named live region"
+    );
+}

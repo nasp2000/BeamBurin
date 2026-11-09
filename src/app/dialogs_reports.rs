@@ -83,16 +83,38 @@ impl BeamBurinApp {
                     ui.add(
                         egui::Slider::new(&mut self.playback_progress, 0.0..=total.max(0.001))
                             .show_value(false),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Slider,
+                            true,
+                            "Playback position",
+                        )
+                    });
                     ui.label(format!("{:.1} / {:.1} mm", self.playback_progress, total));
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Speed");
+                    let speed_label = ui.label("Speed");
                     ui.add(
                         egui::Slider::new(&mut self.playback_speed, 0.25..=16.0)
                             .logarithmic(true)
+                            .show_value(false),
+                    )
+                    .labelled_by(speed_label.id);
+                    ui.add(
+                        egui::DragValue::new(&mut self.playback_speed)
+                            .speed(0.05)
+                            .range(0.25..=16.0)
+                            .fixed_decimals(2)
                             .suffix("x"),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::DragValue,
+                            true,
+                            "Speed multiplier",
+                        )
+                    });
                     if ui.button("Refresh").clicked() {
                         self.refresh_preview();
                     }

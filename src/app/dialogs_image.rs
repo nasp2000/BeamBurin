@@ -78,26 +78,28 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([10.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("Resolution");
+                        let resolution_label = ui.label("Resolution");
                         ui.add(
                             egui::DragValue::new(&mut self.export_image_dpi)
                                 .speed(1.0)
                                 .range(10.0..=2400.0)
                                 .suffix(" dpi"),
-                        );
+                        )
+                        .labelled_by(resolution_label.id);
                         ui.end_row();
                         ui.label("Background");
                         ui.checkbox(&mut self.export_image_transparent, "Transparent");
                         ui.end_row();
-                        ui.label("Margin");
+                        let margin_label = ui.label("Margin");
                         ui.add(
                             egui::DragValue::new(&mut self.export_image_margin_mm)
                                 .speed(0.5)
                                 .range(0.0..=100.0)
                                 .suffix(" mm"),
-                        );
+                        )
+                        .labelled_by(margin_label.id);
                         ui.end_row();
-                        ui.label("Offset");
+                        let offset_label = ui.label("Offset");
                         ui.horizontal(|ui| {
                             ui.add(
                                 egui::DragValue::new(&mut self.export_image_offset_x_mm)
@@ -105,33 +107,39 @@ impl BeamBurinApp {
                                     .range(-1000.0..=1000.0)
                                     .prefix("X ")
                                     .suffix(" mm"),
-                            );
+                            )
+                            .labelled_by(offset_label.id);
                             ui.add(
                                 egui::DragValue::new(&mut self.export_image_offset_y_mm)
                                     .speed(0.5)
                                     .range(-1000.0..=1000.0)
                                     .prefix("Y ")
                                     .suffix(" mm"),
-                            );
+                            )
+                            .labelled_by(offset_label.id);
                         });
                         ui.end_row();
-                        ui.label("Size");
+                        let size_label = ui.label("Size");
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut self.export_image_custom_size, "Custom");
                             if self.export_image_custom_size {
-                                let width = ui.add(
-                                    egui::DragValue::new(&mut self.export_image_width_px)
-                                        .speed(1.0)
-                                        .range(1..=100_000)
-                                        .suffix(" px"),
-                                );
+                                let width = ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.export_image_width_px)
+                                            .speed(1.0)
+                                            .range(1..=100_000)
+                                            .suffix(" px"),
+                                    )
+                                    .labelled_by(size_label.id);
                                 ui.label("x");
-                                let height = ui.add(
-                                    egui::DragValue::new(&mut self.export_image_height_px)
-                                        .speed(1.0)
-                                        .range(1..=100_000)
-                                        .suffix(" px"),
-                                );
+                                let height = ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.export_image_height_px)
+                                            .speed(1.0)
+                                            .range(1..=100_000)
+                                            .suffix(" px"),
+                                    )
+                                    .labelled_by(size_label.id);
                                 ui.checkbox(&mut self.export_image_keep_aspect, "Keep aspect");
                                 if self.export_image_keep_aspect
                                     && width_mm > 0.0
@@ -463,6 +471,7 @@ impl BeamBurinApp {
                             .as_deref()
                             .and_then(|id| self.profiles.image(id))
                             .map_or_else(|| "Presets".to_string(), |profile| profile.name.clone());
+                        let presets_label = ui.label("Preset");
                         egui::ComboBox::from_id_salt("image_adjust_presets")
                             .selected_text(preset_label)
                             .width(180.0)
@@ -475,7 +484,9 @@ impl BeamBurinApp {
                                         self.selected_image_profile = Some(profile.id.clone());
                                     }
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(presets_label.id);
                     });
                 });
                 ui.add_space(4.0);
@@ -488,7 +499,7 @@ impl BeamBurinApp {
                             .num_columns(2)
                             .spacing([12.0, 6.0])
                             .show(ui, |ui| {
-                                ui.label("Image mode");
+                                let mode_label = ui.label("Image mode");
                                 let mut mode = image.settings.mode;
                                 egui::ComboBox::from_id_salt("image_adjust_mode")
                                     .selected_text(mode.label())
@@ -501,7 +512,9 @@ impl BeamBurinApp {
                                             )
                                             .on_hover_text(candidate.hint());
                                         }
-                                    });
+                                    })
+                                    .response
+                                    .labelled_by(mode_label.id);
                                 image.settings.mode = mode;
                                 ui.end_row();
                                 ui.label("Negative image");
@@ -521,14 +534,15 @@ impl BeamBurinApp {
                                     25.4 / image.settings.line_interval_mm.max(0.001)
                                 ));
                                 ui.end_row();
-                                ui.label("Line interval (mm)");
+                                let interval_label = ui.label("Line interval (mm)");
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.line_interval_mm)
                                         .speed(0.01)
                                         .range(0.01..=2.0),
-                                );
+                                )
+                                .labelled_by(interval_label.id);
                                 ui.end_row();
-                                ui.label("Halftone angle");
+                                let angle_label = ui.label("Halftone angle");
                                 ui.add(
                                     egui::DragValue::new(
                                         &mut image.settings.halftone_angle_degrees,
@@ -536,7 +550,8 @@ impl BeamBurinApp {
                                     .speed(0.5)
                                     .range(-360.0..=360.0)
                                     .suffix(" deg"),
-                                );
+                                )
+                                .labelled_by(angle_label.id);
                                 ui.end_row();
                                 ui.label("DPI");
                                 ui.weak(format!("{:.1}", image.effective_dpi()));
@@ -550,68 +565,78 @@ impl BeamBurinApp {
                             .num_columns(3)
                             .spacing([8.0, 6.0])
                             .show(ui, |ui| {
-                                ui.label("Contrast");
+                                let contrast_label = ui.label("Contrast");
                                 ui.add(
                                     egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0)
                                         .show_value(false),
-                                );
+                                )
+                                .labelled_by(contrast_label.id);
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.contrast)
                                         .speed(0.01)
                                         .range(0.25..=3.0)
                                         .fixed_decimals(2),
-                                );
+                                )
+                                .labelled_by(contrast_label.id);
                                 ui.end_row();
-                                ui.label("Brightness");
+                                let brightness_label = ui.label("Brightness");
                                 ui.add(
                                     egui::Slider::new(&mut image.settings.brightness, -100..=100)
                                         .show_value(false),
-                                );
+                                )
+                                .labelled_by(brightness_label.id);
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.brightness)
                                         .speed(1.0)
                                         .range(-100..=100),
-                                );
+                                )
+                                .labelled_by(brightness_label.id);
                                 ui.end_row();
-                                ui.label("Enhance Radius");
+                                let radius_label = ui.label("Enhance Radius");
                                 ui.add(
                                     egui::Slider::new(
                                         &mut image.settings.enhance_radius_px,
                                         0..=32,
                                     )
                                     .show_value(false),
-                                );
+                                )
+                                .labelled_by(radius_label.id);
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.enhance_radius_px)
                                         .range(0..=32),
-                                );
+                                )
+                                .labelled_by(radius_label.id);
                                 ui.end_row();
-                                ui.label("Enhance Amount");
+                                let amount_label = ui.label("Enhance Amount");
                                 ui.add(
                                     egui::Slider::new(
                                         &mut image.settings.enhance_amount,
                                         0.0..=5.0,
                                     )
                                     .show_value(false),
-                                );
+                                )
+                                .labelled_by(amount_label.id);
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.enhance_amount)
                                         .speed(0.05)
                                         .range(0.0..=5.0)
                                         .fixed_decimals(2),
-                                );
+                                )
+                                .labelled_by(amount_label.id);
                                 ui.end_row();
-                                ui.label("Gamma");
+                                let gamma_label = ui.label("Gamma");
                                 ui.add(
                                     egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0)
                                         .show_value(false),
-                                );
+                                )
+                                .labelled_by(gamma_label.id);
                                 ui.add(
                                     egui::DragValue::new(&mut image.settings.gamma)
                                         .speed(0.01)
                                         .range(0.2..=3.0)
                                         .fixed_decimals(2),
-                                );
+                                )
+                                .labelled_by(gamma_label.id);
                                 ui.end_row();
                             });
                     });
@@ -634,7 +659,7 @@ impl BeamBurinApp {
                                     } else {
                                         "Fit".to_string()
                                     };
-                                    ui.label("Zoom");
+                                    let zoom_label = ui.label("Zoom");
                                     egui::ComboBox::from_id_salt("image_preview_zoom")
                                         .selected_text(label)
                                         .width(70.0)
@@ -643,7 +668,9 @@ impl BeamBurinApp {
                                             ui.selectable_value(&mut zoom, 1.0, "1:1");
                                             ui.selectable_value(&mut zoom, 2.0, "2×");
                                             ui.selectable_value(&mut zoom, 4.0, "4×");
-                                        });
+                                        })
+                                        .response
+                                        .labelled_by(zoom_label.id);
                                     ui.checkbox(&mut compare, "Compare with original");
                                 });
                                 draw_histogram(ui, &histogram, &image.settings);
@@ -653,22 +680,24 @@ impl BeamBurinApp {
                                         .num_columns(2)
                                         .spacing([12.0, 6.0])
                                         .show(ui, |ui| {
-                                            ui.label("Target DPI");
+                                            let dpi_label = ui.label("Target DPI");
                                             ui.add(
                                                 egui::DragValue::new(&mut target_dpi)
                                                     .speed(1.0)
                                                     .range(50.0..=1000.0)
                                                     .fixed_decimals(0),
-                                            );
+                                            )
+                                            .labelled_by(dpi_label.id);
                                             ui.end_row();
-                                            ui.label("Target width (mm)");
+                                            let width_label = ui.label("Target width (mm)");
                                             ui.add(
                                                 egui::DragValue::new(&mut target_width_mm)
                                                     .speed(0.5)
                                                     .range(1.0..=10000.0)
                                                     .fixed_decimals(1)
                                                     .suffix(" mm"),
-                                            );
+                                            )
+                                            .labelled_by(width_label.id);
                                             ui.end_row();
                                         });
                                     let current_px = image.effective_size_px().0;
@@ -742,24 +771,28 @@ impl BeamBurinApp {
                                 });
                                 if mask {
                                     ui.horizontal(|ui| {
-                                        ui.label("Mask X");
+                                        let x_label = ui.label("Mask X");
                                         ui.add(egui::DragValue::new(&mut mask_x).range(
                                             0..=image.width_px.saturating_sub(1),
-                                        ));
-                                        ui.label("Mask Y");
+                                        ))
+                                        .labelled_by(x_label.id);
+                                        let y_label = ui.label("Mask Y");
                                         ui.add(egui::DragValue::new(&mut mask_y).range(
                                             0..=image.height_px.saturating_sub(1),
-                                        ));
-                                        ui.label("Mask W");
+                                        ))
+                                        .labelled_by(y_label.id);
+                                        let w_label = ui.label("Mask W");
                                         ui.add(
                                             egui::DragValue::new(&mut mask_w)
                                                 .range(1..=image.width_px.max(1)),
-                                        );
-                                        ui.label("Mask H");
+                                        )
+                                        .labelled_by(w_label.id);
+                                        let h_label = ui.label("Mask H");
                                         ui.add(
                                             egui::DragValue::new(&mut mask_h)
                                                 .range(1..=image.height_px.max(1)),
-                                        );
+                                        )
+                                        .labelled_by(h_label.id);
                                     });
                                 }
                                 ui.horizontal(|ui| {
@@ -769,7 +802,14 @@ impl BeamBurinApp {
                                         egui::DragValue::new(&mut image.mask_alpha_threshold)
                                             .range(1..=255)
                                             .speed(1),
-                                    );
+                                    )
+                                    .widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::WidgetType::DragValue,
+                                            true,
+                                            "Alpha threshold",
+                                        )
+                                    });
                                     ui.weak("alpha below this is background");
                                 });
                                 ui.horizontal(|ui| {
@@ -789,45 +829,77 @@ impl BeamBurinApp {
                                     });
                                 }
                                 ui.horizontal(|ui| {
-                                    ui.label("Tolerance");
+                                    let tolerance_label = ui.label("Tolerance");
                                     ui.add(
                                         egui::DragValue::new(&mut image.mask_tolerance)
                                             .range(0..=255)
                                             .speed(1),
-                                    );
+                                    )
+                                    .labelled_by(tolerance_label.id);
                                     ui.weak("per channel, 0 matches only the exact colour");
                                 });
                                 ui.separator();
                                 egui::Grid::new("image_more_settings")
-                                    .num_columns(2)
+                                    .num_columns(3)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label("Shadows");
+                                        let shadows_label = ui.label("Shadows");
                                         ui.add(
                                             egui::Slider::new(
                                                 &mut image.settings.shadow_lift,
                                                 -1.0..=1.0,
                                             )
-                                            .fixed_decimals(2),
-                                        );
+                                            .fixed_decimals(2)
+                                            .show_value(false),
+                                        )
+                                        .labelled_by(shadows_label.id);
+                                        ui.add(
+                                            egui::DragValue::new(&mut image.settings.shadow_lift)
+                                                .speed(0.01)
+                                                .range(-1.0..=1.0)
+                                                .fixed_decimals(2),
+                                        )
+                                        .labelled_by(shadows_label.id);
                                         ui.end_row();
-                                        ui.label("Midtones");
+                                        let midtones_label = ui.label("Midtones");
                                         ui.add(
                                             egui::Slider::new(
                                                 &mut image.settings.midtone_shift,
                                                 -1.0..=1.0,
                                             )
+                                            .fixed_decimals(2)
+                                            .show_value(false),
+                                        )
+                                        .labelled_by(midtones_label.id);
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut image.settings.midtone_shift,
+                                            )
+                                            .speed(0.01)
+                                            .range(-1.0..=1.0)
                                             .fixed_decimals(2),
-                                        );
+                                        )
+                                        .labelled_by(midtones_label.id);
                                         ui.end_row();
-                                        ui.label("Highlights");
+                                        let highlights_label = ui.label("Highlights");
                                         ui.add(
                                             egui::Slider::new(
                                                 &mut image.settings.highlight_lift,
                                                 -1.0..=1.0,
                                             )
+                                            .fixed_decimals(2)
+                                            .show_value(false),
+                                        )
+                                        .labelled_by(highlights_label.id);
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut image.settings.highlight_lift,
+                                            )
+                                            .speed(0.01)
+                                            .range(-1.0..=1.0)
                                             .fixed_decimals(2),
-                                        );
+                                        )
+                                        .labelled_by(highlights_label.id);
                                         ui.end_row();
                                         ui.label("Tone curve");
                                         if ui.button("Reset curve").clicked() {
@@ -836,23 +908,25 @@ impl BeamBurinApp {
                                             image.settings.highlight_lift = 0.0;
                                         }
                                         ui.end_row();
-                                        ui.label("Black / white clip");
+                                        let clip_label = ui.label("Black / white clip");
                                         ui.horizontal(|ui| {
                                             ui.add(
                                                 egui::DragValue::new(
                                                     &mut image.settings.black_clip,
                                                 )
                                                 .range(0..=254),
-                                            );
+                                            )
+                                            .labelled_by(clip_label.id);
                                             ui.add(
                                                 egui::DragValue::new(
                                                     &mut image.settings.white_clip,
                                                 )
                                                 .range(1..=255),
-                                            );
+                                            )
+                                            .labelled_by(clip_label.id);
                                         });
                                         ui.end_row();
-                                        ui.label("Enhance denoise");
+                                        let denoise_label = ui.label("Enhance denoise");
                                         ui.add(
                                             egui::DragValue::new(
                                                 &mut image.settings.enhance_denoise,
@@ -861,11 +935,12 @@ impl BeamBurinApp {
                                             .range(0.0..=10.0)
                                             .fixed_decimals(1),
                                         )
+                                        .labelled_by(denoise_label.id)
                                         .on_hover_text(
                                             "Keep low-contrast noise in smooth areas from being sharpened",
                                         );
                                         ui.end_row();
-                                        ui.label("Grey mix");
+                                        let grey_label = ui.label("Grey mix");
                                         ui.horizontal(|ui| {
                                             ui.add(
                                                 egui::DragValue::new(
@@ -875,6 +950,7 @@ impl BeamBurinApp {
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
                                             )
+                                            .labelled_by(grey_label.id)
                                             .on_hover_text("Red weight");
                                             ui.add(
                                                 egui::DragValue::new(
@@ -884,6 +960,7 @@ impl BeamBurinApp {
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
                                             )
+                                            .labelled_by(grey_label.id)
                                             .on_hover_text("Green weight");
                                             ui.add(
                                                 egui::DragValue::new(
@@ -893,6 +970,7 @@ impl BeamBurinApp {
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
                                             )
+                                            .labelled_by(grey_label.id)
                                             .on_hover_text("Blue weight");
                                         });
                                         ui.end_row();

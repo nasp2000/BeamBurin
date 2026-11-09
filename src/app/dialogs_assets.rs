@@ -601,7 +601,7 @@ impl BeamBurinApp {
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
                 ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves");
                 ui.horizontal(|ui| {
-                    ui.label("Units");
+                    let units_label = ui.label("Units");
                     egui::ComboBox::from_id_salt("dxf_export_unit")
                         .selected_text(self.export_dxf_unit.label())
                         .show_ui(ui, |ui| {
@@ -611,7 +611,9 @@ impl BeamBurinApp {
                             ] {
                                 ui.selectable_value(&mut self.export_dxf_unit, unit, unit.label());
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(units_label.id);
                 });
                 ui.label("Layers");
                 layer_picker(
@@ -925,11 +927,13 @@ impl BeamBurinApp {
              and the job origin.",
         );
         ui.horizontal(|ui| {
+            let name_label = ui.label("Preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.export_preset_name)
                     .hint_text("Preset name")
                     .desired_width(200.0),
-            );
+            )
+            .labelled_by(name_label.id);
             if ui
                 .add_enabled(
                     !self.export_preset_name.trim().is_empty(),
@@ -1008,11 +1012,13 @@ impl BeamBurinApp {
              The area (page, selection or drawing) is chosen per export.",
         );
         ui.horizontal(|ui| {
+            let name_label = ui.label("Preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.image_export_preset_name)
                     .hint_text("Preset name")
                     .desired_width(200.0),
-            );
+            )
+            .labelled_by(name_label.id);
             if ui
                 .add_enabled(
                     !self.image_export_preset_name.trim().is_empty(),
@@ -1106,6 +1112,7 @@ impl BeamBurinApp {
              The area and the layers are chosen per export.",
         );
         ui.horizontal(|ui| {
+            let format_label = ui.label("Format");
             egui::ComboBox::from_id_salt("vector_preset_format")
                 .selected_text(self.vector_export_preset_format.to_uppercase())
                 .show_ui(ui, |ui| {
@@ -1116,12 +1123,16 @@ impl BeamBurinApp {
                             format.to_uppercase(),
                         );
                     }
-                });
+                })
+                .response
+                .labelled_by(format_label.id);
+            let name_label = ui.label("Preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.vector_export_preset_name)
                     .hint_text("Preset name")
                     .desired_width(200.0),
-            );
+            )
+            .labelled_by(name_label.id);
             if ui
                 .add_enabled(
                     !self.vector_export_preset_name.trim().is_empty(),
@@ -1355,13 +1366,14 @@ impl BeamBurinApp {
 fn vector_margin_row(ui: &mut egui::Ui, enabled: bool, margin: &mut f64) {
     ui.add_enabled_ui(enabled, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Margin");
+            let label = ui.label("Margin");
             ui.add(
                 egui::DragValue::new(margin)
                     .range(0.0..=100.0)
                     .speed(0.1)
                     .suffix(" mm"),
-            );
+            )
+            .labelled_by(label.id);
             ui.weak("blank space around the selection, up to the page edge");
         });
     });

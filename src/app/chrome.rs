@@ -1102,7 +1102,14 @@ impl BeamBurinApp {
                                 .speed(0.1)
                                 .range(0.1..=100.0)
                                 .suffix(" mm grid"),
-                        );
+                        )
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::DragValue,
+                                true,
+                                "Grid step",
+                            )
+                        });
                     });
                 });
                 ui.menu_button(icons::menu_label(ui, Icon::Panels, "Panels"), |ui| {
@@ -1316,13 +1323,14 @@ impl BeamBurinApp {
                         self.apply_outline_stroke();
                     }
                     ui.separator();
-                    ui.label("Radius");
+                    let radius_label = ui.label("Radius");
                     ui.add(
                         egui::DragValue::new(&mut self.offset_distance)
                             .speed(0.1)
                             .range(0.1..=50.0)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(radius_label.id);
                 });
             });
         });
@@ -1622,7 +1630,11 @@ impl BeamBurinApp {
                 ));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if !self.status.is_empty() {
-                        ui.label(&self.status);
+                        let response = ui.label(&self.status);
+                        ui.ctx().accesskit_node_builder(response.id, |node| {
+                            node.set_live(egui::accesskit::Live::Polite);
+                            node.set_label(format!("Status: {}", self.status));
+                        });
                     }
                 });
             });

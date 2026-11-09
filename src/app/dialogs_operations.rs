@@ -40,7 +40,7 @@ impl BeamBurinApp {
         .show(ctx, |ui| {
             ui.label("The active cut entry. Output controls the job, Show controls the preview, Air emits M8/M9.");
             ui.horizontal(|ui| {
-                ui.label("G-code dialect");
+                let dialect_label = ui.label("G-code dialect");
                 let mut dialect = self.gcode_dialect;
                 egui::ComboBox::from_id_salt("gcode_dialect")
                     .selected_text(dialect.label())
@@ -48,23 +48,27 @@ impl BeamBurinApp {
                         for candidate in crate::gcode::Dialect::all() {
                             ui.selectable_value(&mut dialect, candidate, candidate.label());
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(dialect_label.id);
                 self.gcode_dialect = dialect;
-                ui.label("Smooth paths (mm)");
+                let smooth_label = ui.label("Smooth paths (mm)");
                 ui.add(
                     egui::DragValue::new(&mut self.gcode_smooth_mm)
                         .speed(0.05)
                         .range(0.0..=5.0),
                 )
+                .labelled_by(smooth_label.id)
                 .on_hover_text(
                     "Rounds the corners of cut runs before writing the file; zero keeps the exact geometry",
                 );
             });
             ui.horizontal(|ui| {
-                ui.label("Decimals");
+                let decimals_label = ui.label("Decimals");
                 ui.add(
                     egui::DragValue::new(&mut self.gcode_decimals).range(0..=6),
                 )
+                .labelled_by(decimals_label.id)
                 .on_hover_text("Decimals written for coordinates");
                 ui.checkbox(&mut self.gcode_comments, "Comments");
                 ui.checkbox(&mut self.gcode_travel, "Travel moves");
@@ -89,8 +93,17 @@ impl BeamBurinApp {
                     .spacing([2.0, 2.0])
                     .show(ui, |ui| {
                         for (index, origin) in crate::gcode::JobOrigin::ALL.iter().enumerate() {
+                            let selected = self.gcode_origin == *origin;
                             ui.radio_value(&mut self.gcode_origin, *origin, "")
-                                .on_hover_text(origin.label());
+                                .on_hover_text(origin.label())
+                                .widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::RadioButton,
+                                        true,
+                                        selected,
+                                        origin.label(),
+                                    )
+                                });
                             if index % 3 == 2 {
                                 ui.end_row();
                             }
@@ -100,7 +113,7 @@ impl BeamBurinApp {
             });
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label("Cut entry");
+                let entry_label = ui.label("Cut entry");
                 let current = self.active_operation.clone();
                 let text = current
                     .as_ref()
@@ -132,7 +145,9 @@ impl BeamBurinApp {
                                 ui.close();
                             }
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(entry_label.id);
                 ui.weak(format!("{} entries", operations.len()));
             });
             ui.separator();
@@ -162,7 +177,7 @@ impl BeamBurinApp {
                                     to_hex(srgb[0], srgb[1], srgb[2]);
                             }
                             ui.end_row();
-                            ui.label("Mode");
+                            let mode_label = ui.label("Mode");
                             let mut op_type = operation.op_type;
                             egui::ComboBox::from_id_salt("cut_settings_mode")
                                 .selected_text(op_type.label())
@@ -174,7 +189,9 @@ impl BeamBurinApp {
                                             candidate.label(),
                                         );
                                     }
-                                });
+                                })
+                                .response
+                                .labelled_by(mode_label.id);
                             operation.op_type = op_type;
                             ui.end_row();
                             ui.label("Output");
@@ -200,11 +217,12 @@ impl BeamBurinApp {
                                     .range(0.0..=100.0),
                             );
                             ui.end_row();
-                            ui.label("Number of passes");
+                            let passes_label = ui.label("Number of passes");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.passes)
                                     .range(1..=1000),
-                            );
+                            )
+                            .labelled_by(passes_label.id);
                             ui.end_row();
                             ui.label("Line interval (mm)");
                             ui.add(
