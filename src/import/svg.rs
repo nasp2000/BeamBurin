@@ -478,12 +478,6 @@ fn process_node(
         "defs" | "clipPath" | "mask" | "symbol" | "pattern" | "marker" | "metadata" | "title"
         | "desc" | "style" => {}
         "use" => {
-            if node.attr("clip-path").is_some() {
-                warnings.push(
-                    "clip paths on <use> are not supported; the reference is imported unclipped"
-                        .to_string(),
-                );
-            }
             let href = node
                 .attr("href")
                 .or_else(|| node.attr("xlink:href"))
@@ -502,9 +496,9 @@ fn process_node(
                             node.number("x").unwrap_or(0.0),
                             node.number("y").unwrap_or(0.0),
                         );
-                        let transform = transform
-                            .compose(&offset)
-                            .compose(&use_view_box_transform(target, node));
+                        let clip_transform = transform.compose(&offset);
+                        let transform =
+                            clip_transform.compose(&use_view_box_transform(target, node));
                         match target.name.as_str() {
                             "symbol" | "g" | "svg" => {
                                 for child in &target.children {
@@ -535,9 +529,15 @@ fn process_node(
                                 base_dir,
                             ),
                         }
+                        apply_clip(node, clip_transform, doc, objects_before, ids, warnings);
                     }
                 }
             } else if let Some((file, id)) = href.split_once('#') {
+                if node.attr("clip-path").is_some() || node.attr("mask").is_some() {
+                    warnings.push(
+                        "clip paths and masks on external <use> are not supported".to_string(),
+                    );
+                }
                 expand_external_use(
                     node, file, id, transform, &style, doc, layer_id, warnings, depth, dpi,
                     base_dir,
@@ -563,7 +563,6 @@ fn process_node(
         node.name.as_str(),
         "g" | "a"
             | "svg"
-            | "use"
             | "rect"
             | "circle"
             | "ellipse"
@@ -735,6 +734,31 @@ fn clip_objects(
                 .collect();
         }
         if pieces.is_empty() {
+            // `boolean_contours` can return nothing when the subject is fully
+            // inside the clip; keep it then, and drop it when fully outside.
+            let flat = path.flatten(0.1);
+            let inside = !flat.is_empty()
+                && contours.iter().any(|contour| {
+                    let clip_min_x = contour.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+                    let clip_min_y = contour.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+                    let clip_max_x = contour
+                        .iter()
+                        .map(|p| p.0)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let clip_max_y = contour
+                        .iter()
+                        .map(|p| p.1)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    flat.iter().all(|point| {
+                        point.x >= clip_min_x - 1e-6
+                            && point.y >= clip_min_y - 1e-6
+                            && point.x <= clip_max_x + 1e-6
+                            && point.y <= clip_max_y + 1e-6
+                    })
+                });
+            if inside {
+                replaced.push(object);
+            }
             applied = true;
             continue;
         }
@@ -2204,6 +2228,20 @@ mod tests {
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
         );
+    }
+
+    #[test]
+    fn a_use_clip_moves_with_the_reference() {
+        let report = import_svg_report(
+            r##"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><rect id="r" width="4" height="4"/><clipPath id="c"><rect width="5" height="5"/></clipPath></defs><use href="#r" x="2" y="2" clip-path="url(#c)"/></svg>"##,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 2.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 6.0).abs() < 1e-6, "{max:?}");
+        assert!((min.y - 4.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 8.0).abs() < 1e-6, "{max:?}");
     }
 
     #[test]
