@@ -354,26 +354,25 @@ fn paint_playback(
         }
         let remaining = progress_mm - travelled;
         let ratio = if segment.length > 0.0 {
-            (remaining / segment.length).clamp(0.0, 1.0)
+            (remaining / f64::from(segment.length)).clamp(0.0, 1.0)
         } else {
             1.0
         };
+        let from = segment.from_point();
+        let to_point = segment.to_point();
         let to = Point2::new(
-            segment.from.x + (segment.to.x - segment.from.x) * ratio,
-            segment.from.y + (segment.to.y - segment.from.y) * ratio,
+            from.x + (to_point.x - from.x) * ratio,
+            from.y + (to_point.y - from.y) * ratio,
         );
         let (width, color) = match segment.kind {
             MoveKind::Cut => (2.0, cut_color),
             MoveKind::Travel => (1.0, travel_color),
         };
         painter.line_segment(
-            [
-                screen_pos(rect, editor, segment.from),
-                screen_pos(rect, editor, to),
-            ],
+            [screen_pos(rect, editor, from), screen_pos(rect, editor, to)],
             Stroke::new(width, color),
         );
-        travelled += segment.length;
+        travelled += f64::from(segment.length);
     }
     if let Some(position) = playback.position_at(progress_mm) {
         let head = screen_pos(rect, editor, position.point);

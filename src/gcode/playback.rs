@@ -4,17 +4,29 @@ use crate::geometry::Point2;
 /// One straight movement in the simulated job.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaybackSegment {
-    pub from: Point2,
-    pub to: Point2,
+    /// Start in millimetres; `f32` keeps a large timeline compact. Playback is
+    /// a visual timeline, not the source of the exported coordinates.
+    pub from: [f32; 2],
+    pub to: [f32; 2],
     pub kind: MoveKind,
     /// Length in millimetres.
-    pub length: f64,
+    pub length: f32,
     /// Feed rate in millimetres per minute (travel speed for rapids).
-    pub speed: f64,
+    pub speed: f32,
     /// Laser power in the writer's `S` range (0 for rapids).
-    pub power: f64,
+    pub power: f32,
     /// One-based pass number.
-    pub pass: u32,
+    pub pass: u16,
+}
+
+impl PlaybackSegment {
+    pub fn from_point(&self) -> Point2 {
+        Point2::new(f64::from(self.from[0]), f64::from(self.from[1]))
+    }
+
+    pub fn to_point(&self) -> Point2 {
+        Point2::new(f64::from(self.to[0]), f64::from(self.to[1]))
+    }
 }
 
 /// Laser position and settings at a point in the simulation.
@@ -48,6 +60,11 @@ impl Playback {
     ///
     /// Used by the preview to build segments from streamed raster bands without
     /// keeping the whole move list alive.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
     pub fn append_toolpath(&mut self, toolpath: &Toolpath, travel_speed_mm_min: f64) {
         let travel_speed = if travel_speed_mm_min > 0.0 {
             travel_speed_mm_min
@@ -71,13 +88,13 @@ impl Playback {
                             self.duration_seconds += length / speed * 60.0;
                         }
                         self.segments.push(PlaybackSegment {
-                            from,
-                            to,
+                            from: [from.x as f32, from.y as f32],
+                            to: [to.x as f32, to.y as f32],
                             kind: movement.kind,
-                            length,
-                            speed,
-                            power,
-                            pass,
+                            length: length as f32,
+                            speed: speed as f32,
+                            power: power as f32,
+                            pass: pass as u16,
                         });
                     }
                 }
@@ -96,23 +113,25 @@ impl Playback {
         let mut travelled = 0.0;
         let last = self.segments.len().saturating_sub(1);
         for (index, segment) in self.segments.iter().enumerate() {
-            if length <= travelled + segment.length || index == last {
+            if length <= travelled + f64::from(segment.length) || index == last {
                 let ratio = if segment.length > 0.0 {
-                    ((length - travelled) / segment.length).clamp(0.0, 1.0)
+                    ((length - travelled) / f64::from(segment.length)).clamp(0.0, 1.0)
                 } else {
                     0.0
                 };
+                let from = segment.from_point();
+                let to = segment.to_point();
                 return Some(PlaybackPosition {
                     point: Point2::new(
-                        segment.from.x + (segment.to.x - segment.from.x) * ratio,
-                        segment.from.y + (segment.to.y - segment.from.y) * ratio,
+                        from.x + (to.x - from.x) * ratio,
+                        from.y + (to.y - from.y) * ratio,
                     ),
                     kind: segment.kind,
-                    power: segment.power,
-                    pass: segment.pass,
+                    power: f64::from(segment.power),
+                    pass: u32::from(segment.pass),
                 });
             }
-            travelled += segment.length;
+            travelled += f64::from(segment.length);
         }
         None
     }
@@ -129,7 +148,7 @@ impl Playback {
         let mut travelled = 0.0;
         for segment in &self.segments {
             let duration = if segment.speed > 0.0 {
-                segment.length / segment.speed * 60.0
+                f64::from(segment.length) / f64::from(segment.speed) * 60.0
             } else {
                 0.0
             };
@@ -139,10 +158,10 @@ impl Playback {
                 } else {
                     1.0
                 };
-                return travelled + segment.length * ratio;
+                return travelled + f64::from(segment.length) * ratio;
             }
             elapsed += duration;
-            travelled += segment.length;
+            travelled += f64::from(segment.length);
         }
         self.total_length
     }
