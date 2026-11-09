@@ -19,6 +19,16 @@ pub const BUNDLED_NAME: &str = "DejaVu Sans (bundled)";
 
 /// Bundled font data, also used by text-to-outlines.
 pub const BUNDLED_DATA: &[u8] = include_bytes!("../assets/fonts/DejaVuSans.ttf");
+/// Bundled bold face.
+pub const BUNDLED_BOLD_NAME: &str = "DejaVu Sans (bundled) Bold";
+pub const BUNDLED_BOLD_DATA: &[u8] = include_bytes!("../assets/fonts/DejaVuSans-Bold.ttf");
+/// Bundled oblique face.
+pub const BUNDLED_OBLIQUE_NAME: &str = "DejaVu Sans (bundled) Oblique";
+pub const BUNDLED_OBLIQUE_DATA: &[u8] = include_bytes!("../assets/fonts/DejaVuSans-Oblique.ttf");
+/// Bundled bold oblique face.
+pub const BUNDLED_BOLD_OBLIQUE_NAME: &str = "DejaVu Sans (bundled) Bold Oblique";
+pub const BUNDLED_BOLD_OBLIQUE_DATA: &[u8] =
+    include_bytes!("../assets/fonts/DejaVuSans-BoldOblique.ttf");
 
 /// Prefix that keeps generated font families separate from egui's own.
 const FAMILY_PREFIX: &str = "beamburin-font-";
@@ -73,9 +83,60 @@ pub fn resolve(name: &str) -> Option<PathBuf> {
 
 /// Font bytes for outline conversion, falling back to the bundled font.
 pub fn read(name: &str) -> Vec<u8> {
-    resolve(name)
-        .and_then(|path| std::fs::read(path).ok())
-        .unwrap_or_else(|| BUNDLED_DATA.to_vec())
+    match name {
+        BUNDLED_BOLD_NAME => BUNDLED_BOLD_DATA.to_vec(),
+        BUNDLED_OBLIQUE_NAME => BUNDLED_OBLIQUE_DATA.to_vec(),
+        BUNDLED_BOLD_OBLIQUE_NAME => BUNDLED_BOLD_OBLIQUE_DATA.to_vec(),
+        _ => resolve(name)
+            .and_then(|path| std::fs::read(path).ok())
+            .unwrap_or_else(|| BUNDLED_DATA.to_vec()),
+    }
+}
+
+/// Name of the bold and/or italic face of a font, when one is available.
+///
+/// The bundled `DejaVu` family carries all four faces. Installed families are
+/// matched by name (Bold/Italic/Oblique); when no face matches, the base font is
+/// returned so the text still renders.
+pub fn variant(name: &str, bold: bool, italic: bool) -> String {
+    let base = if name.trim().is_empty() || name == "sans" || name == BUNDLED_NAME {
+        BUNDLED_NAME
+    } else {
+        name
+    };
+    if base == BUNDLED_NAME {
+        return match (bold, italic) {
+            (true, true) => BUNDLED_BOLD_OBLIQUE_NAME,
+            (true, false) => BUNDLED_BOLD_NAME,
+            (false, true) => BUNDLED_OBLIQUE_NAME,
+            (false, false) => BUNDLED_NAME,
+        }
+        .to_string();
+    }
+    let normalized = normalize_name(base);
+    let mut best: Option<&FontEntry> = None;
+    for entry in installed() {
+        let candidate = normalize_name(&entry.name);
+        if !candidate.starts_with(&normalized) {
+            continue;
+        }
+        let has_bold = candidate.contains("bold");
+        let has_italic = candidate.contains("italic") || candidate.contains("oblique");
+        if has_bold != bold || has_italic != italic {
+            continue;
+        }
+        if best.is_none_or(|current| entry.name.len() < current.name.len()) {
+            best = Some(entry);
+        }
+    }
+    best.map_or_else(|| base.to_string(), |entry| entry.name.clone())
+}
+
+fn normalize_name(name: &str) -> String {
+    name.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// egui family for a stored font name.
@@ -117,14 +178,20 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
     }
 
     let mut definitions = FontDefinitions::default();
-    definitions.font_data.insert(
-        "beamburin-bundled".to_string(),
-        Arc::new(FontData::from_static(BUNDLED_DATA)),
-    );
-    definitions.families.insert(
-        FontFamily::Name(family_key(BUNDLED_NAME).into()),
-        vec!["beamburin-bundled".to_string()],
-    );
+    for (name, data) in [
+        (BUNDLED_NAME, BUNDLED_DATA),
+        (BUNDLED_BOLD_NAME, BUNDLED_BOLD_DATA),
+        (BUNDLED_OBLIQUE_NAME, BUNDLED_OBLIQUE_DATA),
+        (BUNDLED_BOLD_OBLIQUE_NAME, BUNDLED_BOLD_OBLIQUE_DATA),
+    ] {
+        let key = family_key(name);
+        definitions
+            .font_data
+            .insert(key.clone(), Arc::new(FontData::from_static(data)));
+        definitions
+            .families
+            .insert(FontFamily::Name(key.as_str().into()), vec![key]);
+    }
 
     for name in &needed {
         let key = family_key(name);
@@ -132,7 +199,10 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
             .families
             .entry(FontFamily::Name(key.as_str().into()))
             .or_insert_with(|| vec!["beamburin-bundled".to_string()]);
-        if name == BUNDLED_NAME {
+        if matches!(
+            name.as_str(),
+            BUNDLED_NAME | BUNDLED_BOLD_NAME | BUNDLED_OBLIQUE_NAME | BUNDLED_BOLD_OBLIQUE_NAME
+        ) {
             continue;
         }
         let Some(path) = resolve(name) else {
@@ -235,7 +305,9 @@ fn walk(dir: &Path, depth: usize, entries: &mut Vec<FontEntry>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        BUNDLED_DATA, BUNDLED_NAME, collect_from, family, family_key, names, read, resolve,
+        BUNDLED_BOLD_DATA, BUNDLED_BOLD_NAME, BUNDLED_BOLD_OBLIQUE_DATA, BUNDLED_BOLD_OBLIQUE_NAME,
+        BUNDLED_DATA, BUNDLED_NAME, BUNDLED_OBLIQUE_NAME, collect_from, family, family_key, names,
+        read, resolve, variant,
     };
 
     #[test]
@@ -292,5 +364,18 @@ mod tests {
                 pair[1].name
             );
         }
+    }
+
+    #[test]
+    fn bundled_variants_are_named_and_resolved() {
+        assert_eq!(variant("sans", false, false), BUNDLED_NAME);
+        assert_eq!(variant("", true, false), BUNDLED_BOLD_NAME);
+        assert_eq!(variant(BUNDLED_NAME, false, true), BUNDLED_OBLIQUE_NAME);
+        assert_eq!(variant(BUNDLED_NAME, true, true), BUNDLED_BOLD_OBLIQUE_NAME);
+        assert_eq!(read(BUNDLED_BOLD_NAME).len(), BUNDLED_BOLD_DATA.len());
+        assert_eq!(
+            read(BUNDLED_BOLD_OBLIQUE_NAME).len(),
+            BUNDLED_BOLD_OBLIQUE_DATA.len()
+        );
     }
 }

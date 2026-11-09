@@ -1876,7 +1876,9 @@ impl BeamBurinApp {
             .objects
             .iter()
             .filter_map(|object| match &object.shape {
-                Shape::Text(text) => Some(text.font.clone()),
+                Shape::Text(text) => {
+                    Some(crate::textfont::variant(&text.font, text.bold, text.italic))
+                }
                 _ => None,
             })
             .collect();

@@ -425,6 +425,12 @@ impl BeamBurinApp {
                         ui.label("Upper case");
                         ui.checkbox(&mut text.uppercase, "Force upper case");
                         ui.end_row();
+                        ui.label("Style");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut text.bold, "Bold");
+                            ui.checkbox(&mut text.italic, "Italic");
+                        });
+                        ui.end_row();
                         ui.label("Align");
                         let mut align = text.align;
                         egui::ComboBox::from_id_salt("text_align")

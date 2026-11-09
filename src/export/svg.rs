@@ -142,14 +142,18 @@ fn write_object(
                 crate::objects::TextAlign::Center => "middle",
                 crate::objects::TextAlign::Right => "end",
             };
+            let weight = if text.bold { "bold" } else { "normal" };
+            let font_style = if text.italic { "italic" } else { "normal" };
             let lines: Vec<&str> = text.lines();
             if lines.len() == 1 {
                 let _ = writeln!(
                     out,
-                    "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">{}</text>",
+                    "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-weight=\"{}\" font-style=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">{}</text>",
                     fmt_num(view.x(world.x)),
                     fmt_num(view.y(world.y)),
                     escape(&text.font),
+                    weight,
+                    font_style,
                     fmt_num(text.size * scale),
                     fill,
                     stroke,
@@ -161,10 +165,12 @@ fn write_object(
             } else {
                 let _ = write!(
                     out,
-                    "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">",
+                    "    <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-weight=\"{}\" font-style=\"{}\" font-size=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" text-anchor=\"{}\" letter-spacing=\"{}\">",
                     fmt_num(view.x(world.x)),
                     fmt_num(view.y(world.y)),
                     escape(&text.font),
+                    weight,
+                    font_style,
                     fmt_num(text.size * scale),
                     fill,
                     stroke,
@@ -372,6 +378,24 @@ mod tests {
         let svg = export_svg(&doc).unwrap();
         assert!(svg.contains("<svg"));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn bold_and_italic_are_written_as_font_attributes() {
+        let mut doc = Document::default();
+        let layer_id = doc.layers[0].id.clone();
+        doc.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "Hi".to_string(),
+                bold: true,
+                italic: true,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let svg = export_svg(&doc).unwrap();
+        assert!(svg.contains("font-weight=\"bold\""), "{svg}");
+        assert!(svg.contains("font-style=\"italic\""), "{svg}");
     }
 
     #[test]

@@ -23,7 +23,9 @@ const CURVE_STEPS: usize = 12;
 /// transform. Layout follows the same model as the canvas: line spacing,
 /// letter spacing and left/centre/right alignment around the anchor.
 pub fn text_to_paths(text: &TextObject) -> Result<Vec<Path>, String> {
-    text_to_paths_with_font(text, FONT_DATA)
+    let name = crate::textfont::variant(&text.font, text.bold, text.italic);
+    let data = crate::textfont::read(&name);
+    text_to_paths_with_font(text, &data)
 }
 
 /// Convert text to contours with an explicit font file.
@@ -332,6 +334,18 @@ mod tests {
         for (a, b) in switched.iter().zip(&plain) {
             assert!((a.length() - b.length()).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn bold_and_italic_use_the_bundled_faces() {
+        let regular = text("HI");
+        let mut bold = regular.clone();
+        bold.bold = true;
+        let mut italic = regular.clone();
+        italic.italic = true;
+        let plain_paths = text_to_paths(&regular).unwrap();
+        assert_ne!(text_to_paths(&bold).unwrap(), plain_paths);
+        assert_ne!(text_to_paths(&italic).unwrap(), plain_paths);
     }
 
     #[test]

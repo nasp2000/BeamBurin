@@ -14,7 +14,9 @@ machines that have no fonts installed. They are redistributed unmodified.
 
 ### DejaVu Sans
 
-`assets/fonts/DejaVuSans.ttf`, used for the drawing and text outlines.
+`assets/fonts/DejaVuSans.ttf`, `DejaVuSans-Bold.ttf`, `DejaVuSans-Oblique.ttf`
+and `DejaVuSans-BoldOblique.ttf`, used for the drawing, text variants and text
+outlines.
 
 ```
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/

@@ -108,6 +108,12 @@ impl BeamBurinApp {
                         ui.label("Upper case");
                         ui.checkbox(&mut self.text_editor_draft.uppercase, "Force upper case");
                         ui.end_row();
+                        ui.label("Style");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.text_editor_draft.bold, "Bold");
+                            ui.checkbox(&mut self.text_editor_draft.italic, "Italic");
+                        });
+                        ui.end_row();
                     });
                 ui.weak("Shift+Enter starts a new line.");
                 ui.horizontal(|ui| {

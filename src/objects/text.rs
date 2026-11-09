@@ -66,6 +66,12 @@ pub struct TextObject {
     /// Vertical placement of the block around the anchor.
     #[serde(default)]
     pub vertical_align: TextVAlign,
+    /// Use the bold face of the chosen font when one is available.
+    #[serde(default)]
+    pub bold: bool,
+    /// Use the italic/oblique face of the chosen font when one is available.
+    #[serde(default)]
+    pub italic: bool,
 }
 
 fn default_line_spacing() -> f64 {
@@ -85,6 +91,8 @@ impl Default for TextObject {
             align: TextAlign::Left,
             uppercase: false,
             vertical_align: TextVAlign::Bottom,
+            bold: false,
+            italic: false,
         }
     }
 }
@@ -350,5 +358,7 @@ mod tests {
         assert_eq!(text.letter_spacing, 0.0);
         assert!((text.line_spacing - 1.2).abs() < 1e-9);
         assert_eq!(text.vertical_align, TextVAlign::Bottom);
+        assert!(!text.bold);
+        assert!(!text.italic);
     }
 }

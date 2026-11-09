@@ -340,7 +340,9 @@ impl BeamBurinApp {
             .iter()
             .find(|object| object.id == id)
             .and_then(|object| match &object.shape {
-                Shape::Text(text) => Some(text.font.clone()),
+                Shape::Text(text) => {
+                    Some(crate::textfont::variant(&text.font, text.bold, text.italic))
+                }
                 _ => None,
             })
             .unwrap_or_else(|| crate::textfont::BUNDLED_NAME.to_string())

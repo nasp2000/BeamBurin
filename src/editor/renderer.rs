@@ -610,7 +610,8 @@ fn paint_object(
                 // New font families become active at the start of the next
                 // pass, so the first frame that uses one must fall back to the
                 // built-in family instead of panicking.
-                let family = crate::textfont::family(&text.font);
+                let font_name = crate::textfont::variant(&text.font, text.bold, text.italic);
+                let family = crate::textfont::family(&font_name);
                 let family = if painter
                     .ctx()
                     .fonts(|fonts| fonts.families().contains(&family))
