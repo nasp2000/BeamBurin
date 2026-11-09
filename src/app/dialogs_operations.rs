@@ -613,8 +613,7 @@ impl BeamBurinApp {
                                 .on_hover_text(error);
                             }
                         }
-                        let delete = ui
-                            .small_button("x")
+                        let delete = icons::compact_button(ui, "x")
                             .on_hover_text("Delete this parameter");
                         delete.widget_info(|| {
                             egui::WidgetInfo::labeled(
@@ -918,8 +917,7 @@ impl BeamBurinApp {
                                     constraint.kind.set_value(changed);
                                 }
                             }
-                            if ui
-                                .small_button("x")
+                            if icons::compact_button(ui, "x")
                                 .on_hover_text("Delete this constraint")
                                 .clicked()
                             {
@@ -1260,8 +1258,7 @@ impl BeamBurinApp {
                             {
                                 apply = Some(recipe.id.clone());
                             }
-                            if ui
-                                .small_button("Delete")
+                            if icons::compact_button(ui, "Delete")
                                 .on_hover_text("Remove this recipe")
                                 .clicked()
                             {

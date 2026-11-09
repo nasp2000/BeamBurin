@@ -1202,8 +1202,8 @@ impl BeamBurinApp {
                             tool_icon(tool),
                             22.0,
                             tool.label(),
+                            tool_help(tool),
                         )
-                        .on_hover_text(tool_help(tool))
                         .clicked()
                         {
                             self.editor.tool = tool;
@@ -1217,8 +1217,8 @@ impl BeamBurinApp {
                         Icon::Duplicate,
                         18.0,
                         "Duplicate",
+                        "Duplicate the selection",
                     )
-                    .on_hover_text("Duplicate the selection")
                     .clicked()
                     {
                         self.editor.duplicate_selection();
@@ -1229,8 +1229,8 @@ impl BeamBurinApp {
                         Icon::Delete,
                         18.0,
                         "Delete",
+                        "Delete the selection",
                     )
-                    .on_hover_text("Delete the selection")
                     .clicked()
                     {
                         self.editor.delete_selection();
@@ -1244,8 +1244,8 @@ impl BeamBurinApp {
                             boolean_icon(op),
                             18.0,
                             op.label(),
+                            format!("{} the two selected objects", op.label()),
                         )
-                        .on_hover_text(format!("{} the two selected objects", op.label()))
                         .clicked()
                         {
                             self.apply_boolean(op);
@@ -1258,8 +1258,8 @@ impl BeamBurinApp {
                         Icon::Nodes,
                         18.0,
                         "Edit nodes",
+                        "Edit the nodes of one path",
                     )
-                    .on_hover_text("Edit the nodes of one path")
                     .clicked()
                     {
                         if let Some(id) = self.editor.selection.ids().first().cloned() {
@@ -1281,8 +1281,8 @@ impl BeamBurinApp {
                         Icon::GridArray,
                         18.0,
                         "Grid array",
+                        "Copy the selection in a grid",
                     )
-                    .on_hover_text("Copy the selection in a grid")
                     .clicked()
                     {
                         self.grid_array_open = true;
@@ -1293,8 +1293,8 @@ impl BeamBurinApp {
                         Icon::Repeat,
                         18.0,
                         "Circular array",
+                        "Copy the selection around a circle",
                     )
-                    .on_hover_text("Copy the selection around a circle")
                     .clicked()
                     {
                         self.repeat_open = true;
@@ -1305,8 +1305,8 @@ impl BeamBurinApp {
                         Icon::Offset,
                         18.0,
                         "Offset",
+                        "Offset the selection by the radius",
                     )
-                    .on_hover_text("Offset the selection by the radius")
                     .clicked()
                     {
                         self.offset_open = true;
@@ -1317,8 +1317,8 @@ impl BeamBurinApp {
                         Icon::OutlineStroke,
                         18.0,
                         "Outline stroke",
+                        "Convert the stroke into an outline",
                     )
-                    .on_hover_text("Convert the stroke into an outline")
                     .clicked()
                     {
                         self.apply_outline_stroke();
@@ -1431,11 +1431,11 @@ impl BeamBurinApp {
 
                 self.tool_options(ui);
                 ui.separator();
-                if ui.button("-").clicked() {
+                if icons::compact_button(ui, "-").clicked() {
                     self.editor.zoom_out();
                 }
                 ui.label(format!("{:.0}%", self.editor.canvas.zoom * 100.0));
-                if ui.button("+").clicked() {
+                if icons::compact_button(ui, "+").clicked() {
                     self.editor.zoom_in();
                 }
                 if ui.button("Fit").clicked() {
@@ -1473,9 +1473,15 @@ impl BeamBurinApp {
                     ),
                     (AlignMode::Bottom, Icon::AlignBottom, "Align bottom"),
                 ] {
-                    if icons::icon_button_enabled(ui, has_selection, icon, 16.0, label)
-                        .on_hover_text(label)
-                        .clicked()
+                    if icons::icon_button_enabled(
+                        ui,
+                        has_selection,
+                        icon,
+                        16.0,
+                        label,
+                        icons::description(label),
+                    )
+                    .clicked()
                     {
                         self.editor.align_selection(mode);
                     }
@@ -1488,8 +1494,8 @@ impl BeamBurinApp {
                     Icon::DistributeH,
                     16.0,
                     "Distribute horizontally",
+                    "Space the objects evenly across",
                 )
-                .on_hover_text("Distribute horizontally")
                 .clicked()
                 {
                     self.editor.distribute_selection(true);
@@ -1500,8 +1506,8 @@ impl BeamBurinApp {
                     Icon::DistributeV,
                     16.0,
                     "Distribute vertically",
+                    "Space the objects evenly down",
                 )
-                .on_hover_text("Distribute vertically")
                 .clicked()
                 {
                     self.editor.distribute_selection(false);

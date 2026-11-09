@@ -195,8 +195,7 @@ impl BeamBurinApp {
                     ui.label("X");
                     ui.horizontal(|ui| {
                         let step = step(ui);
-                        if ui
-                            .small_button("-")
+                        if icons::compact_button(ui, "-")
                             .on_hover_text("Move left 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -206,8 +205,7 @@ impl BeamBurinApp {
                         if ui.add(egui::DragValue::new(&mut x).speed(0.1)).changed() {
                             object.translate(x - min.x, 0.0);
                         }
-                        if ui
-                            .small_button("+")
+                        if icons::compact_button(ui, "+")
                             .on_hover_text("Move right 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -218,8 +216,7 @@ impl BeamBurinApp {
                     ui.label("Y");
                     ui.horizontal(|ui| {
                         let step = step(ui);
-                        if ui
-                            .small_button("-")
+                        if icons::compact_button(ui, "-")
                             .on_hover_text("Move down 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -229,8 +226,7 @@ impl BeamBurinApp {
                         if ui.add(egui::DragValue::new(&mut y).speed(0.1)).changed() {
                             object.translate(0.0, y - min.y);
                         }
-                        if ui
-                            .small_button("+")
+                        if icons::compact_button(ui, "+")
                             .on_hover_text("Move up 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -253,8 +249,7 @@ impl BeamBurinApp {
                             object.transform = egui_transform_scale(factor, vertical, center)
                                 .compose(&object.transform);
                         };
-                        if ui
-                            .small_button("-")
+                        if icons::compact_button(ui, "-")
                             .on_hover_text("Narrower 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -278,8 +273,7 @@ impl BeamBurinApp {
                             object.transform = egui_transform_scale(factor, vertical, center)
                                 .compose(&object.transform);
                         }
-                        if ui
-                            .small_button("+")
+                        if icons::compact_button(ui, "+")
                             .on_hover_text("Wider 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -302,8 +296,7 @@ impl BeamBurinApp {
                             object.transform = egui_transform_scale(horizontal, factor, center)
                                 .compose(&object.transform);
                         };
-                        if ui
-                            .small_button("-")
+                        if icons::compact_button(ui, "-")
                             .on_hover_text("Shorter 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {
@@ -327,8 +320,7 @@ impl BeamBurinApp {
                             object.transform = egui_transform_scale(horizontal, factor, center)
                                 .compose(&object.transform);
                         }
-                        if ui
-                            .small_button("+")
+                        if icons::compact_button(ui, "+")
                             .on_hover_text("Taller 1 mm (Shift: 0.1 mm)")
                             .clicked()
                         {

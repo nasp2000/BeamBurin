@@ -6,8 +6,17 @@
 
 use egui::{Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle, Visuals};
 
-/// Accent used for selection, hovered controls and links.
-pub const ACCENT: Color32 = Color32::from_rgb(58, 136, 238);
+/// Accent used for links and hovered outlines on the dark interface.
+///
+/// Filled controls use the darker per-theme `active_fill` so white text keeps
+/// at least 4.5:1 contrast.
+pub const ACCENT: Color32 = Color32::from_rgb(110, 170, 255);
+
+/// Filled background for selected controls; white text stays above 4.5:1.
+const DARK_ACTIVE_FILL: Color32 = Color32::from_rgb(44, 116, 208);
+const LIGHT_ACTIVE_FILL: Color32 = Color32::from_rgb(30, 95, 180);
+/// Link colour on the light interface.
+const LIGHT_LINK: Color32 = Color32::from_rgb(30, 95, 180);
 /// Canvas selection default, deliberately lighter than the interface accent.
 pub const CANVAS_SELECTION: &str = "#4EA1DC";
 
@@ -24,7 +33,7 @@ fn dark() -> Visuals {
     visuals.menu_corner_radius = CornerRadius::same(6);
     visuals.hyperlink_color = ACCENT;
     visuals.selection = egui::style::Selection {
-        bg_fill: ACCENT,
+        bg_fill: DARK_ACTIVE_FILL,
         stroke: Stroke::new(1.0, Color32::from_rgb(255, 255, 255)),
     };
     visuals.warn_fg_color = Color32::from_rgb(236, 170, 70);
@@ -43,10 +52,10 @@ fn dark() -> Visuals {
     visuals.widgets.hovered.bg_fill = Color32::from_rgb(54, 61, 74);
     visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(54, 61, 74);
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
-    visuals.widgets.active.bg_fill = ACCENT;
-    visuals.widgets.active.weak_bg_fill = ACCENT;
+    visuals.widgets.active.bg_fill = DARK_ACTIVE_FILL;
+    visuals.widgets.active.weak_bg_fill = DARK_ACTIVE_FILL;
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::from_rgb(245, 247, 250));
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
     visuals.widgets.open.bg_fill = Color32::from_rgb(47, 52, 62);
     visuals.widgets.open.bg_stroke = Stroke::new(1.0, Color32::from_rgb(74, 82, 98));
     for widget in [
@@ -71,13 +80,15 @@ fn light() -> Visuals {
     visuals.window_stroke = Stroke::new(1.0, Color32::from_rgb(208, 212, 220));
     visuals.window_corner_radius = CornerRadius::same(8);
     visuals.menu_corner_radius = CornerRadius::same(6);
-    visuals.hyperlink_color = Color32::from_rgb(38, 120, 218);
+    visuals.hyperlink_color = LIGHT_LINK;
     visuals.selection = egui::style::Selection {
-        bg_fill: Color32::from_rgb(38, 120, 218),
+        bg_fill: LIGHT_ACTIVE_FILL,
         stroke: Stroke::new(1.0, Color32::WHITE),
     };
     visuals.override_text_color = Some(Color32::from_rgb(38, 42, 50));
     visuals.weak_text_color = Some(Color32::from_rgb(110, 116, 128));
+    visuals.error_fg_color = Color32::from_rgb(180, 30, 30);
+    visuals.warn_fg_color = Color32::from_rgb(160, 90, 0);
     visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
     visuals.striped = true;
     visuals.slider_trailing_fill = true;
@@ -90,9 +101,9 @@ fn light() -> Visuals {
     visuals.widgets.hovered.bg_fill = Color32::from_rgb(226, 234, 246);
     visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(226, 234, 246);
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(38, 120, 218));
-    visuals.widgets.active.bg_fill = Color32::from_rgb(38, 120, 218);
-    visuals.widgets.active.weak_bg_fill = Color32::from_rgb(38, 120, 218);
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0, Color32::from_rgb(38, 120, 218));
+    visuals.widgets.active.bg_fill = LIGHT_ACTIVE_FILL;
+    visuals.widgets.active.weak_bg_fill = LIGHT_ACTIVE_FILL;
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0, LIGHT_LINK);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
     visuals.widgets.open.bg_fill = Color32::from_rgb(244, 246, 249);
     visuals.widgets.open.bg_stroke = Stroke::new(1.0, Color32::from_rgb(208, 212, 220));
@@ -156,7 +167,115 @@ pub fn apply(ctx: &egui::Context, dark_mode: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CANVAS_SELECTION, visuals};
+    use super::{ACCENT, CANVAS_SELECTION, LIGHT_LINK, visuals};
+    use egui::Color32;
+
+    fn channel_luminance(value: u8) -> f32 {
+        let value = f32::from(value) / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn luminance(colour: Color32) -> f32 {
+        0.2126 * channel_luminance(colour.r())
+            + 0.7152 * channel_luminance(colour.g())
+            + 0.0722 * channel_luminance(colour.b())
+    }
+
+    fn contrast(first: Color32, second: Color32) -> f32 {
+        let first = luminance(first);
+        let second = luminance(second);
+        let (high, low) = if first > second {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        (high + 0.05) / (low + 0.05)
+    }
+
+    #[track_caller]
+    fn assert_contrast(first: Color32, second: Color32, minimum: f32, what: &str) {
+        let ratio = contrast(first, second);
+        assert!(
+            ratio >= minimum,
+            "{what}: {ratio:.2}:1 is below {minimum}:1 ({first:?} on {second:?})"
+        );
+    }
+
+    #[test]
+    fn both_themes_meet_text_and_control_contrast() {
+        for dark in [true, false] {
+            let visuals = visuals(dark);
+            let panel = visuals.panel_fill;
+            let theme = if dark { "dark" } else { "light" };
+            assert_contrast(visuals.text_color(), panel, 4.5, &format!("{theme} text"));
+            assert_contrast(
+                visuals.weak_text_color(),
+                panel,
+                4.5,
+                &format!("{theme} weak text"),
+            );
+            assert_contrast(
+                visuals.hyperlink_color,
+                panel,
+                4.5,
+                &format!("{theme} link"),
+            );
+            assert_contrast(
+                visuals.error_fg_color,
+                panel,
+                4.5,
+                &format!("{theme} error text"),
+            );
+            assert_contrast(
+                visuals.warn_fg_color,
+                panel,
+                4.5,
+                &format!("{theme} warning text"),
+            );
+            for (name, widget) in [
+                ("inactive", &visuals.widgets.inactive),
+                ("hovered", &visuals.widgets.hovered),
+                ("active", &visuals.widgets.active),
+                ("open", &visuals.widgets.open),
+            ] {
+                assert_contrast(
+                    widget.fg_stroke.color,
+                    widget.bg_fill,
+                    4.5,
+                    &format!("{theme} {name} control text"),
+                );
+            }
+            assert_contrast(
+                Color32::WHITE,
+                visuals.selection.bg_fill,
+                4.5,
+                &format!("{theme} selected text"),
+            );
+            assert_contrast(
+                visuals.selection.bg_fill,
+                panel,
+                3.0,
+                &format!("{theme} selected control boundary"),
+            );
+            assert_contrast(
+                visuals.widgets.hovered.bg_stroke.color,
+                visuals.widgets.hovered.bg_fill,
+                3.0,
+                &format!("{theme} hovered outline"),
+            );
+        }
+        assert_contrast(ACCENT, visuals(true).panel_fill, 4.5, "dark accent text");
+        assert_contrast(
+            LIGHT_LINK,
+            visuals(false).panel_fill,
+            4.5,
+            "light accent text",
+        );
+    }
 
     #[test]
     fn both_themes_have_the_accent_and_lighter_corners() {
@@ -182,6 +301,6 @@ mod tests {
         let visuals = visuals(true);
         assert_eq!(visuals.panel_fill, egui::Color32::from_rgb(39, 43, 52));
         assert_eq!(visuals.window_fill, egui::Color32::from_rgb(39, 43, 52));
-        assert_eq!(visuals.widgets.active.bg_fill, super::ACCENT);
+        assert_ne!(visuals.widgets.active.bg_fill, super::ACCENT);
     }
 }

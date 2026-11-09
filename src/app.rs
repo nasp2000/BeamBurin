@@ -1735,7 +1735,7 @@ impl BeamBurinApp {
                 for toast in &self.toasts {
                     let color = match toast.kind {
                         ToastKind::Info => crate::theme::ACCENT,
-                        ToastKind::Error => egui::Color32::from_rgb(210, 80, 70),
+                        ToastKind::Error => egui::Color32::from_rgb(255, 145, 135),
                     };
                     egui::Frame::new()
                         .fill(egui::Color32::from_rgb(28, 30, 34))

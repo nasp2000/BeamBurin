@@ -4779,3 +4779,62 @@ fn every_window_exposes_named_accessibility_nodes() {
     click(&mut harness, "A3 landscape (420 × 297)");
     check(&harness, "project profile editor");
 }
+
+#[test]
+fn every_visible_pointer_target_meets_the_target_size_rule() {
+    use egui_kittest::kittest::NodeT as _;
+
+    fn circle_hits_rect(center: egui::Pos2, radius: f32, rect: egui::Rect) -> bool {
+        let closest = egui::pos2(
+            center.x.clamp(rect.min.x, rect.max.x),
+            center.y.clamp(rect.min.y, rect.max.y),
+        );
+        center.distance(closest) < radius
+    }
+
+    for dark in [true, false] {
+        let mut app = ui_test_app();
+        app.dark_mode = dark;
+        let mut harness = ui_harness(app);
+        harness.run();
+        let mut targets = Vec::new();
+        for node in harness.root().children_recursive() {
+            let accesskit = node.accesskit_node();
+            let role = accesskit.role();
+            let interactive = matches!(
+                role,
+                egui::accesskit::Role::Button
+                    | egui::accesskit::Role::CheckBox
+                    | egui::accesskit::Role::ComboBox
+                    | egui::accesskit::Role::RadioButton
+                    | egui::accesskit::Role::Slider
+                    | egui::accesskit::Role::SpinButton
+                    | egui::accesskit::Role::TextInput
+            );
+            if interactive {
+                targets.push((role, accesskit.label().unwrap_or_default(), node.rect()));
+            }
+        }
+        for (index, (role, label, rect)) in targets.iter().enumerate() {
+            let size_ok = rect.width() >= 23.5 && rect.height() >= 23.5;
+            if size_ok {
+                continue;
+            }
+            let center = rect.center();
+            let blocked = targets
+                .iter()
+                .enumerate()
+                .any(|(other_index, (_, _, other))| {
+                    other_index != index
+                        && *other != *rect
+                        && circle_hits_rect(center, 12.0, *other)
+                });
+            assert!(
+                !blocked,
+                "{role:?} {label:?} is {:.1}x{:.1} and another target lies inside its 24 px circle",
+                rect.width(),
+                rect.height()
+            );
+        }
+    }
+}

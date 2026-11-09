@@ -367,7 +367,7 @@ impl BeamBurinApp {
                             }
                             air_response.on_hover_text("Air assist (M8/M9)");
                             ui.allocate_ui_with_layout(
-                                egui::vec2(34.0, 18.0),
+                                egui::vec2(48.0, 24.0),
                                 egui::Layout::left_to_right(egui::Align::Center),
                                 |ui| {
                                     ui.spacing_mut().item_spacing.x = 1.0;
@@ -377,7 +377,7 @@ impl BeamBurinApp {
                                                 egui::RichText::new("\u{25b2}").monospace(),
                                             )
                                             .small()
-                                            .min_size(egui::vec2(14.0, 16.0)),
+                                            .min_size(egui::vec2(24.0, 24.0)),
                                         )
                                         .on_hover_text("Cut this layer earlier")
                                         .clicked()
@@ -390,7 +390,7 @@ impl BeamBurinApp {
                                                 egui::RichText::new("\u{25bc}").monospace(),
                                             )
                                             .small()
-                                            .min_size(egui::vec2(14.0, 16.0)),
+                                            .min_size(egui::vec2(24.0, 24.0)),
                                         )
                                         .on_hover_text("Cut this layer later")
                                         .clicked()
@@ -988,7 +988,7 @@ impl BeamBurinApp {
                 let response = ui.add(
                     egui::Button::new("")
                         .fill(Color32::from_rgb(r, g, b))
-                        .min_size(egui::vec2(18.0, 18.0))
+                        .min_size(egui::vec2(24.0, 24.0))
                         .stroke(egui::Stroke::new(1.0, Color32::WHITE)),
                 );
                 response.widget_info(|| {
@@ -1024,7 +1024,7 @@ impl BeamBurinApp {
         let response = ui.add(
             egui::Button::new("")
                 .fill(Color32::from_rgb(r, g, b))
-                .min_size(egui::vec2(18.0, 18.0))
+                .min_size(egui::vec2(24.0, 24.0))
                 .stroke(if selected {
                     egui::Stroke::new(2.0, Color32::WHITE)
                 } else {
@@ -1067,28 +1067,48 @@ impl BeamBurinApp {
         ui.horizontal_wrapped(|ui| {
             ui.label("Image mask");
             if ui
-                .add_enabled(image && vectors, egui::Button::new("Apply mask").small())
+                .add_enabled(
+                    image && vectors,
+                    egui::Button::new("Apply mask")
+                        .small()
+                        .min_size(egui::vec2(24.0, 24.0)),
+                )
                 .on_hover_text("Use the selected closed shapes as the image mask")
                 .clicked()
             {
                 self.apply_image_vector_mask(false);
             }
             if ui
-                .add_enabled(image && vectors, egui::Button::new("Mask + keep").small())
+                .add_enabled(
+                    image && vectors,
+                    egui::Button::new("Mask + keep")
+                        .small()
+                        .min_size(egui::vec2(24.0, 24.0)),
+                )
                 .on_hover_text("Mask the image and keep the shapes for cutting")
                 .clicked()
             {
                 self.apply_image_vector_mask(true);
             }
             if ui
-                .add_enabled(image && has_mask, egui::Button::new("Invert").small())
+                .add_enabled(
+                    image && has_mask,
+                    egui::Button::new("Invert")
+                        .small()
+                        .min_size(egui::vec2(24.0, 24.0)),
+                )
                 .on_hover_text("Keep the pixels outside the mask instead of inside")
                 .clicked()
             {
                 self.set_image_mask_inverted(!self.image_mask_is_inverted());
             }
             if ui
-                .add_enabled(image && has_mask, egui::Button::new("Clear").small())
+                .add_enabled(
+                    image && has_mask,
+                    egui::Button::new("Clear")
+                        .small()
+                        .min_size(egui::vec2(24.0, 24.0)),
+                )
                 .on_hover_text("Remove the vector mask from the image")
                 .clicked()
             {

@@ -1414,152 +1414,235 @@ fn image_for(ui: &Ui, icon: Icon, size: f32) -> Image<'static> {
     }
 }
 
+/// Hover descriptions for icon buttons and menu entries.
+///
+/// Kept as data so a test can check every entry is a real description: never
+/// empty, never just the label repeated, and never longer than one line.
+const TOOLTIPS: &[(&str, &str)] = &[
+    ("New", "Start an empty project"),
+    ("Open...", "Open a .bwp project or an .svg drawing"),
+    (
+        "Save",
+        "Save the project, keeping a backup of the previous version",
+    ),
+    ("Save as...", "Save the project under another name"),
+    ("Import SVG or DXF...", "Import an SVG, DXF or raster image"),
+    ("Export SVG...", "Export the document as SVG"),
+    ("Export DXF...", "Export the document as DXF"),
+    ("Export PNG...", "Export a raster preview of the document"),
+    ("Export G-code...", "Generate and save the laser job"),
+    ("Export selection", "Export only the selected objects"),
+    ("As SVG...", "Export the selection as SVG"),
+    ("As DXF...", "Export the selection as DXF"),
+    ("As G-code...", "Export the selection as a laser job"),
+    (
+        "Document properties...",
+        "Edit the name, work area and unit",
+    ),
+    (
+        "Collect images...",
+        "Copy referenced images into the project folder",
+    ),
+    ("Recover project...", "Open the backup of a project"),
+    ("Machine profiles...", "Create and apply saved work areas"),
+    ("Exit", "Close BeamBurin"),
+    (
+        "Select all",
+        "Select every visible, unlocked object (Ctrl+A)",
+    ),
+    (
+        "Cut",
+        "Cut the selection to the internal clipboard (Ctrl+X)",
+    ),
+    (
+        "Copy",
+        "Copy the selection to the internal clipboard (Ctrl+C)",
+    ),
+    ("Paste", "Paste the clipboard into the document (Ctrl+V)"),
+    ("Duplicate", "Duplicate the selected objects (Ctrl+D)"),
+    ("Delete", "Delete the selected objects (Del or Backspace)"),
+    ("Invert selection", "Select everything that is not selected"),
+    ("Lock", "Prevent the selected objects from being edited"),
+    ("Unlock", "Allow the selected objects to be edited"),
+    ("Preferences...", "Edit the application preferences"),
+    ("Group", "Group the selected objects (Ctrl+G)"),
+    ("Ungroup", "Dissolve the selected group (Ctrl+Shift+G)"),
+    ("Selection", "Select and move objects (V)"),
+    ("Line", "Draw a line; Shift snaps to 45 degrees (L)"),
+    ("Rectangle", "Draw a rectangle; Shift for a square (R)"),
+    ("Ellipse", "Draw an ellipse; Shift for a circle (E)"),
+    ("Polygon", "Draw a regular polygon (P)"),
+    ("Star", "Draw a star with adjustable tips (S)"),
+    ("Text", "Insert editable text (T)"),
+    ("Measure", "Measure a distance and angle"),
+    ("Bézier", "Draw a Bezier path node by node"),
+    ("Freehand", "Draw a freehand path (B)"),
+    ("Pan", "Pan the canvas"),
+    ("Insert image...", "Place a raster image in the document"),
+    ("Edit nodes", "Edit the nodes of one path"),
+    (
+        "Trim segments",
+        "Trim the selected segments at their intersections",
+    ),
+    ("Join paths", "Join open paths into one path"),
+    ("New operation", "Create a cut operation"),
+    (
+        "Compare operations...",
+        "Compare the parameters of several operations",
+    ),
+    (
+        "Preview and G-code...",
+        "Show the job, preview and playback",
+    ),
+    (
+        "Estimate duration",
+        "Estimate the job duration without writing a file",
+    ),
+    ("Apply profile", "Apply a saved operation profile"),
+    ("Duplicate operation", "Copy the active operation"),
+    (
+        "Assign operation to layer",
+        "Assign the active operation to the layer objects",
+    ),
+    (
+        "Open library...",
+        "Open the materials and operations library",
+    ),
+    (
+        "Materials and operations...",
+        "Open the materials and operations library",
+    ),
+    (
+        "Import profiles...",
+        "Import a profile library from a .json file",
+    ),
+    (
+        "Export profiles...",
+        "Save the profile library to a .json file",
+    ),
+    ("Bring to front", "Move the selection to the front"),
+    ("Send to back", "Move the selection to the back"),
+    ("Centre on page", "Centre the selection on the work area"),
+    (
+        "Distribute on page horizontally",
+        "Spread the selection across the page",
+    ),
+    (
+        "Distribute on page vertically",
+        "Spread the selection down the page",
+    ),
+    (
+        "Rotate 90° left",
+        "Rotate the selection a quarter turn left",
+    ),
+    (
+        "Rotate 90° right",
+        "Rotate the selection a quarter turn right",
+    ),
+    ("Flip horizontal", "Mirror the selection left to right"),
+    ("Flip vertical", "Mirror the selection top to bottom"),
+    ("Scale up 10 %", "Grow the selection by ten percent"),
+    ("Scale down 10 %", "Shrink the selection by ten percent"),
+    (
+        "Text to outlines",
+        "Convert text into editable path contours",
+    ),
+    ("Fit text to path", "Lay the text along the selected path"),
+    ("Transform around", "Choose the centre used by transforms"),
+    ("Selection centre", "Transform around the selection centre"),
+    ("Page centre", "Transform around the page centre"),
+    (
+        "Each object's centre",
+        "Transform each object around its own centre",
+    ),
+    ("Reset transforms", "Restore the original transforms"),
+    ("Skew...", "Shear the selection by an angle"),
+    ("Grid array...", "Copy the selection in rows and columns"),
+    ("Close paths", "Close open paths"),
+    ("Exit node editing", "Leave node editing"),
+    ("Simplify path...", "Remove nodes within a tolerance"),
+    (
+        "Repeat...",
+        "Repeat the selection in a line or around a circle",
+    ),
+    ("Nest selection...", "Arrange copies inside the work area"),
+    ("Find duplicates...", "Report identical objects"),
+    ("Find intersections...", "Report intersecting objects"),
+    ("Outline stroke", "Turn strokes into outlines"),
+    (
+        "Delete overlapping segments",
+        "Remove duplicated path segments",
+    ),
+    ("Offset...", "Expand or contract the selection"),
+    ("Distribute horizontally", "Space the objects evenly across"),
+    ("Distribute vertically", "Space the objects evenly down"),
+    ("Align left", "Align the left edges"),
+    ("Align centre horizontally", "Align the horizontal centres"),
+    ("Align right", "Align the right edges"),
+    ("Align top", "Align the top edges"),
+    ("Align centre vertically", "Align the vertical centres"),
+    ("Align bottom", "Align the bottom edges"),
+    (
+        "Show selection",
+        "Hide or show the selection frame and handles",
+    ),
+    ("Show rulers", "Show the millimetre rulers"),
+    ("Show guides", "Show the document guides"),
+    ("Show toolpaths", "Draw the planned toolpaths on the canvas"),
+    ("Show grid", "Show the drawing grid"),
+    ("Snap to guides", "Snap drawing to visible guides"),
+    ("Snap to grid", "Snap drawing to the grid"),
+    ("Guides...", "Add and remove horizontal and vertical guides"),
+    ("Zoom in", "Zoom in one step (+)"),
+    ("Zoom out", "Zoom out one step (-)"),
+    ("Fit page", "Fit the page in the window"),
+    ("Fit", "Fit the page in the window"),
+    ("Zoom to selection", "Zoom to the selected objects"),
+    ("Dark mode", "Switch between dark and light themes"),
+    ("Layers panel (F9)", "Show or hide the layers panel"),
+    (
+        "Properties panel (F10)",
+        "Show or hide the properties panel",
+    ),
+    ("About BeamBurin", "Version, scope and licence"),
+    ("Cuts / Layers...", "Edit cuts, speeds, power and output"),
+    ("Exact size", "Draw with an exact width and height"),
+    ("Grid", "Snap or show the grid"),
+    ("Snap", "Enable snapping"),
+    ("Toolpaths", "Show the planned toolpaths"),
+    ("Open", "Open a project"),
+    ("Union", "Merge the two selected objects"),
+    ("Difference", "Subtract the second object from the first"),
+    ("Intersection", "Keep only the overlapping area"),
+    ("Xor", "Keep the areas that do not overlap"),
+    ("Grid array", "Copy the selection in a grid"),
+    ("Circular array", "Copy the selection around a circle"),
+    ("Offset", "Offset the selection by the radius"),
+    (
+        "Adjust image...",
+        "Adjust the preparation of the selected image",
+    ),
+    ("Nodes", "Snap to path nodes"),
+    ("Endpoints", "Snap to the ends of open paths"),
+    ("Centres", "Snap to object centres"),
+    ("Midpoints", "Snap to segment midpoints"),
+    ("Intersections", "Snap to outline crossings"),
+    ("Object limits", "Snap to object bounds"),
+    ("Appearance", "Theme and fonts"),
+];
+
 /// One-line description shown when hovering an entry.
 pub fn tooltip(label: &str) -> Option<&'static str> {
-    let text = match label {
-        "New" => "Start an empty project",
-        "Open..." => "Open a .bwp project or an .svg drawing",
-        "Save" => "Save the project, keeping a backup of the previous version",
-        "Save as..." => "Save the project under another name",
-        "Import SVG or DXF..." => "Import an SVG, DXF or raster image",
-        "Export SVG..." => "Export the document as SVG",
-        "Export DXF..." => "Export the document as DXF",
-        "Export PNG..." => "Export a raster preview of the document",
-        "Export G-code..." => "Generate and save the laser job",
-        "Export selection" => "Export only the selected objects",
-        "As SVG..." => "Export the selection as SVG",
-        "As DXF..." => "Export the selection as DXF",
-        "As G-code..." => "Export the selection as a laser job",
-        "Document properties..." => "Edit the name, work area and unit",
-        "Collect images..." => "Copy referenced images into the project folder",
-        "Recover project..." => "Open the backup of a project",
-        "Machine profiles..." => "Create and apply saved work areas",
-        "Exit" => "Close BeamBurin",
-        "Select all" => "Select every visible, unlocked object (Ctrl+A)",
-        "Cut" => "Cut the selection to the internal clipboard (Ctrl+X)",
-        "Copy" => "Copy the selection to the internal clipboard (Ctrl+C)",
-        "Paste" => "Paste the clipboard into the document (Ctrl+V)",
-        "Duplicate" => "Duplicate the selected objects (Ctrl+D)",
-        "Delete" => "Delete the selected objects (Del or Backspace)",
-        "Invert selection" => "Select everything that is not selected",
-        "Lock" => "Prevent the selected objects from being edited",
-        "Unlock" => "Allow the selected objects to be edited",
-        "Preferences..." => "Edit the application preferences",
-        "Group" => "Group the selected objects (Ctrl+G)",
-        "Ungroup" => "Dissolve the selected group (Ctrl+Shift+G)",
-        "Selection" => "Select and move objects (V)",
-        "Line" => "Draw a line; Shift snaps to 45 degrees (L)",
-        "Rectangle" => "Draw a rectangle; Shift for a square (R)",
-        "Ellipse" => "Draw an ellipse; Shift for a circle (E)",
-        "Polygon" => "Draw a regular polygon (P)",
-        "Star" => "Draw a star with adjustable tips (S)",
-        "Text" => "Insert editable text (T)",
-        "Measure" => "Measure a distance and angle",
-        "Bézier" => "Draw a Bezier path node by node",
-        "Freehand" => "Draw a freehand path (B)",
-        "Pan" => "Pan the canvas",
-        "Insert image..." => "Place a raster image in the document",
-        "Edit nodes" => "Edit the nodes of one path",
-        "Trim segments" => "Trim the selected segments at their intersections",
-        "Join paths" => "Join open paths into one path",
-        "New operation" => "Create a cut operation",
-        "Compare operations..." => "Compare the parameters of several operations",
-        "Preview and G-code..." => "Show the job, preview and playback",
-        "Estimate duration" => "Estimate the job duration without writing a file",
-        "Apply profile" => "Apply a saved operation profile",
-        "Duplicate operation" => "Copy the active operation",
-        "Assign operation to layer" => "Assign the active operation to the layer objects",
-        "Open library..." | "Materials and operations..." => {
-            "Open the materials and operations library"
-        }
-        "Import profiles..." => "Import a profile library from a .json file",
-        "Export profiles..." => "Save the profile library to a .json file",
-        "Bring to front" => "Move the selection to the front",
-        "Send to back" => "Move the selection to the back",
-        "Centre on page" => "Centre the selection on the work area",
-        "Distribute on page horizontally" => "Spread the selection across the page",
-        "Distribute on page vertically" => "Spread the selection down the page",
-        "Rotate 90° left" => "Rotate the selection a quarter turn left",
-        "Rotate 90° right" => "Rotate the selection a quarter turn right",
-        "Flip horizontal" => "Mirror the selection left to right",
-        "Flip vertical" => "Mirror the selection top to bottom",
-        "Scale up 10 %" => "Grow the selection by ten percent",
-        "Scale down 10 %" => "Shrink the selection by ten percent",
-        "Text to outlines" => "Convert text into editable path contours",
-        "Fit text to path" => "Lay the text along the selected path",
-        "Transform around" => "Choose the centre used by transforms",
-        "Selection centre" => "Transform around the selection centre",
-        "Page centre" => "Transform around the page centre",
-        "Each object's centre" => "Transform each object around its own centre",
-        "Reset transforms" => "Restore the original transforms",
-        "Skew..." => "Shear the selection by an angle",
-        "Grid array..." => "Copy the selection in rows and columns",
-        "Close paths" => "Close open paths",
-        "Exit node editing" => "Leave node editing",
-        "Simplify path..." => "Remove nodes within a tolerance",
-        "Repeat..." => "Repeat the selection in a line or around a circle",
-        "Nest selection..." => "Arrange copies inside the work area",
-        "Find duplicates..." => "Report identical objects",
-        "Find intersections..." => "Report intersecting objects",
-        "Outline stroke" => "Turn strokes into outlines",
-        "Delete overlapping segments" => "Remove duplicated path segments",
-        "Offset..." => "Expand or contract the selection",
-        "Distribute horizontally" => "Space the objects evenly across",
-        "Distribute vertically" => "Space the objects evenly down",
-        "Align left" => "Align the left edges",
-        "Align centre horizontally" => "Align the horizontal centres",
-        "Align right" => "Align the right edges",
-        "Align top" => "Align the top edges",
-        "Align centre vertically" => "Align the vertical centres",
-        "Align bottom" => "Align the bottom edges",
-        "Show selection" => "Hide or show the selection frame and handles",
-        "Show rulers" => "Show the millimetre rulers",
-        "Show guides" => "Show the document guides",
-        "Show toolpaths" => "Draw the planned toolpaths on the canvas",
-        "Show grid" => "Show the drawing grid",
-        "Snap to guides" => "Snap drawing to visible guides",
-        "Snap to grid" => "Snap drawing to the grid",
-        "Guides..." => "Add and remove horizontal and vertical guides",
-        "Zoom in" => "Zoom in",
-        "Zoom out" => "Zoom out",
-        "Fit page" | "Fit" => "Fit the page in the window",
-        "Zoom to selection" => "Zoom to the selected objects",
-        "Dark mode" => "Switch between dark and light themes",
-        "Layers panel (F9)" => "Show or hide the layers panel",
-        "Properties panel (F10)" => "Show or hide the properties panel",
-        "About BeamBurin" => "Version, scope and licence",
-        "Cuts / Layers..." => "Edit cuts, speeds, power and output",
-        "Exact size" => "Draw with an exact width and height",
-        "Grid" => "Snap or show the grid",
-        "Snap" => "Enable snapping",
-        "Toolpaths" => "Show the planned toolpaths",
-        "Open" => "Open a project",
-        "Union" => "Merge the two selected objects",
-        "Difference" => "Subtract the second object from the first",
-        "Intersection" => "Keep only the overlapping area",
-        "Xor" => "Keep the areas that do not overlap",
-        "Grid array" => "Copy the selection in a grid",
-        "Circular array" => "Copy the selection around a circle",
-        "Offset" => "Offset the selection by the radius",
-        "Adjust image..." => "Adjust the preparation of the selected image",
-        "Nodes" => "Snap to path nodes",
-        "Endpoints" => "Snap to the ends of open paths",
-        "Centres" => "Snap to object centres",
-        "Midpoints" => "Snap to segment midpoints",
-        "Intersections" => "Snap to outline crossings",
-        "Object limits" => "Snap to object bounds",
-        "Appearance" => "Theme and fonts",
-        _ => {
-            if label.starts_with("Undo") {
-                "Undo the last action (Ctrl+Z)"
-            } else if label.starts_with("Redo") {
-                "Redo the last undone action (Ctrl+Y)"
-            } else {
-                return None;
-            }
-        }
-    };
-    Some(text)
+    if let Some((_, text)) = TOOLTIPS.iter().find(|(key, _)| *key == label) {
+        return Some(text);
+    }
+    if label.starts_with("Undo") {
+        Some("Undo the last action (Ctrl+Z)")
+    } else if label.starts_with("Redo") {
+        Some("Redo the last undone action (Ctrl+Y)")
+    } else {
+        None
+    }
 }
 
 fn with_tooltip(response: Response, label: &str) -> Response {
@@ -1605,6 +1688,11 @@ pub fn widget_at(ui: &Ui, icon: Icon, text: impl Into<WidgetText>, size: f32) ->
 /// Icon and label for a menu title, tinted like the surrounding text.
 pub fn menu_label(ui: &Ui, icon: Icon, text: &str) -> (Image<'static>, String) {
     (image_for(ui, icon, ICON_SIZE), text.to_owned())
+}
+
+/// A compact button that still keeps a 24x24 point pointer target.
+pub fn compact_button(ui: &mut Ui, text: impl Into<WidgetText>) -> Response {
+    ui.add(egui::Button::new(text).small().min_size(Vec2::splat(24.0)))
 }
 
 /// Add a plain icon button.
@@ -1675,15 +1763,35 @@ pub fn checkbox(
     checkbox_at(ui, checked, icon, text, ICON_SIZE)
 }
 
+/// A description for a label, falling back to the label when none is known.
+pub fn description(label: &str) -> &str {
+    tooltip(label).unwrap_or(label)
+}
+
 /// Icon-only button for the vertical tool strip.
-pub fn icon_button(ui: &mut Ui, selected: bool, icon: Icon, size: f32, label: &str) -> Response {
+///
+/// The tooltip is a required argument, so an icon-only control cannot silently
+/// ship without one.
+pub fn icon_button(
+    ui: &mut Ui,
+    selected: bool,
+    icon: Icon,
+    size: f32,
+    label: &str,
+    tooltip: impl Into<WidgetText>,
+) -> Response {
     let image = image_for(ui, icon, size);
     let button = egui::Button::selectable(selected, image);
     let response = ui.add(button);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, label)
     });
-    response
+    let tooltip = tooltip.into();
+    debug_assert!(
+        !tooltip.text().trim().is_empty(),
+        "an icon-only button needs a non-empty tooltip"
+    );
+    response.on_hover_text(tooltip)
 }
 
 /// Icon-only button that may be disabled.
@@ -1693,6 +1801,7 @@ pub fn icon_button_enabled(
     icon: Icon,
     size: f32,
     label: &str,
+    tooltip: impl Into<WidgetText>,
 ) -> Response {
     let image = image_at(ui.ctx(), icon, size);
     let image = if enabled {
@@ -1703,7 +1812,12 @@ pub fn icon_button_enabled(
     let button = egui::Button::new(image);
     let response = ui.add_enabled(enabled, button);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
-    response
+    let tooltip = tooltip.into();
+    debug_assert!(
+        !tooltip.text().trim().is_empty(),
+        "an icon-only button needs a non-empty tooltip"
+    );
+    response.on_hover_text(tooltip)
 }
 
 /// Like [`checkbox`], with an explicit icon size for the toolbar.
@@ -1727,6 +1841,49 @@ mod tests {
 
     fn coverage(image: &ColorImage) -> usize {
         image.pixels.iter().filter(|pixel| pixel.a() > 0).count()
+    }
+
+    #[test]
+    fn every_tooltip_is_a_useful_one_line_description() {
+        use super::{TOOLTIPS, description, tooltip};
+        use std::collections::BTreeSet;
+
+        let mut labels = BTreeSet::new();
+        for (label, text) in TOOLTIPS {
+            assert!(!label.trim().is_empty(), "a tooltip has an empty label");
+            assert!(
+                labels.insert(*label),
+                "the tooltip for {label} appears twice"
+            );
+            assert!(!text.trim().is_empty(), "the tooltip for {label} is empty");
+            assert_ne!(
+                text.trim(),
+                label.trim(),
+                "the tooltip for {label} only repeats the label"
+            );
+            assert_eq!(
+                text.trim(),
+                *text,
+                "the tooltip for {label} has surrounding whitespace"
+            );
+            assert!(
+                !text.contains('\n'),
+                "the tooltip for {label} is not a single line"
+            );
+            assert!(
+                text.len() <= 90,
+                "the tooltip for {label} is too long to read as one line"
+            );
+        }
+        assert!(TOOLTIPS.len() >= 120, "too few tooltips are registered");
+        assert_eq!(tooltip("Undo"), Some("Undo the last action (Ctrl+Z)"));
+        assert_eq!(
+            tooltip("Redo selection"),
+            Some("Redo the last undone action (Ctrl+Y)")
+        );
+        assert_eq!(tooltip("Not a label"), None);
+        assert_eq!(description("New"), "Start an empty project");
+        assert_eq!(description("Not a label"), "Not a label");
     }
 
     #[test]

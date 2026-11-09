@@ -1064,7 +1064,7 @@ impl BeamBurinApp {
                 ui.add_space(4.0);
                 if let Some(command) = self.shortcut_capture {
                     ui.colored_label(
-                        crate::theme::ACCENT,
+                        ui.visuals().hyperlink_color,
                         format!("Press a key for \"{}\" (Escape cancels)", command.label()),
                     );
                 }

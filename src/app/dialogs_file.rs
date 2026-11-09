@@ -355,7 +355,7 @@ impl BeamBurinApp {
                             },
                             guide.position
                         ));
-                        if ui.small_button("Remove").clicked() {
+                        if icons::compact_button(ui, "Remove").clicked() {
                             remove = Some(guide.id.clone());
                         }
                     });

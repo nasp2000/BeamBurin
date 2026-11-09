@@ -25,13 +25,15 @@ fn layer_picker(
 ) {
     let all: Vec<String> = layers.iter().map(|(id, _, _)| id.clone()).collect();
     ui.horizontal(|ui| {
-        if ui.small_button("All").clicked() {
+        if icons::compact_button(ui, "All").clicked() {
             selected.clone_from(&all);
         }
         if ui
             .add_enabled(
                 !active_id.is_empty(),
-                egui::Button::new("Only active").small(),
+                egui::Button::new("Only active")
+                    .small()
+                    .min_size(egui::vec2(24.0, 24.0)),
             )
             .clicked()
         {

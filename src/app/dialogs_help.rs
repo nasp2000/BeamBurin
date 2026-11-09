@@ -108,7 +108,7 @@ impl BeamBurinApp {
                     for (description, line) in crate::assistant::launch_commands() {
                         ui.label(description);
                         ui.monospace(line);
-                        if ui.small_button("Copy").clicked() {
+                        if icons::compact_button(ui, "Copy").clicked() {
                             note = Some(format!("Copied: {line}"));
                             copy = Some(line.to_string());
                         }
@@ -154,7 +154,7 @@ impl BeamBurinApp {
                     for prompt in crate::mcp_content::prompts() {
                         let name = prompt["name"].as_str().unwrap_or_default();
                         ui.label(prompt["description"].as_str().unwrap_or_default());
-                        if ui.small_button(format!("Copy {name}")).clicked() {
+                        if icons::compact_button(ui, format!("Copy {name}")).clicked() {
                             if let Ok(message) =
                                 crate::mcp_content::prompt(name, &serde_json::json!({}))
                             {
