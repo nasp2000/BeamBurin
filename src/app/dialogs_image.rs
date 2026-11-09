@@ -333,6 +333,7 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(true)
             .default_size([960.0, 712.0])
+            .max_width(1000.0)
             .max_height(900.0)
             .show(ctx, |ui| {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
@@ -473,7 +474,7 @@ impl BeamBurinApp {
                 });
                 ui.add_space(4.0);
                 ui.horizontal_top(|ui| {
-                    let group_width = ((ui.available_width() - 40.0) / 2.0).max(320.0);
+                    let group_width = ((ui.available_width() - 40.0) / 2.0).clamp(320.0, 460.0);
                     ui.group(|ui| {
                         ui.set_width(group_width);
                         ui.strong("Layer Settings");
