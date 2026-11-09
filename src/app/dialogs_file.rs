@@ -24,12 +24,13 @@ impl BeamBurinApp {
                 .num_columns(2)
                 .spacing([12.0, 4.0])
                 .show(ui, |ui| {
-                    ui.label("Name");
+                    let name_label = ui.label("Name");
                     changed |= ui
                         .text_edit_singleline(&mut self.editor.document.name)
+                        .labelled_by(name_label.id)
                         .changed();
                     ui.end_row();
-                    ui.label("Width");
+                    let width_label = ui.label("Width");
                     changed |= ui
                         .add(
                             egui::DragValue::new(&mut self.editor.document.width_mm)
@@ -37,9 +38,10 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
+                        .labelled_by(width_label.id)
                         .changed();
                     ui.end_row();
-                    ui.label("Height");
+                    let height_label = ui.label("Height");
                     changed |= ui
                         .add(
                             egui::DragValue::new(&mut self.editor.document.height_mm)
@@ -47,9 +49,10 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
+                        .labelled_by(height_label.id)
                         .changed();
                     ui.end_row();
-                    ui.label("Unit");
+                    let unit_label = ui.label("Unit");
                     let mut unit = self.editor.document.unit;
                     egui::ComboBox::from_id_salt("document_unit")
                         .selected_text(unit.label())
@@ -67,7 +70,9 @@ impl BeamBurinApp {
                                     changed = true;
                                 }
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(unit_label.id);
                     self.editor.document.unit = unit;
                     ui.end_row();
                     ui.label("Origin");
@@ -320,12 +325,13 @@ impl BeamBurinApp {
             .default_width(360.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Position");
+                    let position_label = ui.label("Position");
                     ui.add(
                         egui::DragValue::new(&mut self.guide_position)
                             .speed(0.5)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(position_label.id);
                     if ui.button("Add horizontal").clicked() {
                         self.editor.add_guide(true, self.guide_position);
                     }

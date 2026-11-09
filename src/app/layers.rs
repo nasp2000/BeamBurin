@@ -690,9 +690,10 @@ impl BeamBurinApp {
             .num_columns(2)
             .spacing([8.0, 3.0])
             .show(ui, |ui| {
-                ui.label("Name");
+                let name_label = ui.label("Name");
                 if let Some(layer) = self.editor.document.layer_mut(id) {
-                    ui.text_edit_singleline(&mut layer.name);
+                    ui.text_edit_singleline(&mut layer.name)
+                        .labelled_by(name_label.id);
                 }
                 ui.end_row();
                 ui.label("Colour");
@@ -738,10 +739,11 @@ impl BeamBurinApp {
                         ui.weak("The cut entry is missing");
                         return;
                     };
-                    ui.label("Cut");
-                    ui.text_edit_singleline(&mut operation.name);
+                    let cut_label = ui.label("Cut");
+                    ui.text_edit_singleline(&mut operation.name)
+                        .labelled_by(cut_label.id);
                     ui.end_row();
-                    ui.label("Mode");
+                    let mode_label = ui.label("Mode");
                     let mut kind = operation.op_type;
                     egui::ComboBox::from_id_salt(("row_cut_mode", id))
                         .width(130.0)
@@ -755,31 +757,36 @@ impl BeamBurinApp {
                                     ui.close();
                                 }
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(mode_label.id);
                     operation.op_type = kind;
                     ui.end_row();
-                    ui.label("Speed (mm/min)");
+                    let speed_label = ui.label("Speed (mm/min)");
                     ui.add(
                         egui::DragValue::new(&mut operation.params.speed)
                             .speed(10.0)
                             .range(1.0..=100_000.0),
-                    );
+                    )
+                    .labelled_by(speed_label.id);
                     ui.end_row();
-                    ui.label("Power (%)");
+                    let power_label = ui.label("Power (%)");
                     ui.add(
                         egui::DragValue::new(&mut operation.params.power)
                             .speed(1.0)
                             .range(0.0..=100.0),
-                    );
+                    )
+                    .labelled_by(power_label.id);
                     ui.end_row();
-                    ui.label("Passes");
+                    let passes_label = ui.label("Passes");
                     ui.add(
                         egui::DragValue::new(&mut operation.params.passes)
                             .speed(0.2)
                             .range(1..=1000),
-                    );
+                    )
+                    .labelled_by(passes_label.id);
                     ui.end_row();
-                    ui.label("DPI");
+                    let dpi_label = ui.label("DPI");
                     let mut dpi = (25.4 / operation.params.line_interval_mm.max(0.001)).round();
                     let response = ui
                         .add(
@@ -788,16 +795,32 @@ impl BeamBurinApp {
                                 .range(10.0..=2540.0)
                                 .max_decimals(0),
                         )
+                        .labelled_by(dpi_label.id)
                         .on_hover_text("Lines per inch; stored as the line interval in mm");
                     if response.changed() {
                         operation.params.line_interval_mm = 25.4 / dpi.max(1.0);
                     }
                     ui.end_row();
                     ui.label("Air assist");
-                    ui.checkbox(&mut operation.params.air_assist, "");
+                    ui.checkbox(&mut operation.params.air_assist, "")
+                        .widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Checkbox,
+                                true,
+                                operation.params.air_assist,
+                                "Air assist",
+                            )
+                        });
                     ui.end_row();
                     ui.label("Output");
-                    ui.checkbox(&mut operation.enabled, "");
+                    ui.checkbox(&mut operation.enabled, "").widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::Checkbox,
+                            true,
+                            operation.enabled,
+                            "Output",
+                        )
+                    });
                     ui.end_row();
                     if ui
                         .button("All settings...")

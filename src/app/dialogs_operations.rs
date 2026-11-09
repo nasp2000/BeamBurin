@@ -165,8 +165,9 @@ impl BeamBurinApp {
                         .num_columns(2)
                         .spacing([12.0, 6.0])
                         .show(ui, |ui| {
-                            ui.label("Name");
-                            ui.text_edit_singleline(&mut operation.name);
+                            let name_label = ui.label("Name");
+                            ui.text_edit_singleline(&mut operation.name)
+                                .labelled_by(name_label.id);
                             ui.end_row();
                             ui.label("Colour");
                             let rgb = parse_hex_color(&operation.params.color)
@@ -195,27 +196,53 @@ impl BeamBurinApp {
                             operation.op_type = op_type;
                             ui.end_row();
                             ui.label("Output");
-                            ui.checkbox(&mut operation.enabled, "");
+                            ui.checkbox(&mut operation.enabled, "")
+                                .widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.enabled,
+                                        "Output",
+                                    )
+                                });
                             ui.end_row();
                             ui.label("Air assist");
-                            ui.checkbox(&mut operation.params.air_assist, "");
+                            ui.checkbox(&mut operation.params.air_assist, "")
+                                .widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.params.air_assist,
+                                        "Air assist",
+                                    )
+                                });
                             ui.end_row();
                             ui.label("Show in preview");
-                            ui.checkbox(&mut operation.params.show_in_preview, "");
+                            ui.checkbox(&mut operation.params.show_in_preview, "")
+                                .widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        operation.params.show_in_preview,
+                                        "Show in preview",
+                                    )
+                                });
                             ui.end_row();
-                            ui.label("Speed (mm/min)");
+                            let speed_label = ui.label("Speed (mm/min)");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.speed)
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
-                            );
+                            )
+                            .labelled_by(speed_label.id);
                             ui.end_row();
-                            ui.label("Max power (%)");
+                            let power_label = ui.label("Max power (%)");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.power)
                                     .speed(1.0)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .labelled_by(power_label.id);
                             ui.end_row();
                             let passes_label = ui.label("Number of passes");
                             ui.add(
@@ -224,14 +251,15 @@ impl BeamBurinApp {
                             )
                             .labelled_by(passes_label.id);
                             ui.end_row();
-                            ui.label("Line interval (mm)");
+                            let interval_label = ui.label("Line interval (mm)");
                             ui.add(
                                 egui::DragValue::new(
                                     &mut operation.params.line_interval_mm,
                                 )
                                 .speed(0.01)
                                 .range(0.01..=2.0),
-                            );
+                            )
+                            .labelled_by(interval_label.id);
                             ui.end_row();
                             ui.label("Lines per inch");
                             ui.weak(format!(
@@ -239,14 +267,15 @@ impl BeamBurinApp {
                                 25.4 / operation.params.line_interval_mm.max(0.001)
                             ));
                             ui.end_row();
-                            ui.label("Scan angle (deg)");
+                            let angle_label = ui.label("Scan angle (deg)");
                             ui.add(
                                 egui::DragValue::new(
                                     &mut operation.params.fill_angle_degrees,
                                 )
                                 .speed(1.0)
                                 .range(-180.0..=180.0),
-                            );
+                            )
+                            .labelled_by(angle_label.id);
                             ui.end_row();
                             ui.label("Bi-directional fill");
                             let alternate =
@@ -271,36 +300,40 @@ impl BeamBurinApp {
                                 )
                             });
                             ui.end_row();
-                            ui.label("Overscan (mm)");
+                            let overscan_label = ui.label("Overscan (mm)");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.overscan_mm)
                                     .speed(0.1)
                                     .range(0.0..=50.0),
-                            );
+                            )
+                            .labelled_by(overscan_label.id);
                             ui.end_row();
-                            ui.label("Kerf (mm)");
+                            let kerf_label = ui.label("Kerf (mm)");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.kerf_mm)
                                     .speed(0.01)
                                     .range(0.0..=10.0),
-                            );
+                            )
+                            .labelled_by(kerf_label.id);
                             ui.end_row();
-                            ui.label("Holding tabs");
+                            let tabs_label = ui.label("Holding tabs");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.tabs)
                                     .range(0..=20),
-                            );
+                            )
+                            .labelled_by(tabs_label.id);
                             ui.end_row();
-                            ui.label("Tab width (mm)");
+                            let tab_width_label = ui.label("Tab width (mm)");
                             ui.add(
                                 egui::DragValue::new(
                                     &mut operation.params.tab_width_mm,
                                 )
                                 .speed(0.1)
                                 .range(0.0..=20.0),
-                            );
+                            )
+                            .labelled_by(tab_width_label.id);
                             ui.end_row();
-                            ui.label("Tab spacing (mm)");
+                            let tab_spacing_label = ui.label("Tab spacing (mm)");
                             ui.add(
                                 egui::DragValue::new(
                                     &mut operation.params.tab_spacing_mm,
@@ -308,11 +341,12 @@ impl BeamBurinApp {
                                 .speed(0.5)
                                 .range(0.0..=1000.0),
                             )
+                            .labelled_by(tab_spacing_label.id)
                             .on_hover_text(
                                 "Distance between tabs along each contour; zero uses the tab count above",
                             );
                             ui.end_row();
-                            ui.label("Lead-in / out (mm)");
+                            let lead_label = ui.label("Lead-in / out (mm)");
                             ui.horizontal(|ui| {
                                 ui.add(
                                     egui::DragValue::new(
@@ -320,14 +354,16 @@ impl BeamBurinApp {
                                     )
                                     .speed(0.1)
                                     .range(0.0..=50.0),
-                                );
+                                )
+                                .labelled_by(lead_label.id);
                                 ui.add(
                                     egui::DragValue::new(
                                         &mut operation.params.lead_out_mm,
                                     )
                                     .speed(0.1)
                                     .range(0.0..=50.0),
-                                );
+                                )
+                                .labelled_by(lead_label.id);
                             });
                             ui.end_row();
                             ui.label("Curved leads");
@@ -368,12 +404,14 @@ impl BeamBurinApp {
                                             .get(field)
                                             .cloned()
                                             .unwrap_or_default();
-                                        ui.label(field);
-                                        let response = ui.add(
-                                            egui::TextEdit::singleline(&mut expression)
-                                                .desired_width(160.0)
-                                                .hint_text("number or expression"),
-                                        );
+                                        let field_label = ui.label(field);
+                                        let response = ui
+                                            .add(
+                                                egui::TextEdit::singleline(&mut expression)
+                                                    .desired_width(160.0)
+                                                    .hint_text("number or expression"),
+                                            )
+                                            .labelled_by(field_label.id);
                                         if response.changed() {
                                             if expression.trim().is_empty() {
                                                 operation.params.expressions.remove(field);
@@ -528,19 +566,40 @@ impl BeamBurinApp {
                             egui::TextEdit::singleline(&mut parameter.name)
                                 .desired_width(120.0),
                         )
-                        .on_hover_text("Unique name; letters, digits and underscores");
+                        .on_hover_text("Unique name; letters, digits and underscores")
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::TextEdit,
+                                true,
+                                "Parameter name",
+                            )
+                        });
                         ui.add(
                             egui::TextEdit::singleline(&mut parameter.expression)
                                 .desired_width(160.0),
                         )
                         .on_hover_text(
                             "A number, another parameter, or arithmetic with + - * / and parentheses",
-                        );
+                        )
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::TextEdit,
+                                true,
+                                "Parameter expression",
+                            )
+                        });
                         ui.add(
                             egui::TextEdit::singleline(&mut parameter.unit)
                                 .desired_width(52.0),
                         )
-                        .on_hover_text("Label such as mm, mm/min or %; not used in arithmetic");
+                        .on_hover_text("Label such as mm, mm/min or %; not used in arithmetic")
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::TextEdit,
+                                true,
+                                "Parameter unit",
+                            )
+                        });
                         match crate::parameters::evaluate(&parameter.expression, &environment)
                         {
                             Ok(value) => {
@@ -554,11 +613,17 @@ impl BeamBurinApp {
                                 .on_hover_text(error);
                             }
                         }
-                        if ui
+                        let delete = ui
                             .small_button("x")
-                            .on_hover_text("Delete this parameter")
-                            .clicked()
-                        {
+                            .on_hover_text("Delete this parameter");
+                        delete.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::Button,
+                                true,
+                                "Delete parameter",
+                            )
+                        });
+                        if delete.clicked() {
                             remove = Some(index);
                         }
                         ui.end_row();
@@ -756,6 +821,14 @@ impl BeamBurinApp {
                                 constraint_kind_label(key),
                             );
                         }
+                    })
+                    .response
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::ComboBox,
+                            true,
+                            "Constraint type",
+                        )
                     });
                 if matches!(
                     self.constraint_kind_key.as_str(),
@@ -770,7 +843,14 @@ impl BeamBurinApp {
                             } else {
                                 " mm"
                             }),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::DragValue,
+                            true,
+                            "Constraint value",
+                        )
+                    });
                 }
                 let needed = if self.constraint_kind_key == "angle" {
                     3
@@ -1020,10 +1100,11 @@ impl BeamBurinApp {
                 .num_columns(2)
                 .spacing([10.0, 6.0])
                 .show(ui, |ui| {
-                    ui.label("Name");
-                    ui.text_edit_singleline(&mut self.recipe_name);
+                    let name_label = ui.label("Name");
+                    ui.text_edit_singleline(&mut self.recipe_name)
+                        .labelled_by(name_label.id);
                     ui.end_row();
-                    ui.label("Material");
+                    let material_label = ui.label("Material");
                     egui::ComboBox::from_id_salt("recipe_save_material")
                         .selected_text(if self.recipe_material.is_empty() {
                             "Choose a material".to_string()
@@ -1038,9 +1119,11 @@ impl BeamBurinApp {
                                     name,
                                 );
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(material_label.id);
                     ui.end_row();
-                    ui.label("Machine");
+                    let machine_label = ui.label("Machine");
                     egui::ComboBox::from_id_salt("recipe_save_machine")
                         .selected_text(machine_name(&self.recipe_machine))
                         .show_ui(ui, |ui| {
@@ -1056,10 +1139,13 @@ impl BeamBurinApp {
                                     name,
                                 );
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(machine_label.id);
                     ui.end_row();
-                    ui.label("Head");
-                    ui.text_edit_singleline(&mut self.recipe_head);
+                    let head_label = ui.label("Head");
+                    ui.text_edit_singleline(&mut self.recipe_head)
+                        .labelled_by(head_label.id);
                     ui.end_row();
                 });
             if ui
@@ -1077,9 +1163,10 @@ impl BeamBurinApp {
             ui.separator();
             ui.heading("Stored recipes");
             ui.horizontal(|ui| {
-                ui.label("Search");
-                ui.text_edit_singleline(&mut self.recipe_search);
-                ui.label("Material");
+                let search_label = ui.label("Search");
+                ui.text_edit_singleline(&mut self.recipe_search)
+                    .labelled_by(search_label.id);
+                let material_label = ui.label("Material");
                 egui::ComboBox::from_id_salt("recipe_filter_material")
                     .selected_text(if self.recipe_filter_material.is_empty() {
                         "All".to_string()
@@ -1099,8 +1186,10 @@ impl BeamBurinApp {
                                 name,
                             );
                         }
-                    });
-                ui.label("Machine");
+                    })
+                    .response
+                    .labelled_by(material_label.id);
+                let machine_label = ui.label("Machine");
                 egui::ComboBox::from_id_salt("recipe_filter_machine")
                     .selected_text(machine_name(&self.recipe_filter_machine))
                     .show_ui(ui, |ui| {
@@ -1116,7 +1205,9 @@ impl BeamBurinApp {
                                 name,
                             );
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(machine_label.id);
             });
             let query = self.recipe_search.trim().to_lowercase();
             ui.separator();

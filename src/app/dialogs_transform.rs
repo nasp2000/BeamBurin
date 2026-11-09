@@ -49,13 +49,14 @@ impl BeamBurinApp {
                     apply = true;
                 }
                 ui.horizontal(|ui| {
-                    ui.label("Radius");
+                    let radius_label = ui.label("Radius");
                     ui.add(
                         egui::DragValue::new(&mut self.corner_radius_value)
                             .speed(0.1)
                             .range(0.0..=100_000.0)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(radius_label.id);
                 });
                 ui.weak(
                     "Apply rounds every corner; Pick corner applies the radius where you click next.",
@@ -115,24 +116,27 @@ impl BeamBurinApp {
                     insert = true;
                 }
                 ui.horizontal(|ui| {
-                    ui.label("Text");
-                    ui.add(egui::TextEdit::singleline(&mut self.barcode_text).desired_width(240.0));
+                    let text_label = ui.label("Text");
+                    ui.add(egui::TextEdit::singleline(&mut self.barcode_text).desired_width(240.0))
+                        .labelled_by(text_label.id);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Module (mm)");
+                    let module_label = ui.label("Module (mm)");
                     ui.add(
                         egui::DragValue::new(&mut self.barcode_module_mm)
                             .speed(0.05)
                             .range(0.1..=5.0)
                             .fixed_decimals(2),
-                    );
-                    ui.label("Height (mm)");
+                    )
+                    .labelled_by(module_label.id);
+                    let height_label = ui.label("Height (mm)");
                     ui.add(
                         egui::DragValue::new(&mut self.barcode_height_mm)
                             .speed(0.5)
                             .range(1.0..=200.0)
                             .fixed_decimals(1),
-                    );
+                    )
+                    .labelled_by(height_label.id);
                 });
                 ui.weak("Code 39: A-Z, 0-9, space and - . $ / + %. Lower case becomes upper case.");
                 ui.horizontal(|ui| {
@@ -182,20 +186,22 @@ impl BeamBurinApp {
                     apply = true;
                 }
                 ui.horizontal(|ui| {
-                    ui.label("X");
+                    let x_label = ui.label("X");
                     ui.add(
                         egui::DragValue::new(&mut self.position_x)
                             .speed(0.5)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(x_label.id);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Y");
+                    let y_label = ui.label("Y");
                     ui.add(
                         egui::DragValue::new(&mut self.position_y)
                             .speed(0.5)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(y_label.id);
                 });
                 ui.weak("Places the bottom-left corner of the selection at X / Y.");
                 ui.horizontal(|ui| {
@@ -239,22 +245,24 @@ impl BeamBurinApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Horizontal");
+                    let horizontal_label = ui.label("Horizontal");
                     ui.add(
                         egui::DragValue::new(&mut self.skew_x)
                             .speed(1.0)
                             .range(-80.0..=80.0)
                             .suffix(" deg"),
-                    );
+                    )
+                    .labelled_by(horizontal_label.id);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Vertical");
+                    let vertical_label = ui.label("Vertical");
                     ui.add(
                         egui::DragValue::new(&mut self.skew_y)
                             .speed(1.0)
                             .range(-80.0..=80.0)
                             .suffix(" deg"),
-                    );
+                    )
+                    .labelled_by(vertical_label.id);
                 });
                 ui.weak("The shear is applied around the selection centre.");
                 if ui.button("Apply").clicked() {
@@ -303,47 +311,52 @@ impl BeamBurinApp {
                         );
                     });
                 ui.horizontal(|ui| {
-                    ui.label("Copies");
+                    let copies_label = ui.label("Copies");
                     ui.add(
                         egui::DragValue::new(&mut self.repeat_options.copies)
                             .speed(1.0)
                             .range(1..=100),
-                    );
+                    )
+                    .labelled_by(copies_label.id);
                 });
                 match self.repeat_options.mode {
                     RepeatMode::Linear => {
                         ui.horizontal(|ui| {
-                            ui.label("Spacing X");
+                            let x_label = ui.label("Spacing X");
                             ui.add(
                                 egui::DragValue::new(&mut self.repeat_options.dx)
                                     .speed(0.5)
                                     .suffix(" mm"),
-                            );
-                            ui.label("Y");
+                            )
+                            .labelled_by(x_label.id);
+                            let y_label = ui.label("Y");
                             ui.add(
                                 egui::DragValue::new(&mut self.repeat_options.dy)
                                     .speed(0.5)
                                     .suffix(" mm"),
-                            );
+                            )
+                            .labelled_by(y_label.id);
                         });
                         ui.horizontal(|ui| {
-                            ui.label("Rotation per copy");
+                            let rotation_label = ui.label("Rotation per copy");
                             ui.add(
                                 egui::DragValue::new(&mut self.repeat_options.rotation_degrees)
                                     .speed(1.0)
                                     .suffix(" deg"),
-                            );
+                            )
+                            .labelled_by(rotation_label.id);
                         });
                     }
                     RepeatMode::Circular => {
                         ui.horizontal(|ui| {
-                            ui.label("Radius");
+                            let radius_label = ui.label("Radius");
                             ui.add(
                                 egui::DragValue::new(&mut self.repeat_options.radius)
                                     .speed(0.5)
                                     .range(0.0..=10000.0)
                                     .suffix(" mm"),
-                            );
+                            )
+                            .labelled_by(radius_label.id);
                         });
                         ui.checkbox(
                             &mut self.repeat_options.rotate_copies,
@@ -407,7 +420,7 @@ impl BeamBurinApp {
                     self.editor.document.width_mm, self.editor.document.height_mm
                 ));
                 ui.horizontal(|ui| {
-                    ui.label("Spacing");
+                    let spacing_label = ui.label("Spacing");
                     if ui
                         .add(
                             egui::DragValue::new(&mut self.nest_spacing)
@@ -415,11 +428,12 @@ impl BeamBurinApp {
                                 .range(0.0..=100.0)
                                 .suffix(" mm"),
                         )
+                        .labelled_by(spacing_label.id)
                         .changed()
                     {
                         preview = true;
                     }
-                    ui.label("Margin");
+                    let margin_label = ui.label("Margin");
                     if ui
                         .add(
                             egui::DragValue::new(&mut self.nest_margin)
@@ -427,6 +441,7 @@ impl BeamBurinApp {
                                 .range(0.0..=100.0)
                                 .suffix(" mm"),
                         )
+                        .labelled_by(margin_label.id)
                         .changed()
                     {
                         preview = true;
@@ -527,13 +542,14 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Tolerance");
+                let tolerance_label = ui.label("Tolerance");
                 ui.add(
                     egui::DragValue::new(&mut self.simplify_tolerance)
                         .speed(0.05)
                         .range(0.001..=5.0)
                         .suffix(" mm"),
-                );
+                )
+                .labelled_by(tolerance_label.id);
                 ui.weak("Curves are flattened and straightened within the tolerance.");
                 if ui.button("Apply").clicked() {
                     apply = true;
@@ -562,13 +578,14 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Distance");
+                let distance_label = ui.label("Distance");
                 ui.add(
                     egui::DragValue::new(&mut self.offset_distance)
                         .speed(0.1)
                         .range(-100.0..=100.0)
                         .suffix(" mm"),
-                );
+                )
+                .labelled_by(distance_label.id);
                 ui.weak("Positive expands the outline; negative contracts it.");
                 ui.weak("Shapes that collapse are removed.");
                 if ui.button("Apply").clicked() {
@@ -599,50 +616,56 @@ impl BeamBurinApp {
             .show(ctx, |ui| {
                 let options = &mut self.grid_array;
                 ui.horizontal(|ui| {
-                    ui.label("Columns");
+                    let columns_label = ui.label("Columns");
                     ui.add(
                         egui::DragValue::new(&mut options.columns)
                             .speed(1.0)
                             .range(1..=100),
-                    );
-                    ui.label("Rows");
+                    )
+                    .labelled_by(columns_label.id);
+                    let rows_label = ui.label("Rows");
                     ui.add(
                         egui::DragValue::new(&mut options.rows)
                             .speed(1.0)
                             .range(1..=100),
-                    );
+                    )
+                    .labelled_by(rows_label.id);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Spacing X");
+                    let x_label = ui.label("Spacing X");
                     ui.add(
                         egui::DragValue::new(&mut options.dx)
                             .speed(0.5)
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
-                    );
-                    ui.label("Y");
+                    )
+                    .labelled_by(x_label.id);
+                    let y_label = ui.label("Y");
                     ui.add(
                         egui::DragValue::new(&mut options.dy)
                             .speed(0.5)
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(y_label.id);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Margin X");
+                    let x_label = ui.label("Margin X");
                     ui.add(
                         egui::DragValue::new(&mut options.margin_x)
                             .speed(0.5)
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
-                    );
-                    ui.label("Y");
+                    )
+                    .labelled_by(x_label.id);
+                    let y_label = ui.label("Y");
                     ui.add(
                         egui::DragValue::new(&mut options.margin_y)
                             .speed(0.5)
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
-                    );
+                    )
+                    .labelled_by(y_label.id);
                 });
                 ui.checkbox(&mut options.column_major, "Fill column by column");
                 let options = *options;

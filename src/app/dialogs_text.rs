@@ -54,28 +54,39 @@ impl BeamBurinApp {
                             self.text_editor_draft.font = font;
                         }
                         ui.end_row();
-                        ui.label("Size");
+                        let size_label = ui.label("Size");
                         ui.add(
                             egui::DragValue::new(&mut self.text_editor_draft.size)
                                 .speed(0.1)
                                 .range(0.1..=10_000.0),
-                        );
+                        )
+                        .labelled_by(size_label.id);
                         ui.end_row();
-                        ui.label("Letter spacing");
+                        let spacing_label = ui.label("Letter spacing");
                         ui.add(
                             egui::DragValue::new(&mut self.text_editor_draft.letter_spacing)
                                 .speed(0.05)
                                 .range(-10.0..=50.0)
                                 .suffix(" mm"),
-                        );
+                        )
+                        .labelled_by(spacing_label.id);
                         ui.end_row();
-                        ui.label("Line spacing");
+                        let line_label = ui.label("Line spacing");
                         ui.add(
                             egui::Slider::new(&mut self.text_editor_draft.line_spacing, 0.5..=5.0)
+                                .fixed_decimals(2)
+                                .show_value(false),
+                        )
+                        .labelled_by(line_label.id);
+                        ui.add(
+                            egui::DragValue::new(&mut self.text_editor_draft.line_spacing)
+                                .speed(0.01)
+                                .range(0.5..=5.0)
                                 .fixed_decimals(2),
-                        );
+                        )
+                        .labelled_by(line_label.id);
                         ui.end_row();
-                        ui.label("Align");
+                        let align_label = ui.label("Align");
                         let mut align = self.text_editor_draft.align;
                         egui::ComboBox::from_id_salt("text_editor_align")
                             .selected_text(align.label())
@@ -87,10 +98,12 @@ impl BeamBurinApp {
                                 ] {
                                     ui.selectable_value(&mut align, candidate, candidate.label());
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(align_label.id);
                         self.text_editor_draft.align = align;
                         ui.end_row();
-                        ui.label("Vertical");
+                        let vertical_label = ui.label("Vertical");
                         let mut valign = self.text_editor_draft.vertical_align;
                         egui::ComboBox::from_id_salt("text_editor_valign")
                             .selected_text(valign.label())
@@ -102,7 +115,9 @@ impl BeamBurinApp {
                                 ] {
                                     ui.selectable_value(&mut valign, candidate, candidate.label());
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(vertical_label.id);
                         self.text_editor_draft.vertical_align = valign;
                         ui.end_row();
                         ui.label("Upper case");

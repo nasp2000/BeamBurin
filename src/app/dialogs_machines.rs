@@ -20,27 +20,30 @@ impl BeamBurinApp {
             );
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label("Name");
-                ui.text_edit_singleline(&mut self.machine_editor.name);
+                let name_label = ui.label("Name");
+                ui.text_edit_singleline(&mut self.machine_editor.name)
+                    .labelled_by(name_label.id);
             });
             ui.horizontal(|ui| {
-                ui.label("Work width");
+                let width_label = ui.label("Work width");
                 ui.add(
                     egui::DragValue::new(&mut self.machine_editor.work_width_mm)
                         .speed(1.0)
                         .range(10.0..=100_000.0)
                         .suffix(" mm"),
-                );
-                ui.label("Height");
+                )
+                .labelled_by(width_label.id);
+                let height_label = ui.label("Height");
                 ui.add(
                     egui::DragValue::new(&mut self.machine_editor.work_height_mm)
                         .speed(1.0)
                         .range(10.0..=100_000.0)
                         .suffix(" mm"),
-                );
+                )
+                .labelled_by(height_label.id);
             });
             ui.horizontal(|ui| {
-                ui.label("Firmware");
+                let firmware_label = ui.label("Firmware");
                 let mut firmware = self.machine_editor.firmware;
                 egui::ComboBox::from_id_salt("wizard_firmware")
                     .selected_text(firmware.label())
@@ -52,7 +55,9 @@ impl BeamBurinApp {
                                 candidate.label(),
                             );
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(firmware_label.id);
                 self.machine_editor.firmware = firmware;
             });
             ui.weak("The firmware is a label for the intended G-code dialect; nothing is connected or configured.");
@@ -149,29 +154,32 @@ impl BeamBurinApp {
                 ui.vertical(|ui| {
                     ui.heading("Profile");
                     ui.horizontal(|ui| {
-                        ui.label("Name");
-                        ui.text_edit_singleline(&mut self.machine_editor.name);
+                        let name_label = ui.label("Name");
+                        ui.text_edit_singleline(&mut self.machine_editor.name)
+                            .labelled_by(name_label.id);
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Work width");
+                        let width_label = ui.label("Work width");
                         ui.add(
                             egui::DragValue::new(&mut self.machine_editor.work_width_mm)
                                 .speed(1.0)
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
-                        );
+                        )
+                        .labelled_by(width_label.id);
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Work height");
+                        let height_label = ui.label("Work height");
                         ui.add(
                             egui::DragValue::new(&mut self.machine_editor.work_height_mm)
                                 .speed(1.0)
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
-                        );
+                        )
+                        .labelled_by(height_label.id);
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Firmware");
+                        let firmware_label = ui.label("Firmware");
                         let mut firmware = self.machine_editor.firmware;
                         egui::ComboBox::from_id_salt("machine_firmware")
                             .selected_text(firmware.label())
@@ -183,7 +191,9 @@ impl BeamBurinApp {
                                         candidate.label(),
                                     );
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(firmware_label.id);
                         self.machine_editor.firmware = firmware;
                     });
                     ui.label("Notes");

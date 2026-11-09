@@ -991,8 +991,11 @@ fn profile_meta_editor(
     let mut changed = ui.checkbox(&mut meta.favorite, "Favourite").changed();
     ui.add_enabled_ui(editable, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Category");
-            changed |= ui.text_edit_singleline(&mut meta.category).changed();
+            let category_label = ui.label("Category");
+            changed |= ui
+                .text_edit_singleline(&mut meta.category)
+                .labelled_by(category_label.id)
+                .changed();
             egui::ComboBox::from_id_salt(format!("category_suggest_{id}"))
                 .selected_text("Suggest")
                 .width(90.0)
@@ -1006,11 +1009,23 @@ fn profile_meta_editor(
                             changed = true;
                         }
                     }
+                })
+                .response
+                .widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::ComboBox,
+                        true,
+                        "Category suggestions",
+                    )
                 });
         });
         ui.horizontal(|ui| {
-            ui.label("Tags");
-            if ui.text_edit_singleline(tag_buffer).changed() {
+            let tags_label = ui.label("Tags");
+            if ui
+                .text_edit_singleline(tag_buffer)
+                .labelled_by(tags_label.id)
+                .changed()
+            {
                 meta.set_tag_text(tag_buffer);
                 changed = true;
             }

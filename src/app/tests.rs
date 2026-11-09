@@ -1,6 +1,35 @@
 use super::*;
 use crate::geometry::Point2;
 
+/// Interactive AccessKit nodes in the tree that have no accessible name.
+fn unnamed_interactive(harness: &egui_kittest::Harness<'static, BeamBurinApp>) -> Vec<String> {
+    use egui_kittest::kittest::NodeT as _;
+
+    let mut unnamed = Vec::new();
+    for node in harness.root().children_recursive() {
+        let accesskit = node.accesskit_node();
+        let role = accesskit.role();
+        let label = accesskit.label().unwrap_or_default();
+        let value = accesskit.value().unwrap_or_default();
+        let interactive = matches!(
+            role,
+            egui::accesskit::Role::Button
+                | egui::accesskit::Role::CheckBox
+                | egui::accesskit::Role::ComboBox
+                | egui::accesskit::Role::Slider
+                | egui::accesskit::Role::SpinButton
+                | egui::accesskit::Role::TextInput
+                | egui::accesskit::Role::RadioButton
+                | egui::accesskit::Role::MenuItem
+                | egui::accesskit::Role::Tab
+        );
+        if interactive && label.trim().is_empty() {
+            unnamed.push(format!("{role:?} value={value:?}"));
+        }
+    }
+    unnamed
+}
+
 /// Whether the image object with this id has its negative switch on.
 fn image_is_negative(document: &crate::document::Document, id: &str) -> bool {
     let object = document.object(id).expect("the image is missing");
@@ -4319,34 +4348,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
 
 #[test]
 fn the_main_dialogs_expose_named_accessibility_nodes() {
-    use egui_kittest::kittest::NodeT as _;
     use egui_kittest::kittest::Queryable as _;
-
-    fn unnamed_interactive(harness: &egui_kittest::Harness<'static, BeamBurinApp>) -> Vec<String> {
-        let mut unnamed = Vec::new();
-        for node in harness.root().children_recursive() {
-            let accesskit = node.accesskit_node();
-            let role = accesskit.role();
-            let label = accesskit.label().unwrap_or_default();
-            let value = accesskit.value().unwrap_or_default();
-            let interactive = matches!(
-                role,
-                egui::accesskit::Role::Button
-                    | egui::accesskit::Role::CheckBox
-                    | egui::accesskit::Role::ComboBox
-                    | egui::accesskit::Role::Slider
-                    | egui::accesskit::Role::SpinButton
-                    | egui::accesskit::Role::TextInput
-                    | egui::accesskit::Role::RadioButton
-                    | egui::accesskit::Role::MenuItem
-                    | egui::accesskit::Role::Tab
-            );
-            if interactive && label.trim().is_empty() {
-                unnamed.push(format!("{role:?} value={value:?}"));
-            }
-        }
-        unnamed
-    }
 
     let mut audits: Vec<(&str, Vec<String>)> = Vec::new();
 
@@ -4586,4 +4588,194 @@ fn the_main_dialogs_keep_a_logical_focus_order() {
         ],
         "the image settings do not follow their visual order"
     );
+}
+
+#[test]
+fn every_window_exposes_named_accessibility_nodes() {
+    use egui_kittest::kittest::Queryable as _;
+
+    fn click(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>, label: &str) {
+        if harness.query_by_label(label).is_some() {
+            harness.get_by_label(label).click_accesskit();
+            harness.run();
+        }
+    }
+
+    fn check(harness: &egui_kittest::Harness<'static, BeamBurinApp>, name: &str) {
+        let unnamed = unnamed_interactive(harness);
+        assert!(
+            unnamed.is_empty(),
+            "{name} has interactive nodes without an accessible name: {unnamed:?}"
+        );
+    }
+
+    fn audit(name: &str, configure: impl FnOnce(&mut BeamBurinApp)) {
+        let mut app = ui_test_app();
+        configure(&mut app);
+        let mut harness = ui_harness(app);
+        harness.run();
+        let unnamed = unnamed_interactive(&harness);
+        assert!(
+            unnamed.is_empty(),
+            "{name} has interactive nodes without an accessible name: {unnamed:?}"
+        );
+    }
+
+    use crate::config::preferences::Section;
+    for section in Section::ALL {
+        audit(&format!("preferences {section:?}"), |app| {
+            app.preferences_open = true;
+            app.preferences_section = section;
+        });
+    }
+
+    audit("palette", |app| app.palette_open = true);
+    audit("shortcuts", |app| app.help_shortcuts_open = true);
+    audit("history", |app| app.history_open = true);
+    audit("tour", |app| app.tour_open = true);
+    audit("workspaces", |app| app.workspaces_open = true);
+    audit("interface presets", |app| app.interface_presets_open = true);
+    audit("profiles", |app| app.profiles_open = true);
+    audit("machines", |app| app.machines_open = true);
+    audit("machine wizard", |app| app.machine_wizard_open = true);
+    audit("constraints", |app| app.constraints_open = true);
+    audit("recipes", |app| app.recipes_open = true);
+    audit("parameters", |app| app.parameters_open = true);
+    audit("parameters with entry", |app| {
+        app.editor
+            .document
+            .parameters
+            .push(crate::parameters::Parameter::new("feed", "1200"));
+        app.parameters_open = true;
+    });
+    audit("document properties", |app| app.doc_properties_open = true);
+    audit("guides", |app| app.guides_open = true);
+    audit("operations compare", |app| {
+        app.operations_compare_open = true;
+    });
+    audit("operations compare with entries", |app| {
+        app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.operations_compare_open = true;
+    });
+    audit("registration marks", |app| app.regmarks_open = true);
+    audit("material test", |app| app.material_test_open = true);
+    audit("image test", |app| app.image_test_open = true);
+    audit("text editor", |app| app.text_editor_open = true);
+    audit("corner radius", |app| app.corner_radius_open = true);
+    audit("position", |app| app.position_open = true);
+    audit("barcode", |app| app.barcode_open = true);
+    audit("skew", |app| app.skew_open = true);
+    audit("repeat", |app| app.repeat_open = true);
+    audit("nest", |app| app.nest_open = true);
+    audit("simplify", |app| app.simplify_open = true);
+    audit("offset", |app| app.offset_open = true);
+    audit("grid array", |app| app.grid_array_open = true);
+    audit("recovery", |app| app.recovery_prompt_open = true);
+    audit("assistant", |app| app.assistant_open = true);
+    audit("constraints distance", |app| {
+        app.constraints_open = true;
+        app.constraint_kind_key = "distance".to_string();
+    });
+    audit("repeat circular", |app| {
+        app.repeat_open = true;
+        app.repeat_options.mode = crate::editor::RepeatMode::Circular;
+    });
+    audit("cuts with entry", |app| {
+        let operation = app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.active_operation = Some(operation);
+        app.cuts_open = true;
+    });
+    audit("row settings", |app| {
+        let layer = app.editor.active_layer_id.clone();
+        app.row_settings = Some(layer);
+    });
+    audit("row settings with cut", |app| {
+        let layer = app.editor.active_layer_id.clone();
+        let operation = app.editor.add_operation(
+            "Cut".to_string(),
+            crate::operations::OperationType::OutlineCutting,
+        );
+        app.editor
+            .assign_operation_to_layer(&layer, Some(operation.as_str()));
+        app.row_settings = Some(layer);
+    });
+    audit("replace file", |app| {
+        app.pending_file = Some((
+            FileMode::ExportSvg,
+            std::path::PathBuf::from("/tmp/beamburin-audit.svg"),
+        ));
+    });
+    audit("unsaved changes", |app| {
+        app.confirm = Some(PendingAction::New);
+    });
+    audit("file report", |app| {
+        app.file_report = Some(crate::report::FileReport::new(
+            "Export SVG",
+            "/tmp/beamburin-audit.svg",
+        ));
+        app.report_open = true;
+    });
+    {
+        let mut app = ui_test_app();
+        app.task = Some(crate::task::BackgroundTask::spawn("Importing", |_| {
+            std::thread::sleep(std::time::Duration::from_millis(750));
+            None
+        }));
+        let mut harness = ui_harness(app);
+        harness.step();
+        check(&harness, "working");
+    }
+    audit("external gcode", |app| {
+        app.external_gcode = Some((
+            std::path::PathBuf::from("/tmp/beamburin-audit.gcode"),
+            crate::gcode::external::parse("G0 X0 Y0\n"),
+        ));
+        app.external_gcode_open = true;
+    });
+
+    let mut app = ui_test_app();
+    let operation = app.editor.add_operation(
+        "Cut".to_string(),
+        crate::operations::OperationType::OutlineCutting,
+    );
+    app.active_operation = Some(operation);
+    app.cuts_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_label("Expressions (optional)")
+        .click_accesskit();
+    harness.run();
+    let unnamed = unnamed_interactive(&harness);
+    assert!(
+        unnamed.is_empty(),
+        "cuts expressions has interactive nodes without an accessible name: {unnamed:?}"
+    );
+
+    let mut app = ui_test_app();
+    app.profiles_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    click(&mut harness, "Plywood 3 mm");
+    check(&harness, "material profile editor");
+    if harness
+        .query_by_role_and_label(egui::accesskit::Role::Button, "Outline cut")
+        .is_some()
+    {
+        harness
+            .get_by_role_and_label(egui::accesskit::Role::Button, "Outline cut")
+            .click_accesskit();
+        harness.run();
+    }
+    check(&harness, "operation profile editor");
+    click(&mut harness, "Photo engraving");
+    check(&harness, "image profile editor");
+    click(&mut harness, "A3 landscape (420 × 297)");
+    check(&harness, "project profile editor");
 }

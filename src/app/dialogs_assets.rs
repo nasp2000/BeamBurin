@@ -84,11 +84,21 @@ impl BeamBurinApp {
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.columns)
                                     .range(1..=20),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Columns",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.rows)
                                     .range(1..=20),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Rows")
+                            });
                         });
                         ui.end_row();
                         ui.label("Speed range (mm/min)");
@@ -97,12 +107,26 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.speed_min)
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Minimum speed",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.speed_max)
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Maximum speed",
+                                )
+                            });
                         });
                         ui.end_row();
                         ui.label("Power range (%)");
@@ -110,11 +134,25 @@ impl BeamBurinApp {
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.power_min)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Minimum power",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.power_max)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Maximum power",
+                                )
+                            });
                         });
                         ui.end_row();
                         ui.label("Cell width / height (mm)");
@@ -123,14 +161,28 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.cell_width_mm)
                                     .speed(0.5)
                                     .range(1.0..=500.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Cell width",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(
                                     &mut self.material_test_options.cell_height_mm,
                                 )
                                 .speed(0.5)
                                 .range(1.0..=500.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Cell height",
+                                )
+                            });
                         });
                         ui.end_row();
                         ui.label("Gap / margin (mm)");
@@ -139,19 +191,30 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.gap_mm)
                                     .speed(0.5)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Gap")
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.material_test_options.margin_mm)
                                     .speed(0.5)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Margin",
+                                )
+                            });
                         });
                         ui.end_row();
-                        ui.label("Passes");
+                        let passes_label = ui.label("Passes");
                         ui.add(
                             egui::DragValue::new(&mut self.material_test_options.passes)
                                 .range(1..=100),
-                        );
+                        )
+                        .labelled_by(passes_label.id);
                         ui.end_row();
                     });
                 ui.weak(format!(
@@ -222,11 +285,21 @@ impl BeamBurinApp {
                             ui.add(
                                 egui::DragValue::new(&mut self.image_test_options.columns)
                                     .range(1..=20),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Columns",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.image_test_options.rows)
                                     .range(1..=20),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Rows")
+                            });
                         });
                         ui.end_row();
                         ui.label("Speed range (mm/min)");
@@ -235,12 +308,26 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.image_test_options.speed_min)
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Minimum speed",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.image_test_options.speed_max)
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Maximum speed",
+                                )
+                            });
                         });
                         ui.end_row();
                         ui.label("Power range (%)");
@@ -248,19 +335,34 @@ impl BeamBurinApp {
                             ui.add(
                                 egui::DragValue::new(&mut self.image_test_options.power_min)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Minimum power",
+                                )
+                            });
                             ui.add(
                                 egui::DragValue::new(&mut self.image_test_options.power_max)
                                     .range(0.0..=100.0),
-                            );
+                            )
+                            .widget_info(|| {
+                                egui::WidgetInfo::labeled(
+                                    egui::WidgetType::DragValue,
+                                    true,
+                                    "Maximum power",
+                                )
+                            });
                         });
                         ui.end_row();
-                        ui.label("Gap (mm)");
+                        let gap_label = ui.label("Gap (mm)");
                         ui.add(
                             egui::DragValue::new(&mut self.image_test_options.gap_mm)
                                 .speed(0.5)
                                 .range(0.0..=100.0),
-                        );
+                        )
+                        .labelled_by(gap_label.id);
                         ui.end_row();
                     });
                 ui.weak(format!(
@@ -1248,21 +1350,23 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("Size (mm)");
+                        let size_label = ui.label("Size (mm)");
                         ui.add(
                             egui::DragValue::new(&mut self.regmarks_options.size_mm)
                                 .speed(0.5)
                                 .range(0.5..=100.0),
-                        );
+                        )
+                        .labelled_by(size_label.id);
                         ui.end_row();
-                        ui.label("Margin (mm)");
+                        let margin_label = ui.label("Margin (mm)");
                         ui.add(
                             egui::DragValue::new(&mut self.regmarks_options.margin_mm)
                                 .speed(0.5)
                                 .range(0.0..=200.0),
-                        );
+                        )
+                        .labelled_by(margin_label.id);
                         ui.end_row();
-                        ui.label("Style");
+                        let style_label = ui.label("Style");
                         let mut style = self.regmarks_options.style;
                         egui::ComboBox::from_id_salt("registration_mark_style")
                             .selected_text(style.label())
@@ -1270,7 +1374,9 @@ impl BeamBurinApp {
                                 for candidate in crate::regmarks::MarkStyle::all() {
                                     ui.selectable_value(&mut style, candidate, candidate.label());
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(style_label.id);
                         self.regmarks_options.style = style;
                         ui.end_row();
                     });

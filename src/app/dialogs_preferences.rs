@@ -142,6 +142,9 @@ impl BeamBurinApp {
                         .hint_text("Type a command, object, layer, operation or parameter")
                         .desired_width(f32::INFINITY),
                 );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Command search")
+                });
                 if self.palette_focus {
                     response.request_focus();
                     self.palette_focus = false;
@@ -332,7 +335,14 @@ impl BeamBurinApp {
                         egui::TextEdit::singleline(&mut self.workspace_name)
                             .hint_text("Workspace name")
                             .desired_width(220.0),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::TextEdit,
+                            true,
+                            "Workspace name",
+                        )
+                    });
                     if ui
                         .add_enabled(
                             !self.workspace_name.trim().is_empty(),
@@ -460,7 +470,14 @@ impl BeamBurinApp {
                         egui::TextEdit::singleline(&mut self.interface_preset_name)
                             .hint_text("Preset name")
                             .desired_width(220.0),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::TextEdit,
+                            true,
+                            "Interface preset name",
+                        )
+                    });
                     if ui
                         .add_enabled(
                             !self.interface_preset_name.trim().is_empty(),
@@ -565,7 +582,14 @@ impl BeamBurinApp {
                         egui::TextEdit::singleline(&mut self.preferences_search)
                             .hint_text("Search settings")
                             .desired_width(240.0),
-                    );
+                    )
+                    .widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::TextEdit,
+                            true,
+                            "Search settings",
+                        )
+                    });
                     if !self.preferences_search.is_empty() && ui.button("Clear").clicked() {
                         self.preferences_search.clear();
                     }
@@ -751,7 +775,7 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Default unit");
+                        let unit_label = ui.label("Default unit");
                         let mut unit = self.preferences.general.default_unit.clone();
                         egui::ComboBox::from_id_salt("pref_default_unit")
                             .selected_text(unit.clone())
@@ -763,7 +787,9 @@ impl BeamBurinApp {
                                         candidate,
                                     );
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(unit_label.id);
                         if unit != self.preferences.general.default_unit {
                             self.preferences.general.default_unit = unit;
                             changed = true;
@@ -790,14 +816,16 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Theme");
+                        let theme_label = ui.label("Theme");
                         let mut dark = self.preferences.general.theme == "dark";
                         egui::ComboBox::from_id_salt("pref_theme")
                             .selected_text(if dark { "Dark" } else { "Light" })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut dark, true, "Dark");
                                 ui.selectable_value(&mut dark, false, "Light");
-                            });
+                            })
+                            .response
+                            .labelled_by(theme_label.id);
                         let wanted = if dark { "dark" } else { "light" };
                         if wanted != self.preferences.general.theme {
                             self.preferences.general.theme = wanted.to_string();
@@ -816,7 +844,7 @@ impl BeamBurinApp {
                         }
                         ui.end_row();
 
-                        ui.label("Handle style");
+                        let style_label = ui.label("Handle style");
                         let mut style = self.preferences.drawing.handle_style.clone();
                         egui::ComboBox::from_id_salt("pref_handle_style")
                             .selected_text(style.clone())
@@ -828,14 +856,16 @@ impl BeamBurinApp {
                                         candidate,
                                     );
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(style_label.id);
                         if style != self.preferences.drawing.handle_style {
                             self.preferences.drawing.handle_style = style;
                             changed = true;
                         }
                         ui.end_row();
 
-                        ui.label("Zoom step");
+                        let zoom_label = ui.label("Zoom step");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(&mut self.preferences.drawing.zoom_step)
@@ -843,10 +873,11 @@ impl BeamBurinApp {
                                     .range(1.01..=3.0)
                                     .fixed_decimals(2),
                             )
+                            .labelled_by(zoom_label.id)
                             .changed();
                         ui.end_row();
 
-                        ui.label("Wheel zoom step");
+                        let wheel_label = ui.label("Wheel zoom step");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(
@@ -856,6 +887,7 @@ impl BeamBurinApp {
                                 .range(1.01..=2.0)
                                 .fixed_decimals(2),
                             )
+                            .labelled_by(wheel_label.id)
                             .changed();
                         ui.end_row();
                     });
@@ -883,7 +915,7 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Grid spacing");
+                        let grid_label = ui.label("Grid spacing");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(&mut self.preferences.drawing.grid_spacing_mm)
@@ -891,10 +923,11 @@ impl BeamBurinApp {
                                     .range(0.1..=1000.0)
                                     .suffix(" mm"),
                             )
+                            .labelled_by(grid_label.id)
                             .changed();
                         ui.end_row();
 
-                        ui.label("Snap step");
+                        let snap_label = ui.label("Snap step");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(&mut self.preferences.drawing.snap_step_mm)
@@ -902,10 +935,11 @@ impl BeamBurinApp {
                                     .range(0.1..=100.0)
                                     .suffix(" mm"),
                             )
+                            .labelled_by(snap_label.id)
                             .changed();
                         ui.end_row();
 
-                        ui.label("Snap tolerance");
+                        let tolerance_label = ui.label("Snap tolerance");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(
@@ -915,6 +949,7 @@ impl BeamBurinApp {
                                 .range(0.0..=64.0)
                                 .suffix(" px"),
                             )
+                            .labelled_by(tolerance_label.id)
                             .changed();
                         ui.end_row();
                     });
@@ -962,7 +997,7 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Largest imported image");
+                        let largest_label = ui.label("Largest imported image");
                         let mut megapixels =
                             self.preferences.drawing.max_image_pixels as f64 / 1_000_000.0;
                         if ui
@@ -972,6 +1007,7 @@ impl BeamBurinApp {
                                     .range(1.0..=500.0)
                                     .suffix(" MP"),
                             )
+                            .labelled_by(largest_label.id)
                             .changed()
                         {
                             self.preferences.drawing.max_image_pixels =
@@ -990,9 +1026,10 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Default directory");
+                        let directory_label = ui.label("Default directory");
                         changed |= ui
                             .text_edit_singleline(&mut self.preferences.general.default_directory)
+                            .labelled_by(directory_label.id)
                             .changed();
                         ui.end_row();
                     });
@@ -1094,11 +1131,12 @@ impl BeamBurinApp {
                         )
                         .on_hover_text(data);
                         ui.end_row();
-                        ui.label("Undo steps");
+                        let undo_label = ui.label("Undo steps");
                         ui.add(
                         egui::DragValue::new(&mut self.preferences.drawing.undo_steps)
                             .range(5..=200),
                     )
+                    .labelled_by(undo_label.id)
                     .on_hover_text(
                         "Snapshots kept in memory; lower values use less memory on old machines",
                     );
@@ -1155,13 +1193,14 @@ impl BeamBurinApp {
                     });
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Search");
-                    ui.text_edit_singleline(&mut self.profile_search);
+                    let search_label = ui.label("Search");
+                    ui.text_edit_singleline(&mut self.profile_search)
+                        .labelled_by(search_label.id);
                 });
                 let query = self.profile_search.trim().to_lowercase();
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.profile_favorites_only, "Favourites only");
-                    ui.label("Category");
+                    let category_label = ui.label("Category");
                     let selected = if self.profile_category_filter.is_empty() {
                         "All".to_string()
                     } else {
@@ -1182,7 +1221,9 @@ impl BeamBurinApp {
                                     category,
                                 );
                             }
-                        });
+                        })
+                        .response
+                        .labelled_by(category_label.id);
                     ui.checkbox(&mut self.profile_sort_by_date, "Newest first");
                 });
                 let filter = ProfileFilter {
@@ -1280,18 +1321,21 @@ impl BeamBurinApp {
                                 let editable = !profile.builtin;
                                 ui.add_enabled_ui(editable, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Name");
-                                        changed |=
-                                            ui.text_edit_singleline(&mut profile.name).changed();
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Material");
+                                        let name_label = ui.label("Name");
                                         changed |= ui
-                                            .text_edit_singleline(&mut profile.material)
+                                            .text_edit_singleline(&mut profile.name)
+                                            .labelled_by(name_label.id)
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Thickness");
+                                        let material_label = ui.label("Material");
+                                        changed |= ui
+                                            .text_edit_singleline(&mut profile.material)
+                                            .labelled_by(material_label.id)
+                                            .changed();
+                                    });
+                                    ui.horizontal(|ui| {
+                                        let thickness_label = ui.label("Thickness");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.thickness_mm)
@@ -1299,12 +1343,15 @@ impl BeamBurinApp {
                                                     .range(0.1..=100.0)
                                                     .suffix(" mm"),
                                             )
+                                            .labelled_by(thickness_label.id)
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Notes");
-                                        changed |=
-                                            ui.text_edit_singleline(&mut profile.notes).changed();
+                                        let notes_label = ui.label("Notes");
+                                        changed |= ui
+                                            .text_edit_singleline(&mut profile.notes)
+                                            .labelled_by(notes_label.id)
+                                            .changed();
                                     });
                                     ui.separator();
                                     ui.label("Recommended operations");
@@ -1419,9 +1466,11 @@ impl BeamBurinApp {
                                 let editable = !profile.builtin;
                                 ui.add_enabled_ui(editable, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Name");
-                                        changed |=
-                                            ui.text_edit_singleline(&mut profile.name).changed();
+                                        let name_label = ui.label("Name");
+                                        changed |= ui
+                                            .text_edit_singleline(&mut profile.name)
+                                            .labelled_by(name_label.id)
+                                            .changed();
                                     });
                                     let mut op_type = profile.op_type;
                                     egui::ComboBox::from_label("Type")
@@ -1440,7 +1489,7 @@ impl BeamBurinApp {
                                         changed = true;
                                     }
                                     ui.horizontal(|ui| {
-                                        ui.label("Speed");
+                                        let speed_label = ui.label("Speed");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.params.speed)
@@ -1448,10 +1497,11 @@ impl BeamBurinApp {
                                                     .range(1.0..=20000.0)
                                                     .suffix(" mm/min"),
                                             )
+                                            .labelled_by(speed_label.id)
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Power");
+                                        let power_label = ui.label("Power");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.params.power)
@@ -1459,18 +1509,20 @@ impl BeamBurinApp {
                                                     .range(0.0..=100.0)
                                                     .suffix(" %"),
                                             )
+                                            .labelled_by(power_label.id)
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Passes");
+                                        let passes_label = ui.label("Passes");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.params.passes)
                                                     .speed(1.0)
                                                     .range(1..=100),
                                             )
+                                            .labelled_by(passes_label.id)
                                             .changed();
-                                        ui.label("Interval");
+                                        let interval_label = ui.label("Interval");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(
@@ -1480,6 +1532,7 @@ impl BeamBurinApp {
                                                 .range(0.01..=10.0)
                                                 .suffix(" mm"),
                                             )
+                                            .labelled_by(interval_label.id)
                                             .changed();
                                     });
                                 });
@@ -1600,9 +1653,11 @@ impl BeamBurinApp {
                                 let editable = !profile.builtin;
                                 ui.add_enabled_ui(editable, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Name");
-                                        changed |=
-                                            ui.text_edit_singleline(&mut profile.name).changed();
+                                        let name_label = ui.label("Name");
+                                        changed |= ui
+                                            .text_edit_singleline(&mut profile.name)
+                                            .labelled_by(name_label.id)
+                                            .changed();
                                     });
                                     let mut mode = profile.settings.mode;
                                     egui::ComboBox::from_label("Mode")
@@ -1660,16 +1715,22 @@ impl BeamBurinApp {
                                     changed |= ui
                                         .checkbox(&mut profile.settings.invert, "Invert")
                                         .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::DragValue::new(
-                                                &mut profile.settings.line_interval_mm,
-                                            )
-                                            .speed(0.01)
-                                            .range(0.01..=2.0)
-                                            .suffix(" mm"),
+                                    let interval = ui.add(
+                                        egui::DragValue::new(
+                                            &mut profile.settings.line_interval_mm,
                                         )
-                                        .changed();
+                                        .speed(0.01)
+                                        .range(0.01..=2.0)
+                                        .suffix(" mm"),
+                                    );
+                                    interval.widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::WidgetType::DragValue,
+                                            true,
+                                            "Line interval",
+                                        )
+                                    });
+                                    changed |= interval.changed();
                                 });
                                 changed |= profile_meta_editor(
                                     ui,
@@ -1777,12 +1838,14 @@ impl BeamBurinApp {
                                 let editable = !profile.builtin;
                                 ui.add_enabled_ui(editable, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label("Name");
-                                        changed |=
-                                            ui.text_edit_singleline(&mut profile.name).changed();
+                                        let name_label = ui.label("Name");
+                                        changed |= ui
+                                            .text_edit_singleline(&mut profile.name)
+                                            .labelled_by(name_label.id)
+                                            .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Width");
+                                        let width_label = ui.label("Width");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.width_mm)
@@ -1790,8 +1853,9 @@ impl BeamBurinApp {
                                                     .range(1.0..=10000.0)
                                                     .suffix(" mm"),
                                             )
+                                            .labelled_by(width_label.id)
                                             .changed();
-                                        ui.label("Height");
+                                        let height_label = ui.label("Height");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.height_mm)
@@ -1799,10 +1863,11 @@ impl BeamBurinApp {
                                                     .range(1.0..=10000.0)
                                                     .suffix(" mm"),
                                             )
+                                            .labelled_by(height_label.id)
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
-                                        ui.label("Grid");
+                                        let grid_label = ui.label("Grid");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.grid_spacing_mm)
@@ -1810,8 +1875,9 @@ impl BeamBurinApp {
                                                     .range(0.1..=100.0)
                                                     .suffix(" mm"),
                                             )
+                                            .labelled_by(grid_label.id)
                                             .changed();
-                                        ui.label("Snap");
+                                        let snap_label = ui.label("Snap");
                                         changed |= ui
                                             .add(
                                                 egui::DragValue::new(&mut profile.snap_mm)
@@ -1819,6 +1885,7 @@ impl BeamBurinApp {
                                                     .range(0.1..=100.0)
                                                     .suffix(" mm"),
                                             )
+                                            .labelled_by(snap_label.id)
                                             .changed();
                                     });
                                 });
@@ -1849,8 +1916,9 @@ impl BeamBurinApp {
                         }
                         ui.separator();
                         ui.horizontal(|ui| {
-                            ui.label("File");
-                            ui.text_edit_singleline(&mut self.profile_io_path);
+                            let file_label = ui.label("File");
+                            ui.text_edit_singleline(&mut self.profile_io_path)
+                                .labelled_by(file_label.id);
                         });
                         ui.horizontal(|ui| {
                             if ui.button("Save profiles").clicked() {
