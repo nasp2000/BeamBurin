@@ -8,6 +8,9 @@ impl BeamBurinApp {
             .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "properties");
+                });
                 egui::Panel::bottom("side_tabs")
                     .exact_size(28.0)
                     .show(ui, |ui| {

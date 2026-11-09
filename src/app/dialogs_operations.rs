@@ -85,6 +85,7 @@ impl BeamBurinApp {
                 {
                     self.export_presets_open = true;
                 }
+                crate::ui::help::button(ui, "cuts");
             });
             ui.horizontal(|ui| {
                 ui.label("Job origin");

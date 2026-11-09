@@ -118,6 +118,7 @@ impl BeamBurinApp {
                     if ui.button("Refresh").clicked() {
                         self.refresh_preview();
                     }
+                    crate::ui::help::button(ui, "preview");
                 });
                 if let Some(position) = position {
                     ui.label(format!(

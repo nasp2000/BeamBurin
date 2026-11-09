@@ -216,6 +216,7 @@ impl BeamBurinApp {
                 ));
                 ui.weak("Positive offsets move the frame right and up; the drawing moves left and down.");
                 ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "export_image");
                     if ui.button("Export").clicked() {
                         start = true;
                     }
@@ -1109,6 +1110,7 @@ impl BeamBurinApp {
                     });
                 ui.separator();
                 ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "image_adjust");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .button("OK")

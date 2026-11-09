@@ -733,6 +733,7 @@ impl BeamBurinApp {
                     ui.weak("Select at least one layer.");
                 }
                 ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "export_vector");
                     if ui
                         .add_enabled(can_export, egui::Button::new("Export"))
                         .clicked()
@@ -852,6 +853,7 @@ impl BeamBurinApp {
                     ui.weak("Select at least one layer.");
                 }
                 ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "export_vector");
                     if ui.add_enabled(can_export, egui::Button::new("Export")).clicked() {
                         start = true;
                     }
@@ -953,6 +955,7 @@ impl BeamBurinApp {
                     ui.weak("Select at least one layer.");
                 }
                 ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "export_vector");
                     if ui
                         .add_enabled(can_export, egui::Button::new("Export"))
                         .clicked()
@@ -1000,14 +1003,17 @@ impl BeamBurinApp {
                     .default_open(true)
                     .show(ui, |ui| stored |= self.vector_presets_section(ui));
                 ui.separator();
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .button("Close")
-                        .on_hover_text("Close this window")
-                        .clicked()
-                    {
-                        close_requested = true;
-                    }
+                ui.horizontal(|ui| {
+                    crate::ui::help::button(ui, "export_presets");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .button("Close")
+                            .on_hover_text("Close this window")
+                            .clicked()
+                        {
+                            close_requested = true;
+                        }
+                    });
                 });
             });
         if stored {

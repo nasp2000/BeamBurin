@@ -54,7 +54,10 @@ impl BeamBurinApp {
                 self.color_palette(ui);
                 self.image_mask_tools(ui);
                 ui.separator();
-                ui.label(egui::RichText::new("Cuts / Layers").strong());
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Cuts / Layers").strong());
+                    crate::ui::help::button(ui, "layers");
+                });
                 let before = self.editor.document.clone();
                 let mut message: Option<String> = None;
                 ui.horizontal(|ui| {

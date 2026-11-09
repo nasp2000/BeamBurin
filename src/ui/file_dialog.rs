@@ -391,6 +391,7 @@ impl FileDialog {
                         }
                         ui.label(self.mode.filter_hint());
                     });
+                    crate::ui::help::button(ui, "file_dialog");
                 });
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;

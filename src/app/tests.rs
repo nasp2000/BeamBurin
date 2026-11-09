@@ -4838,3 +4838,94 @@ fn every_visible_pointer_target_meets_the_target_size_rule() {
         }
     }
 }
+
+#[test]
+fn the_main_windows_offer_context_help() {
+    use egui_kittest::kittest::Queryable as _;
+
+    fn check(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>, key: &str) {
+        let topic = crate::ui::help::topic(key);
+        let label = format!("Help for {}", topic.title);
+        assert!(
+            harness.query_by_label(&label).is_some(),
+            "{key} has no contextual help button"
+        );
+        harness.get_by_label(&label).click_accesskit();
+        harness.run();
+        assert!(
+            harness.query_by_label(topic.text).is_some(),
+            "the {key} help did not open its text"
+        );
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+    }
+
+    let app = ui_test_app();
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "layers");
+    check(&mut harness, "properties");
+
+    let mut app = ui_test_app();
+    app.open_dialog(FileMode::OpenProject);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "file_dialog");
+
+    let mut app = ui_test_app();
+    app.open_export_image(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "export_image");
+
+    let mut app = ui_test_app();
+    app.open_export_svg(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "export_vector");
+
+    let mut app = ui_test_app();
+    app.open_export_dxf(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "export_vector");
+
+    let mut app = ui_test_app();
+    app.open_export_vector(FileMode::ExportPdf, false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "export_vector");
+
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "export_presets");
+
+    let mut app = ui_test_app();
+    app.preview_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "preview");
+
+    let mut app = ui_test_app();
+    app.cuts_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "cuts");
+
+    let directory = ui_temp_path("help_image");
+    std::fs::create_dir_all(&directory).expect("temp");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&path).expect("import");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    check(&mut harness, "image_adjust");
+}
