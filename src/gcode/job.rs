@@ -614,6 +614,21 @@ fn clip_segment(
 /// top-left pixel maps to the object's local top-left corner. In grayscale mode
 /// every segment carries its own power, quantised to sixteen levels so equal
 /// tones merge into a single move.
+/// Upper bound on travel+cut moves produced by one raster image.
+///
+/// The limit keeps a pathological working size from exhausting memory while
+/// staying far above ordinary photo jobs.
+fn max_raster_moves() -> usize {
+    #[cfg(test)]
+    {
+        10_000
+    }
+    #[cfg(not(test))]
+    {
+        8_000_000
+    }
+}
+
 fn raster_toolpath(
     object: &Object,
     image: &crate::objects::ImageObject,
@@ -628,6 +643,18 @@ fn raster_toolpath(
         )));
     }
     let bitmap = crate::raster::process_object(path, image)?;
+    // Count runs before allocating moves: a detailed image at a huge working
+    // size can otherwise materialise hundreds of megabytes of travel/cut moves
+    // and take minutes to write.
+    let stats = crate::raster::RasterStats::of(&bitmap);
+    let needed_moves = stats.runs.saturating_mul(2);
+    let limit = max_raster_moves();
+    if needed_moves > limit {
+        return Err(BeamError::InvalidInput(format!(
+            "image '{}' needs about {needed_moves} engraving moves (limit {limit}); lower the working width, height or DPI",
+            object.name
+        )));
+    }
     let mut toolpath = Toolpath::new(
         object.name.clone(),
         resolved.speed,
@@ -2303,6 +2330,30 @@ mod tests {
         assert_eq!(toolpaths[0].moves.len(), 4);
         assert_eq!(toolpaths[0].speed, 3000.0);
         assert!((toolpaths[0].power - 200.0).abs() < 1e-9);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn too_many_raster_runs_are_rejected_before_allocating_moves() {
+        let path = std::env::temp_dir().join("beamburin_job_raster_budget.png");
+        let mut picture = image::GrayImage::new(160, 160);
+        for (x, y, pixel) in picture.enumerate_pixels_mut() {
+            *pixel = if (x + y) % 2 == 0 {
+                image::Luma([255])
+            } else {
+                image::Luma([0])
+            };
+        }
+        picture.save(&path).unwrap();
+        let document = image_document(&path);
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert_eq!(toolpaths.len(), 0);
+        assert!(
+            warnings.iter().any(|warning| {
+                warning.contains("engraving moves") && warning.contains("lower the working")
+            }),
+            "{warnings:?}"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
