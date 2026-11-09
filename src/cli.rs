@@ -270,11 +270,11 @@ pub fn run(cli: Cli) -> Result<()> {
         }
         Some(Commands::Estimate { path }) => {
             let document = open_document(&path)?;
-            let (text, report) =
-                crate::gcode::render_job(&document, &crate::gcode::JobOptions::default())?;
+            let report =
+                crate::gcode::render_report(&document, &crate::gcode::JobOptions::default())?;
             println!("Paths: {}", report.paths);
             println!("Lines: {}", report.lines);
-            println!("Bytes: {}", text.len());
+            println!("Bytes: {}", report.bytes);
             println!("Estimated duration: {:.1} s", report.seconds);
             for warning in report.warnings {
                 println!("Warning: {warning}");
@@ -691,8 +691,8 @@ fn run_bench(count: usize) {
     }
 
     let timer = Instant::now();
-    match crate::gcode::render_job(&document, &crate::gcode::JobOptions::default()) {
-        Ok((_text, report)) => println!(
+    match crate::gcode::render_report(&document, &crate::gcode::JobOptions::default()) {
+        Ok(report) => println!(
             "G-code: {:.1} ms ({} paths, {} lines, {:.1} s estimated)",
             timer.elapsed().as_secs_f64() * 1000.0,
             report.paths,
