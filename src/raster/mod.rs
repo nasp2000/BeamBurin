@@ -652,6 +652,21 @@ fn derived_luma_key(settings: &ImageSettings) -> String {
     )
 }
 
+#[cfg(test)]
+thread_local! {
+    static DECODE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn reset_decode_count() {
+    DECODE_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn decode_count() -> usize {
+    DECODE_COUNT.with(std::cell::Cell::get)
+}
+
 fn preview_cache() -> &'static Mutex<Option<PreviewCache>> {
     static CACHE: OnceLock<Mutex<Option<PreviewCache>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(None))
@@ -719,6 +734,8 @@ fn load_prepared_picture(
     }
     let mut picture = image::open(path)
         .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
+    #[cfg(test)]
+    DECODE_COUNT.with(|count| count.set(count.get() + 1));
     if image.settings.flip_horizontal {
         picture = picture.fliph();
     }
@@ -1298,6 +1315,41 @@ mod object_tests {
                 );
             }
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn one_decode_serves_the_preview_histogram_and_auto_levels() {
+        let path = write_image("bw_raster_shared_decode.png", 200, 100);
+        let mut object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        reset_decode_count();
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        let _ = histogram_preview(&path, &object, 64).unwrap();
+        let _ = auto_levels_preview(&path, &object, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            1,
+            "the preview, histogram and auto levels decoded the file separately"
+        );
+        object.settings.gray_red = 0.5;
+        let _ = histogram_preview(&path, &object, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            1,
+            "changing the grey weights decoded the file again"
+        );
+        object.crop = Some(ImageCrop {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 50,
+        });
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            2,
+            "a crop change did not invalidate the source"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
