@@ -454,6 +454,22 @@ fn use_view_box_transform(target: &Node, use_node: &Node) -> Transform2 {
         .compose(&Transform2::translate(-view_x, -view_y))
 }
 
+/// Whether two closed contours overlap with neither containing the other.
+fn contours_partially_overlap(first: &[(f64, f64)], second: &[(f64, f64)]) -> bool {
+    use crate::geometry::boolean::{BooleanOp, boolean_contours, polygon_area};
+
+    let overlap = boolean_contours(BooleanOp::Intersection, first, second);
+    if overlap.is_empty() {
+        return false;
+    }
+    let minimum = polygon_area(first).abs().min(polygon_area(second).abs());
+    let covered: f64 = overlap
+        .iter()
+        .map(|contour| polygon_area(contour).abs())
+        .sum();
+    minimum > 0.0 && covered < minimum * 0.999
+}
+
 fn import_rect(
     node: &Node,
     transform: Transform2,
@@ -706,6 +722,37 @@ fn import_paths(
                 }
                 return;
             }
+        }
+    }
+    if paths.len() > 2
+        && paths.iter().all(|path| path.closed)
+        && style
+            .fill
+            .as_ref()
+            .is_some_and(std::option::Option::is_some)
+    {
+        let polygons: Vec<Vec<(f64, f64)>> = paths
+            .iter()
+            .map(|path| {
+                path.flatten(0.05)
+                    .into_iter()
+                    .map(|point| (point.x, point.y))
+                    .collect()
+            })
+            .collect();
+        let mut partial = false;
+        'pairs: for first in 0..polygons.len() {
+            for second in first + 1..polygons.len() {
+                if contours_partially_overlap(&polygons[first], &polygons[second]) {
+                    partial = true;
+                    break 'pairs;
+                }
+            }
+        }
+        if partial {
+            warnings.push(
+                "three or more overlapping contours are imported as separate shapes".to_string(),
+            );
         }
     }
     let parents = crate::geometry::path::contour_parents_with_rule(&paths, style.even_odd());
@@ -1351,6 +1398,23 @@ mod tests {
         assert!((min.y - 3.0).abs() < 1e-6);
         assert!((max.x - 7.0).abs() < 1e-6);
         assert!((max.y - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn three_overlapping_contours_are_reported() {
+        let report = import_svg_report(
+            r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 H13 V13 H5 Z M8 8 H16 V16 H8 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 3);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("three or more overlapping contours")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
