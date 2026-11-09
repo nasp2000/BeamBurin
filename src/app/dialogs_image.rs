@@ -332,8 +332,8 @@ impl BeamBurinApp {
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([980.0, 760.0])
-            .max_height(820.0)
+            .default_size([960.0, 712.0])
+            .max_height(900.0)
             .show(ctx, |ui| {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
