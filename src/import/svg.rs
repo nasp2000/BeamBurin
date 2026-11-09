@@ -467,6 +467,24 @@ fn process_node(
     let style = parent_style.inherit(node);
     let objects_before = doc.objects.len();
 
+    if matches!(
+        node.name.as_str(),
+        "g" | "a"
+            | "svg"
+            | "use"
+            | "rect"
+            | "circle"
+            | "ellipse"
+            | "line"
+            | "polyline"
+            | "polygon"
+            | "path"
+            | "text"
+            | "image"
+    ) {
+        warn_filter(node, ids, warnings);
+    }
+
     match node.name.as_str() {
         "g" | "a" | "svg" => {
             for child in &node.children {
@@ -574,6 +592,64 @@ fn process_node(
             | "image"
     ) {
         apply_clip(node, transform, doc, objects_before, ids, warnings);
+    }
+}
+
+/// Report an SVG `filter` without applying it.
+///
+/// Filters describe raster and visual effects; the document stores solid
+/// fills and plain geometry, so the element is imported unfiltered and the
+/// primitive names are listed in the warning.
+fn warn_filter(node: &Node, ids: &HashMap<String, &Node>, warnings: &mut Vec<String>) {
+    let Some(value) = node.attr("filter") else {
+        return;
+    };
+    if value.trim().eq_ignore_ascii_case("none") {
+        return;
+    }
+    let id = value
+        .trim()
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or_default();
+    if id.is_empty() {
+        warnings.push(format!(
+            "filter '{value}' is not a local reference; <{}> is imported unfiltered",
+            node.name
+        ));
+        return;
+    }
+    let Some(target) = ids.get(id) else {
+        warnings.push(format!(
+            "filter references missing #{id}; <{}> is imported unfiltered",
+            node.name
+        ));
+        return;
+    };
+    if target.name != "filter" {
+        warnings.push(format!(
+            "#{id} is not a filter; <{}> is imported unfiltered",
+            node.name
+        ));
+        return;
+    }
+    let primitives: Vec<&str> = target
+        .children
+        .iter()
+        .map(|child| child.name.as_str())
+        .filter(|name| name.starts_with("fe"))
+        .collect();
+    if primitives.is_empty() {
+        warnings.push(format!(
+            "filter #{id} has no primitives; <{}> is imported unfiltered",
+            node.name
+        ));
+    } else {
+        warnings.push(format!(
+            "filter #{id} ({}) is ignored; <{}> is imported unfiltered",
+            primitives.join(", "),
+            node.name
+        ));
     }
 }
 
@@ -2292,6 +2368,78 @@ mod tests {
         assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
         assert!((min.y - 5.0).abs() < 1e-6, "{min:?}");
         assert!((max.y - 9.0).abs() < 1e-6, "{max:?}");
+    }
+
+    #[test]
+    fn a_filter_is_reported_and_left_unapplied() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><filter id="f"><feGaussianBlur stdDeviation="1"/><feOffset dx="2" dy="2"/></filter></defs><rect x="1" y="1" width="4" height="4" filter="url(#f)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            report.warnings.iter().any(|warning| {
+                warning.contains("filter #f")
+                    && warning.contains("feGaussianBlur")
+                    && warning.contains("feOffset")
+                    && warning.contains("imported unfiltered")
+            }),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_filter_none_is_not_reported() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm"><rect width="5" height="5" filter="none"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1);
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("filter")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_missing_filter_is_reported() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm"><rect width="5" height="5" filter="url(#missing)"/></svg>"#,
+        )
+        .unwrap();
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("missing #missing")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_group_filter_is_reported_once() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><filter id="f"><feBlend mode="multiply"/></filter></defs><g filter="url(#f)"><rect width="4" height="4"/></g></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("filter #f (feBlend)") && warning.contains("<g>")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
