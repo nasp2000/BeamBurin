@@ -608,7 +608,14 @@ fn import_path(
             return;
         }
     };
-    import_paths(bezpath_to_paths(&bez), transform, style, doc, layer_id);
+    import_paths(
+        bezpath_to_paths(&bez),
+        transform,
+        style,
+        doc,
+        layer_id,
+        warnings,
+    );
 }
 
 /// Add the subpaths of one SVG `<path>`.
@@ -623,12 +630,83 @@ fn import_paths(
     style: &SvgStyle,
     doc: &mut Document,
     layer_id: &str,
+    warnings: &mut Vec<String>,
 ) {
     if paths.len() < 2 {
         for path in paths {
             add_path_object(path, transform, style, doc, layer_id);
         }
         return;
+    }
+    if paths.len() == 2
+        && paths.iter().all(|path| path.closed)
+        && style
+            .fill
+            .as_ref()
+            .is_some_and(std::option::Option::is_some)
+    {
+        let a: Vec<(f64, f64)> = paths[0]
+            .flatten(0.05)
+            .into_iter()
+            .map(|point| (point.x, point.y))
+            .collect();
+        let b: Vec<(f64, f64)> = paths[1]
+            .flatten(0.05)
+            .into_iter()
+            .map(|point| (point.x, point.y))
+            .collect();
+        let overlap = crate::geometry::boolean::boolean_contours(
+            crate::geometry::boolean::BooleanOp::Intersection,
+            &a,
+            &b,
+        );
+        let contained = {
+            let minimum = crate::geometry::boolean::polygon_area(&a)
+                .abs()
+                .min(crate::geometry::boolean::polygon_area(&b).abs());
+            let covered: f64 = overlap
+                .iter()
+                .map(|contour| crate::geometry::boolean::polygon_area(contour).abs())
+                .sum();
+            minimum > 0.0 && covered >= minimum * 0.999
+        };
+        if !overlap.is_empty() && !contained {
+            let winding_differs = crate::geometry::boolean::polygon_area(&a).signum()
+                != crate::geometry::boolean::polygon_area(&b).signum();
+            let op = if style.even_odd() || winding_differs {
+                crate::geometry::boolean::BooleanOp::Xor
+            } else {
+                crate::geometry::boolean::BooleanOp::Union
+            };
+            let contours = crate::geometry::boolean::boolean_contours(op, &a, &b);
+            if !contours.is_empty() {
+                warnings
+                    .push("overlapping contours were resolved as straight segments".to_string());
+                let resolved: Vec<Path> = contours
+                    .iter()
+                    .map(|contour| {
+                        let points: Vec<Point2> =
+                            contour.iter().map(|(x, y)| Point2::new(*x, *y)).collect();
+                        crate::vectorize::to_path(&points)
+                    })
+                    .collect();
+                let parents = crate::geometry::path::contour_parents(&resolved);
+                let mut order: Vec<usize> = (0..resolved.len()).collect();
+                order.sort_by_key(|&index| parents[index].is_some());
+                let mut ids: Vec<Option<String>> = vec![None; resolved.len()];
+                for index in order {
+                    let mut object = Object::new(layer_id, Shape::Path(resolved[index].clone()))
+                        .with_transform(transform)
+                        .with_style(style.to_object_style(&transform));
+                    if let Some(parent_id) = parents[index].and_then(|parent| ids[parent].clone()) {
+                        object.hole_of = Some(parent_id);
+                        object.name = "Hole".to_string();
+                    }
+                    ids[index] = Some(doc.add_object(object).id.clone());
+                }
+                return;
+            }
+        }
     }
     let parents = crate::geometry::path::contour_parents_with_rule(&paths, style.even_odd());
     let mut order: Vec<usize> = (0..paths.len()).collect();
@@ -1273,6 +1351,43 @@ mod tests {
         assert!((min.y - 3.0).abs() < 1e-6);
         assert!((max.x - 7.0).abs() < 1e-6);
         assert!((max.y - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn opposing_overlaps_cancel_under_nonzero() {
+        let report = import_svg_report(
+            r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 V15 H15 V5 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects.len(),
+            2,
+            "the overlap was not split"
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("overlapping contours were resolved")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn same_winding_overlaps_are_united() {
+        let report = import_svg_report(
+            r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 H15 V15 H5 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects.len(),
+            1,
+            "same-winding overlap was not united"
+        );
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 15.0).abs() < 1e-6, "{max:?}");
     }
 
     #[test]
