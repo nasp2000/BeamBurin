@@ -348,7 +348,9 @@ fn process_node(
                             node.number("x").unwrap_or(0.0),
                             node.number("y").unwrap_or(0.0),
                         );
-                        let transform = transform.compose(&offset);
+                        let transform = transform
+                            .compose(&offset)
+                            .compose(&use_view_box_transform(target, node));
                         match target.name.as_str() {
                             "symbol" | "g" | "svg" => {
                                 for child in &target.children {
@@ -396,6 +398,60 @@ fn process_node(
         "image" => import_image(node, transform, &style, doc, layer_id, dpi),
         other => warnings.push(format!("unsupported SVG element: <{other}>")),
     }
+}
+
+/// Map a referenced `symbol`/`svg` viewBox into the size given on `<use>`.
+///
+/// Without an explicit width and height the referenced content keeps its own
+/// coordinates. `preserveAspectRatio="none"` stretches; otherwise the default
+/// `meet` rule scales uniformly and centres the result.
+fn use_view_box_transform(target: &Node, use_node: &Node) -> Transform2 {
+    let Some((view_x, view_y, view_width, view_height)) =
+        target.attr("viewBox").and_then(parse_view_box)
+    else {
+        return Transform2::identity();
+    };
+    let (Some(width), Some(height)) = (use_node.number("width"), use_node.number("height")) else {
+        return Transform2::identity();
+    };
+    if width <= 0.0 || height <= 0.0 {
+        return Transform2::identity();
+    }
+    let ratio_x = width / view_width;
+    let ratio_y = height / view_height;
+    let aspect = target
+        .attr("preserveAspectRatio")
+        .or_else(|| use_node.attr("preserveAspectRatio"))
+        .unwrap_or("xMidYMid meet");
+    let (scale_x, scale_y, extra_x, extra_y) = if aspect.trim().starts_with("none") {
+        (ratio_x, ratio_y, 0.0, 0.0)
+    } else {
+        let scale = ratio_x.min(ratio_y);
+        (
+            scale,
+            scale,
+            width - view_width * scale,
+            height - view_height * scale,
+        )
+    };
+    let align = aspect.split_whitespace().next().unwrap_or("xMidYMid");
+    let x_extra = if align.contains("xMin") {
+        0.0
+    } else if align.contains("xMax") {
+        extra_x
+    } else {
+        extra_x / 2.0
+    };
+    let y_extra = if align.contains("YMin") {
+        0.0
+    } else if align.contains("YMax") {
+        extra_y
+    } else {
+        extra_y / 2.0
+    };
+    Transform2::translate(x_extra, y_extra)
+        .compose(&Transform2::scale(scale_x, scale_y))
+        .compose(&Transform2::translate(-view_x, -view_y))
 }
 
 fn import_rect(
@@ -1301,6 +1357,26 @@ mod tests {
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
         );
+    }
+
+    #[test]
+    fn a_use_reference_scales_its_symbol_view_box() {
+        let doc = import_svg(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+                <defs><symbol id="s" viewBox="0 0 10 10">
+                    <rect width="10" height="10"/>
+                </symbol></defs>
+                <use href="#s" x="20" y="30" width="20" height="20"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(doc.objects.len(), 1);
+        let (min, max) = doc.objects[0].bounds().unwrap();
+        assert!((min.x - 20.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 40.0).abs() < 1e-6, "{max:?}");
+        // SVG y is flipped in a 100 mm document: 30..50 becomes 50..70.
+        assert!((min.y - 50.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 70.0).abs() < 1e-6, "{max:?}");
     }
 
     #[test]
