@@ -259,7 +259,7 @@ impl BeamBurinApp {
             playback_playing: false,
             playback_speed: 1.0,
             playback_error: None,
-            gcode_text: String::new(),
+            gcode_preview: String::new(),
             gcode_line_count: 0,
             preview_snapshot: None,
             preview_line_numbers: false,

@@ -1452,7 +1452,7 @@ impl McpServer {
                 ))
             }
             "estimate" => {
-                let (_, report) = crate::gcode::render_job(
+                let report = crate::gcode::render_report(
                     &self.editor.document,
                     &crate::gcode::JobOptions::default(),
                 )?;

@@ -561,7 +561,7 @@ pub struct BeamBurinApp {
     playback_playing: bool,
     playback_speed: f32,
     playback_error: Option<String>,
-    gcode_text: String,
+    gcode_preview: String,
     gcode_line_count: usize,
     preview_snapshot: Option<Document>,
     preview_line_numbers: bool,
@@ -1048,6 +1048,9 @@ fn profile_meta_editor(
     }
     changed
 }
+
+/// Number of G-code lines kept for the preview panel.
+pub(super) const GCODE_PREVIEW_LINES: usize = 400;
 
 /// A short message shown over the canvas and then forgotten.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1842,8 +1845,13 @@ impl BeamBurinApp {
     /// Rebuild the simulated job and the G-code text from the document.
     fn refresh_preview(&mut self) {
         let options = crate::gcode::JobOptions::default();
-        match crate::gcode::render_job(&self.editor.document, &options) {
-            Ok((text, _report)) => {
+        match crate::gcode::render_preview_cancellable(
+            &self.editor.document,
+            &options,
+            GCODE_PREVIEW_LINES,
+            &|| false,
+        ) {
+            Ok((preview, report)) => {
                 let (toolpaths, _) =
                     crate::gcode::planned_toolpaths(&self.editor.document, &options);
                 let playback =
@@ -1851,14 +1859,14 @@ impl BeamBurinApp {
                 self.playback_progress = self.playback_progress.min(playback.total_length);
                 self.playback = Some(playback);
                 self.playback_error = None;
-                self.gcode_line_count = text.lines().count();
-                self.gcode_text = text;
+                self.gcode_line_count = report.lines;
+                self.gcode_preview = preview;
             }
             Err(error) => {
                 self.playback = None;
                 self.playback_error = Some(error.to_string());
                 self.gcode_line_count = 0;
-                self.gcode_text.clear();
+                self.gcode_preview.clear();
             }
         }
         self.preview_snapshot = Some(self.editor.document.clone());

@@ -592,11 +592,11 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 if icons::button(ui, Icon::Clock, "Estimate duration").clicked() {
-                    match crate::gcode::render_job(
+                    match crate::gcode::render_report(
                         &self.editor.document,
                         &crate::gcode::JobOptions::default(),
                     ) {
-                        Ok((_, report)) => {
+                        Ok(report) => {
                             self.status = format!(
                                 "Paths: {} - {:.1} s estimated",
                                 report.paths, report.seconds

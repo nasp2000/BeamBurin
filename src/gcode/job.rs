@@ -1760,19 +1760,27 @@ pub fn export_job_cancellable(
     cancel: &dyn Fn() -> bool,
 ) -> Result<JobReport> {
     document.validate().map_err(BeamError::InvalidInput)?;
-    // Stock clipping and restricted areas need the whole move list; keep the
-    // buffered path for those documents.
-    if document.stock.is_some() || !document.restricted_areas.is_empty() {
-        let (text, report) = render_job_cancellable(document, options, cancel)?;
-        if cancel() {
-            return Err(cancelled());
+    let temporary = path.with_extension("nc.tmp");
+    let file = File::create(&temporary)?;
+    let mut file = BufWriter::new(file);
+    let report = stream_job(document, options, cancel, &mut file);
+    let result = match report {
+        Ok(report) => {
+            file.flush()?;
+            drop(file);
+            if cancel() {
+                Err(cancelled())
+            } else {
+                std::fs::rename(&temporary, path)?;
+                Ok(report)
+            }
         }
-        let temporary = path.with_extension("nc.tmp");
-        std::fs::write(&temporary, text)?;
-        std::fs::rename(&temporary, path)?;
-        return Ok(report);
+        Err(error) => Err(error),
+    };
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
     }
-    export_streaming(document, path, options, cancel)
+    result
 }
 
 enum JobItem {
@@ -1782,12 +1790,13 @@ enum JobItem {
 
 /// Write the job chunk by chunk, keeping only one raster band of moves.
 #[allow(clippy::too_many_lines)]
-fn export_streaming(
+fn stream_job<W: Write>(
     document: &Document,
-    path: &Path,
     options: &JobOptions,
     cancel: &dyn Fn() -> bool,
+    sink: &mut W,
 ) -> Result<JobReport> {
+    document.validate().map_err(BeamError::InvalidInput)?;
     let mut warnings = Vec::new();
     let mut vector_document = document.clone();
     for object in &mut vector_document.objects {
@@ -1838,7 +1847,6 @@ fn export_streaming(
             .unwrap_or(usize::MAX)
     });
 
-    // Work out one translation shared by vector moves and raster bands.
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     for toolpath in &toolpaths {
@@ -1873,22 +1881,26 @@ fn export_streaming(
         smooth_toolpaths(&mut toolpaths, options.smooth_mm);
     }
     merge_collinear(&mut toolpaths);
+    if let Some(stock) = document.stock {
+        let clipped = clip_to_stock(&mut toolpaths, stock);
+        if clipped > 0 {
+            warnings.push(format!(
+                "{clipped} cut segment(s) were clipped to the material area"
+            ));
+        }
+    }
+    if !document.restricted_areas.is_empty() {
+        let removed = avoid_restricted_areas(&mut toolpaths, &document.restricted_areas);
+        if removed > 0 {
+            warnings.push(format!(
+                "{removed} cut segment(s) were kept out of restricted areas"
+            ));
+        }
+    }
     validate_bounds(document, &toolpaths)?;
     if options.origin == JobOrigin::BottomLeft {
         warnings.extend(bounds_warnings(document, &toolpaths));
     }
-    // The vector copy was made before the shift, so refresh it now.
-    items.retain(|item| !matches!(item, JobItem::Toolpath(_)));
-    items.extend(toolpaths.iter().cloned().map(JobItem::Toolpath));
-    items.sort_by_key(|item| {
-        let operation = match item {
-            JobItem::Toolpath(toolpath) => toolpath.operation_id.as_deref(),
-            JobItem::Raster(raster) => raster.object.operation_id.as_deref(),
-        };
-        operation
-            .and_then(|id| operation_order.iter().position(|ordered| ordered == id))
-            .unwrap_or(usize::MAX)
-    });
     for toolpath in &toolpaths {
         if toolpath.speed <= 0.0 {
             return Err(BeamError::InvalidInput(format!(
@@ -1906,20 +1918,31 @@ fn export_streaming(
     if cancel() {
         return Err(cancelled());
     }
+    // The vector copy was made before the shift, so refresh it now.
+    items.retain(|item| !matches!(item, JobItem::Toolpath(_)));
+    items.extend(toolpaths.iter().cloned().map(JobItem::Toolpath));
+    items.sort_by_key(|item| {
+        let operation = match item {
+            JobItem::Toolpath(toolpath) => toolpath.operation_id.as_deref(),
+            JobItem::Raster(raster) => raster.object.operation_id.as_deref(),
+        };
+        operation
+            .and_then(|id| operation_order.iter().position(|ordered| ordered == id))
+            .unwrap_or(usize::MAX)
+    });
 
-    let temporary = path.with_extension("nc.tmp");
-    let file = File::create(&temporary)?;
-    let mut file = BufWriter::new(file);
     let writer = crate::gcode::writer::GCodeWriter::new(options.gcode);
     let mut buffer = String::new();
     let mut state = writer.begin(&mut buffer);
     let mut bytes = 0;
     let mut lines = 0;
     let mut seconds = estimate_seconds(&toolpaths, options.travel_speed_mm_min);
+    let mut clipped = 0;
+    let mut removed = 0;
     let mut flush = |buffer: &mut String, bytes: &mut usize, lines: &mut usize| -> Result<()> {
         *bytes += buffer.len();
         *lines += buffer.lines().count();
-        file.write_all(buffer.as_bytes())?;
+        sink.write_all(buffer.as_bytes())?;
         buffer.clear();
         Ok(())
     };
@@ -1948,6 +1971,15 @@ fn export_streaming(
                         smooth_toolpaths(std::slice::from_mut(&mut band), options.smooth_mm);
                     }
                     merge_collinear(std::slice::from_mut(&mut band));
+                    if let Some(stock) = document.stock {
+                        clipped += clip_to_stock(std::slice::from_mut(&mut band), stock);
+                    }
+                    if !document.restricted_areas.is_empty() {
+                        removed += avoid_restricted_areas(
+                            std::slice::from_mut(&mut band),
+                            &document.restricted_areas,
+                        );
+                    }
                     validate_bounds(document, std::slice::from_ref(&band))?;
                     seconds +=
                         estimate_seconds(std::slice::from_ref(&band), options.travel_speed_mm_min);
@@ -1959,13 +1991,19 @@ fn export_streaming(
     }
     writer.finish(&mut buffer);
     flush(&mut buffer, &mut bytes, &mut lines)?;
-    file.flush()?;
-    drop(file);
+    if clipped > 0 {
+        warnings.push(format!(
+            "{clipped} cut segment(s) were clipped to the material area"
+        ));
+    }
+    if removed > 0 {
+        warnings.push(format!(
+            "{removed} cut segment(s) were kept out of restricted areas"
+        ));
+    }
     if cancel() {
-        let _ = std::fs::remove_file(&temporary);
         return Err(cancelled());
     }
-    std::fs::rename(&temporary, path)?;
     Ok(JobReport {
         lines,
         bytes,
@@ -1973,6 +2011,67 @@ fn export_streaming(
         paths,
         warnings,
     })
+}
+
+/// Report only, without keeping the G-code text.
+pub fn render_report(document: &Document, options: &JobOptions) -> Result<JobReport> {
+    render_report_cancellable(document, options, &|| false)
+}
+
+pub fn render_report_cancellable(
+    document: &Document,
+    options: &JobOptions,
+    cancel: &dyn Fn() -> bool,
+) -> Result<JobReport> {
+    stream_job(document, options, cancel, &mut std::io::sink())
+}
+
+/// First `head_lines` lines of the job plus the full report.
+pub fn render_preview_cancellable(
+    document: &Document,
+    options: &JobOptions,
+    head_lines: usize,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(String, JobReport)> {
+    let mut sink = HeadSink::new(head_lines);
+    let report = stream_job(document, options, cancel, &mut sink)?;
+    Ok((sink.head, report))
+}
+
+struct HeadSink {
+    head: String,
+    limit: usize,
+    lines: usize,
+    partial: String,
+}
+
+impl HeadSink {
+    fn new(limit: usize) -> Self {
+        Self {
+            head: String::new(),
+            limit,
+            lines: 0,
+            partial: String::new(),
+        }
+    }
+}
+
+impl Write for HeadSink {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.partial.push_str(&String::from_utf8_lossy(buffer));
+        while let Some(position) = self.partial.find('\n') {
+            let line: String = self.partial.drain(..=position).collect();
+            self.lines += 1;
+            if self.lines <= self.limit {
+                self.head.push_str(&line);
+            }
+        }
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -2686,6 +2785,73 @@ mod tests {
         );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&output);
+    }
+
+    #[test]
+    fn streaming_export_clips_a_raster_like_the_buffered_path() {
+        let path = std::env::temp_dir().join("beamburin_stream_stock.png");
+        let mut image = image::GrayImage::new(4, 2);
+        for (x, _y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = if x < 2 {
+                image::Luma([0])
+            } else {
+                image::Luma([255])
+            };
+        }
+        image.save(&path).unwrap();
+        let mut document = image_document(&path);
+        document.stock = Some(crate::document::MaterialZone::new(0.0, 0.0, 0.5, 2.0));
+        let options = JobOptions::default();
+        let (buffered, buffered_report) = render_job(&document, &options).unwrap();
+        let output = std::env::temp_dir().join("beamburin_stream_stock.nc");
+        let report = export_job(&document, &output, &options).unwrap();
+        let streamed = std::fs::read_to_string(&output).unwrap();
+        assert_eq!(streamed, buffered);
+        assert_eq!(report.lines, buffered_report.lines);
+        assert_eq!(report.warnings, buffered_report.warnings);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&output);
+    }
+
+    #[test]
+    fn streaming_report_matches_the_buffered_report() {
+        let path = std::env::temp_dir().join("beamburin_stream_report.png");
+        let mut image = image::GrayImage::new(4, 2);
+        for (x, _y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = if x < 2 {
+                image::Luma([0])
+            } else {
+                image::Luma([255])
+            };
+        }
+        image.save(&path).unwrap();
+        let document = image_document(&path);
+        let options = JobOptions::default();
+        let (text, buffered) = render_job(&document, &options).unwrap();
+        let report = render_report(&document, &options).unwrap();
+        assert_eq!(report.lines, buffered.lines);
+        assert_eq!(report.bytes, buffered.bytes);
+        assert_eq!(report.paths, buffered.paths);
+        assert!((report.seconds - buffered.seconds).abs() < 1e-9);
+        assert_eq!(report.warnings, buffered.warnings);
+        assert_eq!(text.lines().count(), report.lines);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn streaming_preview_keeps_only_the_head() {
+        let path = std::env::temp_dir().join("beamburin_stream_head.png");
+        let image = image::GrayImage::from_pixel(4, 2, image::Luma([255]));
+        image.save(&path).unwrap();
+        let document = image_document(&path);
+        let options = JobOptions::default();
+        let (full, report) = render_job(&document, &options).unwrap();
+        let (head, preview) =
+            render_preview_cancellable(&document, &options, 3, &|| false).unwrap();
+        assert_eq!(head.lines().count(), 3);
+        assert_eq!(preview.lines, report.lines);
+        assert!(full.starts_with(&head));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

@@ -141,7 +141,15 @@ impl BeamBurinApp {
                 });
                 ui.weak(format!("Estimated job time: {duration:.1} s"));
                 if ui.button("Copy G-code").clicked() {
-                    ui.ctx().copy_text(self.gcode_text.clone());
+                    match crate::gcode::render_job(
+                        &self.editor.document,
+                        &crate::gcode::JobOptions::default(),
+                    ) {
+                        Ok((text, _)) => ui.ctx().copy_text(text),
+                        Err(error) => {
+                            self.status = format!("Cannot copy the G-code: {error}");
+                        }
+                    }
                 }
                 ui.separator();
                 egui::CollapsingHeader::new(format!(
@@ -151,7 +159,7 @@ impl BeamBurinApp {
                 .default_open(false)
                 .show(ui, |ui| {
                     let mut text = preview_gcode(
-                        &self.gcode_text,
+                        &self.gcode_preview,
                         self.gcode_line_count,
                         self.preview_line_numbers,
                         GCODE_PREVIEW_LINES,
@@ -420,11 +428,7 @@ impl BeamBurinApp {
     }
 }
 
-/// Lines rendered inside the G-code preview; the full text stays available for
-/// Copy G-code and export.
-const GCODE_PREVIEW_LINES: usize = 400;
-
-/// Build the visible prefix of the G-code, optionally numbered.
+/// Build the visible prefix of the stored G-code head, optionally numbered.
 fn preview_gcode(text: &str, total_lines: usize, numbers: bool, limit: usize) -> String {
     if text.is_empty() {
         return String::new();
