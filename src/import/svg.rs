@@ -721,18 +721,39 @@ fn clip_objects(
     let objects: Vec<Object> = doc.objects.split_off(start);
     let mut replaced = Vec::new();
     let mut applied = false;
-    for object in objects {
-        match &object.shape {
-            Shape::Text(_) | Shape::Image(_) => {
-                warnings.push(format!(
-                    "{label} was not applied to {} '{}'",
-                    object.shape.kind_name(),
-                    object.name
-                ));
-                replaced.push(object);
-                continue;
+    for mut object in objects {
+        if let Shape::Text(text) = &object.shape {
+            let text = text.clone();
+            clip_text_object(
+                doc,
+                &mut replaced,
+                &object,
+                &text,
+                contours,
+                label,
+                id,
+                warnings,
+                &mut applied,
+            );
+            continue;
+        }
+        if matches!(object.shape, Shape::Image(_)) {
+            let inverse = object.transform.invert();
+            let name = object.name.clone();
+            if let Shape::Image(image) = &mut object.shape {
+                clip_image_object(
+                    image,
+                    inverse,
+                    &name,
+                    contours,
+                    label,
+                    id,
+                    warnings,
+                    &mut applied,
+                );
             }
-            _ => {}
+            replaced.push(object);
+            continue;
         }
         let path = object.world_path();
         if !path.closed {
@@ -877,6 +898,208 @@ fn clip_objects(
     if applied {
         warnings.push(format!("{label} #{id} was applied as straight segments"));
     }
+}
+
+/// Apply a clip to a text object by outlining it and clipping the outlines.
+#[allow(clippy::too_many_arguments)]
+fn clip_text_object(
+    doc: &mut Document,
+    replaced: &mut Vec<Object>,
+    object: &Object,
+    text: &TextObject,
+    contours: &[Vec<(f64, f64)>],
+    label: &str,
+    id: &str,
+    warnings: &mut Vec<String>,
+    applied: &mut bool,
+) {
+    use crate::geometry::boolean::{BooleanOp, boolean_contours};
+
+    let paths = match crate::objects::text_to_paths(text) {
+        Ok(paths) if !paths.is_empty() => paths,
+        Ok(_) => {
+            warnings.push(format!(
+                "{label} #{id} was not applied to text '{}': no outlines",
+                object.name
+            ));
+            replaced.push(object.clone());
+            return;
+        }
+        Err(error) => {
+            warnings.push(format!(
+                "{label} #{id} was not applied to text '{}': {error}",
+                object.name
+            ));
+            replaced.push(object.clone());
+            return;
+        }
+    };
+    let world_paths: Vec<Path> = paths
+        .iter()
+        .map(|path| path.transform(&object.transform))
+        .collect();
+    let mut pieces: Vec<Vec<(f64, f64)>> = Vec::new();
+    for path in &world_paths {
+        if !path.closed {
+            continue;
+        }
+        let points: Vec<(f64, f64)> = path
+            .flatten(0.1)
+            .into_iter()
+            .map(|point| (point.x, point.y))
+            .collect();
+        let mut current = vec![points];
+        for clip in contours {
+            current = current
+                .into_iter()
+                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .collect();
+        }
+        pieces.extend(current);
+    }
+    if pieces.is_empty() {
+        let flat: Vec<Point2> = world_paths
+            .iter()
+            .flat_map(|path| path.flatten(0.1))
+            .collect();
+        let inside = !flat.is_empty()
+            && contours.iter().any(|contour| {
+                flat.iter().all(|point| {
+                    crate::geometry::boolean::point_in_polygon(point.x, point.y, contour)
+                })
+            });
+        if inside {
+            replaced.push(object.clone());
+        }
+        *applied = true;
+        return;
+    }
+    *applied = true;
+    let resolved: Vec<Path> = pieces
+        .iter()
+        .map(|contour| {
+            let points: Vec<Point2> = contour.iter().map(|(x, y)| Point2::new(*x, *y)).collect();
+            crate::vectorize::to_path(&points)
+        })
+        .collect();
+    let parents = crate::geometry::path::contour_parents(&resolved);
+    let mut order: Vec<usize> = (0..resolved.len()).collect();
+    order.sort_by_key(|&index| parents[index].is_some());
+    let mut new_ids: Vec<Option<String>> = vec![None; resolved.len()];
+    for index in order {
+        let mut clipped = Object::new(
+            object.layer_id.clone(),
+            Shape::Path(resolved[index].clone()),
+        )
+        .with_style(object.style.clone());
+        clipped.name = if parents[index].is_some() {
+            "Hole".to_string()
+        } else {
+            format!("{} clipped", object.name)
+        };
+        clipped.color.clone_from(&object.color);
+        clipped.operation_id.clone_from(&object.operation_id);
+        clipped.group_id.clone_from(&object.group_id);
+        clipped.visible = object.visible;
+        clipped.locked = object.locked;
+        if let Some(parent_id) = parents[index].and_then(|parent| new_ids[parent].clone()) {
+            clipped.hole_of = Some(parent_id);
+        }
+        new_ids[index] = Some(doc.add_object(clipped).id.clone());
+    }
+    warnings.push(format!(
+        "{label} #{id} was applied to text '{}' by converting it to outlines",
+        object.name
+    ));
+}
+
+/// Apply a clip to an image by storing it as a vector mask in image-local mm.
+#[allow(clippy::too_many_arguments)]
+fn clip_image_object(
+    image: &mut ImageObject,
+    inverse: Option<Transform2>,
+    name: &str,
+    contours: &[Vec<(f64, f64)>],
+    label: &str,
+    id: &str,
+    warnings: &mut Vec<String>,
+    applied: &mut bool,
+) {
+    use crate::geometry::boolean::{BooleanOp, boolean_contours};
+
+    let Some(inverse) = inverse else {
+        warnings.push(format!(
+            "{label} #{id} was not applied to image '{name}': the transform is not invertible"
+        ));
+        return;
+    };
+    if image.mask_invert {
+        warnings.push(format!(
+            "{label} #{id} was not combined with the inverted image mask on '{name}'"
+        ));
+        return;
+    }
+    let local: Vec<Vec<(f64, f64)>> = contours
+        .iter()
+        .map(|contour| {
+            contour
+                .iter()
+                .map(|(x, y)| {
+                    let point = inverse.apply(Point2::new(*x, *y));
+                    (point.x, point.y)
+                })
+                .collect()
+        })
+        .collect();
+    let polygons = if image.mask_paths.is_empty() {
+        local
+    } else {
+        let mut result: Vec<Vec<(f64, f64)>> = image
+            .mask_paths
+            .iter()
+            .filter(|path| path.closed)
+            .map(|path| {
+                path.flatten(0.2)
+                    .into_iter()
+                    .map(|point| (point.x, point.y))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for clip in &local {
+            result = result
+                .into_iter()
+                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .collect();
+        }
+        result
+    };
+    let width = image.width_mm();
+    let height = image.height_mm();
+    if polygons.is_empty() {
+        if width > 0.0 && height > 0.0 {
+            image.mask_paths = vec![Path::from_points(
+                &[(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)],
+                true,
+            )];
+            image.mask_invert = true;
+            *applied = true;
+            warnings.push(format!("{label} #{id} masked the whole image '{name}'"));
+        } else {
+            warnings.push(format!(
+                "{label} #{id} was not applied to image '{name}': empty clip"
+            ));
+        }
+        return;
+    }
+    image.mask_paths = polygons
+        .into_iter()
+        .filter(|polygon| polygon.len() >= 3)
+        .map(|polygon| Path::from_points(&polygon, true))
+        .collect();
+    *applied = true;
+    warnings.push(format!(
+        "{label} #{id} was applied to image '{name}' as a vector mask"
+    ));
 }
 
 /// Build an open path from a polyline.
@@ -2368,6 +2591,58 @@ mod tests {
         assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
         assert!((min.y - 5.0).abs() < 1e-6, "{min:?}");
         assert!((max.y - 9.0).abs() < 1e-6, "{max:?}");
+    }
+
+    #[test]
+    fn a_clip_path_outlines_text() {
+        let report = import_svg_report(
+            r#"<svg width="100mm" height="100mm"><defs><clipPath id="c"><rect x="0" y="0" width="15" height="100"/></clipPath></defs><text x="10" y="80" font-size="20" clip-path="url(#c)">A</text></svg>"#,
+        )
+        .unwrap();
+        assert!(!report.document.objects.is_empty(), "{:?}", report.warnings);
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .all(|object| matches!(object.shape, Shape::Path(_))),
+            "{:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("converting it to outlines")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_clip_path_masks_an_image() {
+        let report = import_svg_report(
+            r#"<svg width="100mm" height="100mm"><defs><clipPath id="c"><rect x="0" y="0" width="50" height="100"/></clipPath></defs><image href="test.png" x="10" y="80" width="80" height="80" clip-path="url(#c)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let Shape::Image(image) = &report.document.objects[0].shape else {
+            panic!("the clipped image is not an image");
+        };
+        assert_eq!(image.mask_paths.len(), 1, "{:?}", report.warnings);
+        assert!(!image.mask_invert);
+        let (min, max) = image.mask_paths[0].bounding_box().unwrap();
+        assert!((min.x + 2.6458).abs() < 1e-3, "{min:?}");
+        assert!((max.x - 10.5833).abs() < 1e-3, "{max:?}");
+        assert!((max.y - 21.1667).abs() < 1e-3, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("as a vector mask")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
