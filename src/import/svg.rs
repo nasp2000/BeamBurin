@@ -794,6 +794,36 @@ fn import_path(
 /// odd depth marks a hole of the nearest containing contour. G-code fills and
 /// PNG fills then leave that area empty instead of filling it as a separate
 /// shape.
+/// Union every pair of overlapping contours until no pair can merge.
+fn weld_contours(mut parts: Vec<Vec<(f64, f64)>>) -> Vec<Vec<(f64, f64)>> {
+    use crate::geometry::boolean::{BooleanOp, boolean_contours, polygon_area};
+
+    loop {
+        let mut merged = false;
+        'search: for first in 0..parts.len() {
+            for second in (first + 1)..parts.len() {
+                let union = boolean_contours(BooleanOp::Union, &parts[first], &parts[second]);
+                if union.is_empty() {
+                    continue;
+                }
+                let before = polygon_area(&parts[first]).abs() + polygon_area(&parts[second]).abs();
+                let after: f64 = union
+                    .iter()
+                    .map(|contour| polygon_area(contour).abs())
+                    .sum();
+                if after < before - 1e-6 {
+                    parts.splice(first..=second, union);
+                    merged = true;
+                    break 'search;
+                }
+            }
+        }
+        if !merged {
+            return parts;
+        }
+    }
+}
+
 fn import_paths(
     paths: Vec<Path>,
     transform: Transform2,
@@ -894,6 +924,40 @@ fn import_paths(
                     .collect()
             })
             .collect();
+        let same_winding = polygons.iter().all(|polygon| {
+            crate::geometry::boolean::polygon_area(polygon).signum()
+                == crate::geometry::boolean::polygon_area(&polygons[0]).signum()
+        });
+        if same_winding && !style.even_odd() {
+            let welded = weld_contours(polygons.clone());
+            if welded.len() < polygons.len() {
+                warnings
+                    .push("overlapping contours were resolved as straight segments".to_string());
+                let resolved: Vec<Path> = welded
+                    .iter()
+                    .map(|contour| {
+                        let points: Vec<Point2> =
+                            contour.iter().map(|(x, y)| Point2::new(*x, *y)).collect();
+                        crate::vectorize::to_path(&points)
+                    })
+                    .collect();
+                let parents = crate::geometry::path::contour_parents(&resolved);
+                let mut order: Vec<usize> = (0..resolved.len()).collect();
+                order.sort_by_key(|&index| parents[index].is_some());
+                let mut ids: Vec<Option<String>> = vec![None; resolved.len()];
+                for index in order {
+                    let mut object = Object::new(layer_id, Shape::Path(resolved[index].clone()))
+                        .with_transform(transform)
+                        .with_style(style.to_object_style(&transform));
+                    if let Some(parent_id) = parents[index].and_then(|parent| ids[parent].clone()) {
+                        object.hole_of = Some(parent_id);
+                        object.name = "Hole".to_string();
+                    }
+                    ids[index] = Some(doc.add_object(object).id.clone());
+                }
+                return;
+            }
+        }
         let mut partial = false;
         'pairs: for first in 0..polygons.len() {
             for second in first + 1..polygons.len() {
@@ -1555,9 +1619,29 @@ mod tests {
     }
 
     #[test]
-    fn three_overlapping_contours_are_reported() {
+    fn three_same_winding_contours_are_united() {
         let report = import_svg_report(
             r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 H13 V13 H5 Z M8 8 H16 V16 H8 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 16.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("overlapping contours were resolved")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn three_overlapping_contours_are_reported() {
+        let report = import_svg_report(
+            r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 V13 H13 V5 Z M8 8 H16 V16 H8 Z"/></svg>"#,
         )
         .unwrap();
         assert_eq!(report.document.objects.len(), 3);
