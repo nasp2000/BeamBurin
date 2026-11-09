@@ -7,6 +7,7 @@
 )]
 
 use std::collections::HashMap;
+use std::path::Path as FsPath;
 
 use quick_xml::events::Event;
 use quick_xml::{Reader, XmlVersion};
@@ -21,6 +22,9 @@ use crate::objects::{ImageObject, TextObject};
 
 /// CSS pixels per inch used when the file gives no unit.
 const DEFAULT_DPI: f64 = 96.0;
+
+/// Largest external SVG accepted through a `<use>` reference.
+const MAX_SVG_BYTES: u64 = 16 * 1_048_576;
 
 /// Ways an SVG generator states its own pixel density.
 ///
@@ -62,6 +66,35 @@ pub fn import_svg_report(src: &str) -> Result<ImportReport> {
 
 /// Import an SVG, checking `cancel` between XML events and top-level elements.
 pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Result<ImportReport> {
+    import_svg_report_with_base(src, None, cancel)
+}
+
+/// Import an SVG from a file, allowing `<use>` to reference sibling `.svg` files.
+pub fn import_svg_file_report_cancellable(
+    path: &FsPath,
+    cancel: &dyn Fn() -> bool,
+) -> Result<ImportReport> {
+    import_svg_file_report(path, cancel)
+}
+
+fn import_svg_file_report(path: &FsPath, cancel: &dyn Fn() -> bool) -> Result<ImportReport> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_SVG_BYTES {
+        return Err(BeamError::InvalidInput(format!(
+            "the SVG is larger than the {} MB limit",
+            MAX_SVG_BYTES / 1_048_576
+        )));
+    }
+    let source = std::fs::read_to_string(path)?;
+    let base = path.parent();
+    import_svg_report_with_base(&source, base, cancel)
+}
+
+fn import_svg_report_with_base(
+    src: &str,
+    base_dir: Option<&FsPath>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<ImportReport> {
     let mut root = parse_tree_cancellable(src, cancel)?;
     if root.name != "svg" {
         return Err(BeamError::InvalidInput(
@@ -119,6 +152,7 @@ pub fn import_svg_report_cancellable(src: &str, cancel: &dyn Fn() -> bool) -> Re
             &ids,
             0,
             dpi,
+            base_dir,
         );
     }
 
@@ -300,6 +334,118 @@ fn collect_ids<'a>(node: &'a Node, ids: &mut HashMap<String, &'a Node>) {
     }
 }
 
+/// Expand `<use href="sibling.svg#id">` when the importer knows its folder.
+#[allow(clippy::too_many_arguments)]
+fn expand_external_use(
+    node: &Node,
+    file: &str,
+    id: &str,
+    transform: Transform2,
+    style: &SvgStyle,
+    doc: &mut Document,
+    layer_id: &str,
+    warnings: &mut Vec<String>,
+    depth: usize,
+    dpi: f64,
+    base_dir: Option<&FsPath>,
+) {
+    let Some(base) = base_dir else {
+        warnings.push(format!(
+            "<use> to the external reference '{file}#{id}' needs a file path"
+        ));
+        return;
+    };
+    let candidate = base.join(file);
+    if candidate
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_none_or(|extension| !extension.eq_ignore_ascii_case("svg"))
+    {
+        warnings.push(format!(
+            "<use> to '{file}#{id}' was skipped: only .svg files are supported"
+        ));
+        return;
+    }
+    let canonical = match std::fs::canonicalize(&candidate) {
+        Ok(path) => path,
+        Err(error) => {
+            warnings.push(format!("<use> to '{file}#{id}' was skipped: {error}"));
+            return;
+        }
+    };
+    let base_canonical = std::fs::canonicalize(base).unwrap_or_else(|_| base.to_path_buf());
+    if !canonical.starts_with(&base_canonical) {
+        warnings.push(format!(
+            "<use> to '{file}#{id}' was skipped: outside the import folder"
+        ));
+        return;
+    }
+    if depth >= 8 {
+        warnings.push("<use> nesting is too deep".to_string());
+        return;
+    }
+    if std::fs::metadata(&canonical).map_or(0, |metadata| metadata.len()) > MAX_SVG_BYTES {
+        warnings.push(format!(
+            "<use> to '{file}#{id}' was skipped: the file is too large"
+        ));
+        return;
+    }
+    let Ok(source) = std::fs::read_to_string(&canonical) else {
+        warnings.push(format!(
+            "<use> to '{file}#{id}' was skipped: cannot read the file"
+        ));
+        return;
+    };
+    let Ok(external) = parse_tree(&source) else {
+        warnings.push(format!("<use> to '{file}#{id}' was skipped: invalid SVG"));
+        return;
+    };
+    let mut external_ids = HashMap::new();
+    collect_ids(&external, &mut external_ids);
+    let Some(target) = external_ids.get(id).copied() else {
+        warnings.push(format!("<use> to '{file}#{id}' was skipped: missing #{id}"));
+        return;
+    };
+    let offset = Transform2::translate(
+        node.number("x").unwrap_or(0.0),
+        node.number("y").unwrap_or(0.0),
+    );
+    let transform = transform
+        .compose(&offset)
+        .compose(&use_view_box_transform(target, node));
+    let next_base = canonical.parent();
+    match target.name.as_str() {
+        "symbol" | "g" | "svg" => {
+            for child in &target.children {
+                process_node(
+                    child,
+                    transform,
+                    style,
+                    doc,
+                    layer_id,
+                    warnings,
+                    &external_ids,
+                    depth + 1,
+                    dpi,
+                    next_base,
+                );
+            }
+        }
+        _ => process_node(
+            target,
+            transform,
+            style,
+            doc,
+            layer_id,
+            warnings,
+            &external_ids,
+            depth + 1,
+            dpi,
+            next_base,
+        ),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn process_node(
     node: &Node,
@@ -311,6 +457,7 @@ fn process_node(
     ids: &HashMap<String, &Node>,
     depth: usize,
     dpi: f64,
+    base_dir: Option<&FsPath>,
 ) {
     let local = node
         .attr("transform")
@@ -323,7 +470,7 @@ fn process_node(
         "g" | "a" | "svg" => {
             for child in &node.children {
                 process_node(
-                    child, transform, &style, doc, layer_id, warnings, ids, depth, dpi,
+                    child, transform, &style, doc, layer_id, warnings, ids, depth, dpi, base_dir,
                 );
             }
         }
@@ -364,6 +511,7 @@ fn process_node(
                                         ids,
                                         depth + 1,
                                         dpi,
+                                        base_dir,
                                     );
                                 }
                             }
@@ -377,13 +525,19 @@ fn process_node(
                                 ids,
                                 depth + 1,
                                 dpi,
+                                base_dir,
                             ),
                         }
                     }
                 }
+            } else if let Some((file, id)) = href.split_once('#') {
+                expand_external_use(
+                    node, file, id, transform, &style, doc, layer_id, warnings, depth, dpi,
+                    base_dir,
+                );
             } else {
                 warnings.push(format!(
-                    "<use> to the external reference '{href}' is not supported"
+                    "<use> to the external reference '{href}' has no #id"
                 ));
             }
         }
@@ -1577,6 +1731,61 @@ mod tests {
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
         );
+    }
+
+    #[test]
+    fn external_use_resolves_a_sibling_svg() {
+        let directory = std::env::temp_dir().join(format!("bw_svg_ext_{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("external.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><rect id="r" x="1" y="1" width="4" height="4"/></defs></svg>"#,
+        )
+        .unwrap();
+        let main = directory.join("main.svg");
+        std::fs::write(
+            &main,
+            r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><use href="external.svg#r" x="5" y="6"/></svg>"#,
+        )
+        .unwrap();
+        let report = import_svg_file_report(&main, &|| false).unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 6.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 10.0).abs() < 1e-6, "{max:?}");
+        // SVG y is flipped in a 20 mm document: local 7..11 becomes 9..13.
+        assert!((min.y - 9.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 13.0).abs() < 1e-6, "{max:?}");
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn external_use_outside_the_folder_is_reported() {
+        let root = std::env::temp_dir().join(format!("bw_svg_ext_out_{}", std::process::id()));
+        let inner = root.join("inner");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(
+            root.join("outside.svg"),
+            r#"<svg><rect id="r" width="4" height="4"/></svg>"#,
+        )
+        .unwrap();
+        let main = inner.join("main.svg");
+        std::fs::write(
+            &main,
+            r#"<svg width="10mm" height="10mm"><use href="../outside.svg#r"/></svg>"#,
+        )
+        .unwrap();
+        let report = import_svg_file_report(&main, &|| false).unwrap();
+        assert!(report.document.objects.is_empty());
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("outside the import folder")),
+            "{:?}",
+            report.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

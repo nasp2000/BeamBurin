@@ -45,8 +45,7 @@ pub fn import_with_report_cancellable(
     }
     let outcome = match detect_format(path) {
         "svg" => {
-            let source = std::fs::read_to_string(path)?;
-            let report = crate::import::svg::import_svg_report_cancellable(&source, cancel)?;
+            let report = crate::import::svg::import_svg_file_report_cancellable(path, cancel)?;
             ImportOutcome {
                 document: report.document,
                 warnings: report.warnings,
