@@ -4446,3 +4446,105 @@ fn the_main_dialogs_expose_named_accessibility_nodes() {
         "the status bar is not exposed as a named live region"
     );
 }
+
+#[test]
+fn the_main_dialogs_keep_a_logical_focus_order() {
+    use egui_kittest::kittest::NodeT as _;
+    use egui_kittest::kittest::Queryable as _;
+
+    fn focused_label(harness: &egui_kittest::Harness<'static, BeamBurinApp>) -> String {
+        harness
+            .root()
+            .children_recursive()
+            .find(egui_kittest::Node::is_focused)
+            .and_then(|node| node.accesskit_node().label())
+            .unwrap_or_default()
+    }
+
+    fn focus_labels(
+        harness: &mut egui_kittest::Harness<'static, BeamBurinApp>,
+        start: &str,
+        steps: usize,
+    ) -> Vec<String> {
+        harness.get_by_label(start).focus();
+        harness.run();
+        let mut labels = Vec::new();
+        for _ in 0..steps {
+            labels.push(focused_label(harness));
+            harness.key_press(egui::Key::Tab);
+            harness.run();
+        }
+        labels
+    }
+
+    let mut app = ui_test_app();
+    app.open_dialog(FileMode::OpenProject);
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert_eq!(
+        focus_labels(&mut harness, "Path", 3),
+        vec!["Path", "Go", "New folder"],
+        "the file dialog does not follow its visual order"
+    );
+
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Close").focus();
+    harness.run();
+    harness.key_press(egui::Key::Tab);
+    harness.run();
+    let after_close = focused_label(&harness);
+    assert!(
+        ![
+            "File",
+            "Edit",
+            "Draw",
+            "Operations",
+            "Materials and profiles",
+            "Arrange",
+            "View",
+            "Help",
+        ]
+        .contains(&after_close.as_str()),
+        "Tab left the export presets dialog for the menu bar: {after_close}"
+    );
+
+    let mut app = ui_test_app();
+    app.cuts_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert_eq!(
+        focus_labels(&mut harness, "G-code dialect", 3),
+        vec!["G-code dialect", "Smooth paths (mm)", "Decimals"],
+        "the cuts dialog does not follow its visual order"
+    );
+
+    let directory = ui_temp_path("focus_image");
+    std::fs::create_dir_all(&directory).expect("temp");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&path).expect("import");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("More options").click_accesskit();
+    harness.run();
+    assert_eq!(
+        focus_labels(&mut harness, "Image mode", 5),
+        vec![
+            "Image mode",
+            "Negative image",
+            "Line interval (mm)",
+            "Halftone angle",
+            "Contrast"
+        ],
+        "the image settings do not follow their visual order"
+    );
+}

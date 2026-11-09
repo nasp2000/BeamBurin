@@ -927,7 +927,7 @@ impl BeamBurinApp {
              and the job origin.",
         );
         ui.horizontal(|ui| {
-            let name_label = ui.label("Preset name");
+            let name_label = ui.label("G-code preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.export_preset_name)
                     .hint_text("Preset name")
@@ -1012,7 +1012,7 @@ impl BeamBurinApp {
              The area (page, selection or drawing) is chosen per export.",
         );
         ui.horizontal(|ui| {
-            let name_label = ui.label("Preset name");
+            let name_label = ui.label("Image preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.image_export_preset_name)
                     .hint_text("Preset name")
@@ -1126,7 +1126,7 @@ impl BeamBurinApp {
                 })
                 .response
                 .labelled_by(format_label.id);
-            let name_label = ui.label("Preset name");
+            let name_label = ui.label("Vector preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.vector_export_preset_name)
                     .hint_text("Preset name")

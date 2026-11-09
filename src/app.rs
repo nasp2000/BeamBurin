@@ -1851,6 +1851,22 @@ impl BeamBurinApp {
 }
 
 impl BeamBurinApp {
+    /// Whether a blocking dialog owns the keyboard and pointer.
+    fn modal_open(&self) -> bool {
+        self.dialog.is_some()
+            || self.export_image_open
+            || self.export_svg_open
+            || self.export_dxf_open
+            || self.export_vector_open
+            || self.export_presets_open
+            || self.image_adjust.is_some()
+            || self.text_editor_open
+            || self.corner_radius_open
+            || self.position_open
+            || self.barcode_open
+            || self.cuts_open
+    }
+
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         if let Some(remaining) = self.smoke_frames {
@@ -1886,18 +1902,21 @@ impl BeamBurinApp {
         crate::theme::apply(ui.ctx(), self.dark_mode);
         ui.style_mut().spacing.item_spacing = egui::vec2(8.0, 6.0);
         ui.style_mut().spacing.button_padding = egui::vec2(8.0, 5.0);
-        self.shortcuts(ui);
-        self.menu_bar(ui);
-        self.toolbar(ui);
         self.status_bar(ui);
-        self.tool_strip(ui);
-        if self.show_layers_panel {
-            self.layers_panel(ui);
-        }
-        if self.show_properties_panel {
-            self.side_panel(ui);
-        }
-        self.canvas(ui);
+        let modal = self.modal_open();
+        ui.add_enabled_ui(!modal, |ui| {
+            self.shortcuts(ui);
+            self.menu_bar(ui);
+            self.toolbar(ui);
+            self.tool_strip(ui);
+            if self.show_layers_panel {
+                self.layers_panel(ui);
+            }
+            if self.show_properties_panel {
+                self.side_panel(ui);
+            }
+            self.canvas(ui);
+        });
         let ctx = ui.ctx().clone();
         self.dialogs(&ctx);
         self.paint_toasts(&ctx);

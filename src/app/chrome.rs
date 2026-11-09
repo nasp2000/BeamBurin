@@ -15,6 +15,7 @@ impl BeamBurinApp {
             || self.cuts_open
             || self.row_settings.is_some()
             || self.image_adjust.is_some()
+            || self.modal_open()
             || self.help_shortcuts_open
             || self.assistant_open
             || self.constraints_open
