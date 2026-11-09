@@ -338,610 +338,689 @@ impl BeamBurinApp {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
                 }
-                let preview_width = ((ui.available_width() - 24.0) / 2.0).clamp(220.0, 420.0);
-                ui.horizontal_top(|ui| {
+                ui.set_min_height(660.0);
+                let preview_width = ((ui.available_width() - 44.0) / 2.0).clamp(260.0, 450.0);
+                let preview_height = 340.0;
+                ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label("Original");
-                        if let Some(texture) = &original_texture {
-                            ui.add(
-                                egui::Image::new(texture)
-                                    .max_size(egui::vec2(preview_width, 340.0))
-                                    .shrink_to_fit(),
-                            );
-                        } else {
-                            ui.weak("Cannot read the image file");
-                        }
-                        ui.weak(format!("{} x {} px", image.width_px, image.height_px));
+                        ui.allocate_ui(egui::vec2(preview_width, preview_height), |ui| {
+                            ui.vertical_centered(|ui| {
+                                if let Some(texture) = &original_texture {
+                                    ui.add(
+                                        egui::Image::new(texture)
+                                            .max_size(egui::vec2(preview_width, preview_height))
+                                            .shrink_to_fit(),
+                                    );
+                                } else {
+                                    ui.weak("Cannot read the image file");
+                                }
+                            });
+                        });
+                        ui.vertical_centered(|ui| {
+                            ui.weak(format!("{} x {}", image.width_px, image.height_px));
+                        });
                     });
                     ui.separator();
                     ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("Preview");
-                            ui.checkbox(&mut burn_map, "Burn map");
-                            ui.checkbox(&mut invert_display, "Invert display");
-                            let label = if (zoom - 1.0).abs() < f32::EPSILON {
-                                "1:1".to_string()
-                            } else if zoom > 0.0 {
-                                format!("{zoom:.0}×")
-                            } else {
-                                "Fit".to_string()
-                            };
-                            egui::ComboBox::from_id_salt("image_preview_zoom")
-                                .selected_text(label)
-                                .width(70.0)
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut zoom, 0.0, "Fit");
-                                    ui.selectable_value(&mut zoom, 1.0, "1:1");
-                                    ui.selectable_value(&mut zoom, 2.0, "2×");
-                                    ui.selectable_value(&mut zoom, 4.0, "4×");
-                                });
-                        });
-                        if let Some(texture) = burn_texture
-                            .as_ref()
-                            .or(invert_texture.as_ref())
-                            .or(processed_texture.as_ref())
-                        {
-                            if zoom > 0.0 {
-                                egui::ScrollArea::both()
-                                    .id_salt("image_preview_zoom_scroll")
-                                    .max_width(preview_width)
-                                    .max_height(340.0)
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
+                        ui.allocate_ui(egui::vec2(preview_width, preview_height), |ui| {
+                            ui.vertical_centered(|ui| {
+                                let texture = burn_texture
+                                    .as_ref()
+                                    .or(invert_texture.as_ref())
+                                    .or(processed_texture.as_ref());
+                                if let Some(texture) = texture {
+                                    if zoom > 0.0 {
+                                        egui::ScrollArea::both()
+                                            .id_salt("image_preview_zoom_scroll")
+                                            .max_width(preview_width)
+                                            .max_height(preview_height)
+                                            .auto_shrink([false, false])
+                                            .show(ui, |ui| {
+                                                ui.add(
+                                                    egui::Image::new(texture).fit_to_exact_size(
+                                                        texture.size_vec2() * zoom,
+                                                    ),
+                                                );
+                                            });
+                                    } else {
                                         ui.add(
                                             egui::Image::new(texture)
-                                                .fit_to_exact_size(texture.size_vec2() * zoom),
+                                                .max_size(egui::vec2(
+                                                    preview_width,
+                                                    preview_height,
+                                                ))
+                                                .shrink_to_fit(),
                                         );
-                                    });
-                            } else {
-                                ui.add(
-                                    egui::Image::new(texture)
-                                        .max_size(egui::vec2(320.0, 220.0))
-                                        .shrink_to_fit(),
-                                );
-                            }
-                        } else {
-                            ui.weak("No preview available");
-                        }
-                        let (work_width, work_height) = image.effective_size_px();
-                        ui.weak(format!(
-                            "{work_width} x {work_height} px at {:.0} dpi",
-                            image.effective_dpi()
-                        ));
-                        ui.weak(format!(
-                            "{:.1} x {:.1} mm at {:.0} dpi",
-                            image.width_mm(),
-                            image.height_mm(),
-                            image.effective_dpi()
-                        ));
-                        if let Some(preview) = self.image_previews.get(&id) {
-                            ui.weak(preview.stats.coverage_text());
-                            if let Some((name, speed, power, passes)) = &cut_entry {
-                                let passes_text = if *passes == 1 {
-                                    "1 pass".to_string()
+                                    }
                                 } else {
-                                    format!("{passes} passes")
-                                };
-                                ui.weak(format!(
-                                    "{name}: {speed:.0} mm/min, {power:.0}%, {passes_text}"
-                                ));
-                                if let Some((_, _, seconds)) = crate::raster::estimate_engraving(
-                                    preview.stats,
-                                    image.width_mm(),
-                                    *speed,
-                                ) {
-                                    let seconds = seconds * f64::from(*passes);
-                                    let minutes = seconds / 60.0;
-                                    let time = if minutes >= 1.5 {
-                                        format!("{minutes:.1} min")
-                                    } else {
-                                        format!("{seconds:.0} s")
-                                    };
-                                    ui.weak(format!("Estimated: {time} at this cut entry"));
+                                    ui.weak("No preview available");
                                 }
-                            }
-                        }
+                            });
+                        });
+                        ui.horizontal(|ui| {
+                            let (work_width, work_height) = image.effective_size_px();
+                            ui.weak(format!("{work_width} x {work_height}"));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.checkbox(&mut invert_display, "Invert display");
+                                },
+                            );
+                        });
                     });
                 });
-                draw_histogram(ui, &histogram, &image.settings);
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("image_adjust_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            egui::Grid::new("image_target_resolution")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label("Target DPI");
-                                    ui.add(
-                                        egui::DragValue::new(&mut target_dpi)
-                                            .speed(1.0)
-                                            .range(50.0..=1000.0)
-                                            .fixed_decimals(0),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Target width (mm)");
-                                    ui.add(
-                                        egui::DragValue::new(&mut target_width_mm)
-                                            .speed(0.5)
-                                            .range(1.0..=10000.0)
-                                            .fixed_decimals(1)
-                                            .suffix(" mm"),
-                                    );
-                                    ui.end_row();
-                                });
-                            let current_px = image.effective_size_px().0;
-                            match crate::objects::target_resolution(
-                                target_width_mm,
-                                target_dpi,
-                                current_px,
-                            ) {
-                                Some(target) => {
-                                    ui.weak(format!(
-                            "Needs {} px wide; the current {} px reach {:.0} dpi at {:.1} mm",
-                            target.required_width_px,
-                            current_px,
-                            target.effective_dpi,
-                            target_width_mm
-                        ));
-                                    if target.low_resolution {
-                                        let warning = ui.visuals().warn_fg_color;
-                                        ui.colored_label(
-                                            warning,
-                                            format!(
-                                                "Below {:.0} dpi: detail may be lost.",
-                                                crate::objects::LOW_DPI_THRESHOLD
-                                            ),
-                                        );
+                ui.horizontal(|ui| {
+                    if ui.button("Reset All").clicked() {
+                        reset = true;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let selected_profile = self.selected_image_profile.clone();
+                        let removable = selected_profile
+                            .as_deref()
+                            .and_then(|id| self.profiles.image(id))
+                            .is_some_and(|profile| !profile.builtin);
+                        if ui
+                            .add_enabled(removable, egui::Button::new("Delete preset"))
+                            .on_hover_text("Remove the selected image profile")
+                            .clicked()
+                        {
+                            if let Some(id) = &selected_profile {
+                                match self.profiles.remove_image(id) {
+                                    Ok(()) => {
+                                        self.selected_image_profile = None;
+                                        self.save_profiles();
+                                        self.status = "Image profile deleted".to_string();
                                     }
-                                }
-                                None => {
-                                    ui.weak("Enter a positive width and DPI");
+                                    Err(error) => self.status = error,
                                 }
                             }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui
-                                .button("Apply target")
-                                .on_hover_text(
-                                    "Set the working size and line interval from the target width and DPI",
-                                )
-                                .clicked()
-                            {
-                                let (work_width, work_height) = image.effective_size_px();
-                                let aspect =
-                                    f64::from(work_height) / f64::from(work_width.max(1));
-                                match crate::objects::engraving_resolution(
-                                    target_width_mm,
-                                    target_dpi,
-                                    aspect,
-                                ) {
-                                    Some((width, height, interval)) => {
-                                        image.settings.target_width_px = width;
-                                        image.settings.target_height_px = height;
-                                        image.settings.line_interval_mm = interval;
-                                        target_message = Some(format!(
-                                            "Target applied: {width} x {height} px, {interval:.3} mm line interval"
-                                        ));
-                                    }
-                                    None => {
-                                        target_message = Some(
-                                            "The target leaves the supported working range."
-                                                .to_string(),
-                                        );
-                                    }
+                        }
+                        if ui
+                            .add_enabled(
+                                selected_profile.is_some(),
+                                egui::Button::new("Duplicate preset"),
+                            )
+                            .on_hover_text("Copy the selected image profile")
+                            .clicked()
+                        {
+                            if let Some(id) = &selected_profile {
+                                if let Some(copy) = self.profiles.duplicate_image(id) {
+                                    self.selected_image_profile = Some(copy);
+                                    self.save_profiles();
+                                    self.status = "Image profile duplicated".to_string();
                                 }
                             }
-                        });
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            egui::Grid::new("image_adjust_layers")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label("Image mode");
-                                    let mut mode = image.settings.mode;
-                                    egui::ComboBox::from_id_salt("image_adjust_mode")
-                                        .selected_text(mode.label())
-                                        .show_ui(ui, |ui| {
-                                            for candidate in crate::objects::ImageMode::all() {
-                                                ui.selectable_value(
-                                                    &mut mode,
-                                                    candidate,
-                                                    candidate.label(),
-                                                )
-                                                .on_hover_text(candidate.hint());
-                                            }
-                                        });
-                                    image.settings.mode = mode;
-                                    ui.end_row();
-                                    ui.label("Negative image");
-                                    let negative = ui.checkbox(&mut image.settings.invert, "");
-                                    negative.widget_info(|| {
-                                        egui::WidgetInfo::selected(
-                                            egui::WidgetType::Checkbox,
-                                            true,
-                                            image.settings.invert,
-                                            "Negative image",
-                                        )
+                        }
+                        let preset_label = self
+                            .selected_image_profile
+                            .as_deref()
+                            .and_then(|id| self.profiles.image(id))
+                            .map_or_else(|| "Presets".to_string(), |profile| profile.name.clone());
+                        egui::ComboBox::from_id_salt("image_adjust_presets")
+                            .selected_text(preset_label)
+                            .width(180.0)
+                            .show_ui(ui, |ui| {
+                                for profile in &self.profiles.images {
+                                    let selected = self.selected_image_profile.as_deref()
+                                        == Some(profile.id.as_str());
+                                    if ui.selectable_label(selected, &profile.name).clicked() {
+                                        preset = Some(profile.settings);
+                                        self.selected_image_profile = Some(profile.id.clone());
+                                    }
+                                }
+                            });
+                    });
+                });
+                ui.add_space(4.0);
+                ui.horizontal_top(|ui| {
+                    let group_width = ((ui.available_width() - 40.0) / 2.0).max(320.0);
+                    ui.group(|ui| {
+                        ui.set_width(group_width);
+                        ui.strong("Layer Settings");
+                        egui::Grid::new("image_layer_settings")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                ui.label("Image mode");
+                                let mut mode = image.settings.mode;
+                                egui::ComboBox::from_id_salt("image_adjust_mode")
+                                    .selected_text(mode.label())
+                                    .show_ui(ui, |ui| {
+                                        for candidate in crate::objects::ImageMode::all() {
+                                            ui.selectable_value(
+                                                &mut mode,
+                                                candidate,
+                                                candidate.label(),
+                                            )
+                                            .on_hover_text(candidate.hint());
+                                        }
                                     });
-                                    ui.end_row();
-                                    ui.label("Cells per inch");
-                                    ui.weak(format!(
-                                        "{:.1}",
-                                        25.4 / image.settings.line_interval_mm.max(0.001)
-                                    ));
-                                    ui.end_row();
-                                    ui.label("Line interval (mm)");
-                                    ui.add(
-                                        egui::DragValue::new(&mut image.settings.line_interval_mm)
-                                            .speed(0.01)
-                                            .range(0.01..=2.0),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Halftone angle");
-                                    ui.add(
-                                        egui::DragValue::new(
-                                            &mut image.settings.halftone_angle_degrees,
-                                        )
-                                        .speed(0.5)
-                                        .range(-360.0..=360.0)
-                                        .suffix(" deg"),
-                                    );
-                                    ui.end_row();
-                                    ui.label("DPI");
-                                    ui.weak(format!("{:.0}", image.effective_dpi()));
-                                    ui.end_row();
+                                image.settings.mode = mode;
+                                ui.end_row();
+                                ui.label("Negative image");
+                                let negative = ui.checkbox(&mut image.settings.invert, "");
+                                negative.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        image.settings.invert,
+                                        "Negative image",
+                                    )
                                 });
-                            ui.separator();
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut mask, "Mask");
-                                ui.weak("Limit the engraved area (source pixels)");
-                                if ui.button("Full image").clicked() {
-                                    mask = false;
-                                }
-                            });
-                            if mask {
-                                ui.horizontal(|ui| {
-                                    ui.label("Mask X");
-                                    ui.add(
-                                        egui::DragValue::new(&mut mask_x)
-                                            .range(0..=image.width_px.saturating_sub(1)),
-                                    );
-                                    ui.label("Mask Y");
-                                    ui.add(
-                                        egui::DragValue::new(&mut mask_y)
-                                            .range(0..=image.height_px.saturating_sub(1)),
-                                    );
-                                    ui.label("Mask W");
-                                    ui.add(
-                                        egui::DragValue::new(&mut mask_w)
-                                            .range(1..=image.width_px.max(1)),
-                                    );
-                                    ui.label("Mask H");
-                                    ui.add(
-                                        egui::DragValue::new(&mut mask_h)
-                                            .range(1..=image.height_px.max(1)),
-                                    );
-                                });
-                            }
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut image.mask_alpha, "Transparent pixels");
-                                ui.add_enabled(
-                                    image.mask_alpha,
-                                    egui::DragValue::new(&mut image.mask_alpha_threshold)
-                                        .range(1..=255)
-                                        .speed(1),
-                                );
-                                ui.weak("alpha below this is background");
-                            });
-                            ui.horizontal(|ui| {
-                                ui.strong("Colour mask");
-                                ui.weak("Treat these colours as background");
-                                if !image.mask_colours.is_empty()
-                                    && ui.button("Clear colours").clicked()
-                                {
-                                    image.mask_colours.clear();
-                                }
-                            });
-                            for row in super::layers::DRAWING_COLOURS.chunks(10) {
-                                ui.horizontal(|ui| {
-                                    for colour in row {
-                                        image_mask_colour_button(ui, &mut image, colour);
-                                    }
-                                });
-                            }
-                            ui.horizontal(|ui| {
-                                ui.label("Tolerance");
+                                ui.end_row();
+                                ui.label("Cells per inch");
+                                ui.weak(format!(
+                                    "{:.1}",
+                                    25.4 / image.settings.line_interval_mm.max(0.001)
+                                ));
+                                ui.end_row();
+                                ui.label("Line interval (mm)");
                                 ui.add(
-                                    egui::DragValue::new(&mut image.mask_tolerance)
-                                        .range(0..=255)
-                                        .speed(1),
+                                    egui::DragValue::new(&mut image.settings.line_interval_mm)
+                                        .speed(0.01)
+                                        .range(0.01..=2.0),
                                 );
-                                ui.weak("per channel, 0 matches only the exact colour");
+                                ui.end_row();
+                                ui.label("Halftone angle");
+                                ui.add(
+                                    egui::DragValue::new(
+                                        &mut image.settings.halftone_angle_degrees,
+                                    )
+                                    .speed(0.5)
+                                    .range(-360.0..=360.0)
+                                    .suffix(" deg"),
+                                );
+                                ui.end_row();
+                                ui.label("DPI");
+                                ui.weak(format!("{:.1}", image.effective_dpi()));
+                                ui.end_row();
                             });
-                            egui::Grid::new("image_adjust_settings")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label("Contrast");
-                                    ui.add(
-                                        egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0)
-                                            .fixed_decimals(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Brightness");
-                                    ui.add(
-                                        egui::Slider::new(
-                                            &mut image.settings.brightness,
-                                            -100..=100,
-                                        )
-                                        .fixed_decimals(0),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Shadows");
-                                    ui.add(
-                                        egui::Slider::new(
-                                            &mut image.settings.shadow_lift,
-                                            -1.0..=1.0,
-                                        )
+                    });
+                    ui.group(|ui| {
+                        ui.set_width(group_width);
+                        ui.strong("Image Settings");
+                        egui::Grid::new("image_adjust_settings")
+                            .num_columns(3)
+                            .spacing([8.0, 6.0])
+                            .show(ui, |ui| {
+                                ui.label("Contrast");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0)
+                                        .show_value(false),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.contrast)
+                                        .speed(0.01)
+                                        .range(0.25..=3.0)
                                         .fixed_decimals(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Midtones");
-                                    ui.add(
-                                        egui::Slider::new(
-                                            &mut image.settings.midtone_shift,
-                                            -1.0..=1.0,
-                                        )
+                                );
+                                ui.end_row();
+                                ui.label("Brightness");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.brightness, -100..=100)
+                                        .show_value(false),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.brightness)
+                                        .speed(1.0)
+                                        .range(-100..=100),
+                                );
+                                ui.end_row();
+                                ui.label("Enhance Radius");
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut image.settings.enhance_radius_px,
+                                        0..=32,
+                                    )
+                                    .show_value(false),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.enhance_radius_px)
+                                        .range(0..=32),
+                                );
+                                ui.end_row();
+                                ui.label("Enhance Amount");
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut image.settings.enhance_amount,
+                                        0.0..=5.0,
+                                    )
+                                    .show_value(false),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.enhance_amount)
+                                        .speed(0.05)
+                                        .range(0.0..=5.0)
                                         .fixed_decimals(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Highlights");
-                                    ui.add(
-                                        egui::Slider::new(
-                                            &mut image.settings.highlight_lift,
-                                            -1.0..=1.0,
-                                        )
+                                );
+                                ui.end_row();
+                                ui.label("Gamma");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0)
+                                        .show_value(false),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.gamma)
+                                        .speed(0.01)
+                                        .range(0.2..=3.0)
                                         .fixed_decimals(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Tone curve");
-                                    if ui.button("Reset curve").clicked() {
-                                        image.settings.shadow_lift = 0.0;
-                                        image.settings.midtone_shift = 0.0;
-                                        image.settings.highlight_lift = 0.0;
+                                );
+                                ui.end_row();
+                            });
+                    });
+                });
+                ui.add_space(4.0);
+                egui::CollapsingHeader::new("More options")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("image_more_scroll")
+                            .max_height(220.0)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut burn_map, "Burn map");
+                                    let label = if (zoom - 1.0).abs() < f32::EPSILON {
+                                        "1:1".to_string()
+                                    } else if zoom > 0.0 {
+                                        format!("{zoom:.0}×")
+                                    } else {
+                                        "Fit".to_string()
+                                    };
+                                    ui.label("Zoom");
+                                    egui::ComboBox::from_id_salt("image_preview_zoom")
+                                        .selected_text(label)
+                                        .width(70.0)
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut zoom, 0.0, "Fit");
+                                            ui.selectable_value(&mut zoom, 1.0, "1:1");
+                                            ui.selectable_value(&mut zoom, 2.0, "2×");
+                                            ui.selectable_value(&mut zoom, 4.0, "4×");
+                                        });
+                                    ui.checkbox(&mut compare, "Compare with original");
+                                });
+                                draw_histogram(ui, &histogram, &image.settings);
+                                ui.separator();
+                                ui.horizontal(|ui| {
+                                    egui::Grid::new("image_target_resolution")
+                                        .num_columns(2)
+                                        .spacing([12.0, 6.0])
+                                        .show(ui, |ui| {
+                                            ui.label("Target DPI");
+                                            ui.add(
+                                                egui::DragValue::new(&mut target_dpi)
+                                                    .speed(1.0)
+                                                    .range(50.0..=1000.0)
+                                                    .fixed_decimals(0),
+                                            );
+                                            ui.end_row();
+                                            ui.label("Target width (mm)");
+                                            ui.add(
+                                                egui::DragValue::new(&mut target_width_mm)
+                                                    .speed(0.5)
+                                                    .range(1.0..=10000.0)
+                                                    .fixed_decimals(1)
+                                                    .suffix(" mm"),
+                                            );
+                                            ui.end_row();
+                                        });
+                                    let current_px = image.effective_size_px().0;
+                                    match crate::objects::target_resolution(
+                                        target_width_mm,
+                                        target_dpi,
+                                        current_px,
+                                    ) {
+                                        Some(target) => {
+                                            ui.weak(format!(
+                                                "Needs {} px wide; the current {} px reach {:.0} dpi at {:.1} mm",
+                                                target.required_width_px,
+                                                current_px,
+                                                target.effective_dpi,
+                                                target_width_mm
+                                            ));
+                                            if target.low_resolution {
+                                                let warning = ui.visuals().warn_fg_color;
+                                                ui.colored_label(
+                                                    warning,
+                                                    format!(
+                                                        "Below {:.0} dpi: detail may be lost.",
+                                                        crate::objects::LOW_DPI_THRESHOLD
+                                                    ),
+                                                );
+                                            }
+                                        }
+                                        None => {
+                                            ui.weak("Enter a positive width and DPI");
+                                        }
                                     }
-                                    ui.end_row();
-                                    ui.label("Gamma");
-                                    ui.add(
-                                        egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0)
-                                            .fixed_decimals(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Enhance radius");
-                                    ui.add(
-                                        egui::DragValue::new(&mut image.settings.enhance_radius_px)
-                                            .range(0..=32)
-                                            .suffix(" px"),
-                                    );
-                                    ui.end_row();
-                                    ui.label("Black / white clip");
+                                });
+                                if ui
+                                    .button("Apply target")
+                                    .on_hover_text(
+                                        "Set the working size and line interval from the target width and DPI",
+                                    )
+                                    .clicked()
+                                {
+                                    let (work_width, work_height) = image.effective_size_px();
+                                    let aspect =
+                                        f64::from(work_height) / f64::from(work_width.max(1));
+                                    match crate::objects::engraving_resolution(
+                                        target_width_mm,
+                                        target_dpi,
+                                        aspect,
+                                    ) {
+                                        Some((width, height, interval)) => {
+                                            image.settings.target_width_px = width;
+                                            image.settings.target_height_px = height;
+                                            image.settings.line_interval_mm = interval;
+                                            target_message = Some(format!(
+                                                "Target applied: {width} x {height} px, {interval:.3} mm line interval"
+                                            ));
+                                        }
+                                        None => {
+                                            target_message = Some(
+                                                "The target leaves the supported working range."
+                                                    .to_string(),
+                                            );
+                                        }
+                                    }
+                                }
+                                ui.separator();
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut mask, "Mask");
+                                    ui.weak("Limit the engraved area (source pixels)");
+                                    if ui.button("Full image").clicked() {
+                                        mask = false;
+                                    }
+                                });
+                                if mask {
                                     ui.horizontal(|ui| {
+                                        ui.label("Mask X");
+                                        ui.add(egui::DragValue::new(&mut mask_x).range(
+                                            0..=image.width_px.saturating_sub(1),
+                                        ));
+                                        ui.label("Mask Y");
+                                        ui.add(egui::DragValue::new(&mut mask_y).range(
+                                            0..=image.height_px.saturating_sub(1),
+                                        ));
+                                        ui.label("Mask W");
                                         ui.add(
-                                            egui::DragValue::new(&mut image.settings.black_clip)
-                                                .range(0..=254),
+                                            egui::DragValue::new(&mut mask_w)
+                                                .range(1..=image.width_px.max(1)),
                                         );
+                                        ui.label("Mask H");
                                         ui.add(
-                                            egui::DragValue::new(&mut image.settings.white_clip)
-                                                .range(1..=255),
+                                            egui::DragValue::new(&mut mask_h)
+                                                .range(1..=image.height_px.max(1)),
                                         );
                                     });
-                                    ui.end_row();
-                                    ui.label("Enhance amount");
-                                    ui.add(
-                                        egui::DragValue::new(&mut image.settings.enhance_amount)
-                                            .speed(0.05)
-                                            .range(0.0..=5.0)
-                                            .fixed_decimals(2),
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut image.mask_alpha, "Transparent pixels");
+                                    ui.add_enabled(
+                                        image.mask_alpha,
+                                        egui::DragValue::new(&mut image.mask_alpha_threshold)
+                                            .range(1..=255)
+                                            .speed(1),
                                     );
-                                    ui.end_row();
-                                    ui.label("Enhance denoise");
+                                    ui.weak("alpha below this is background");
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.strong("Colour mask");
+                                    ui.weak("Treat these colours as background");
+                                    if !image.mask_colours.is_empty()
+                                        && ui.button("Clear colours").clicked()
+                                    {
+                                        image.mask_colours.clear();
+                                    }
+                                });
+                                for row in super::layers::DRAWING_COLOURS.chunks(10) {
+                                    ui.horizontal(|ui| {
+                                        for colour in row {
+                                            image_mask_colour_button(ui, &mut image, colour);
+                                        }
+                                    });
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.label("Tolerance");
                                     ui.add(
-                                        egui::DragValue::new(&mut image.settings.enhance_denoise)
+                                        egui::DragValue::new(&mut image.mask_tolerance)
+                                            .range(0..=255)
+                                            .speed(1),
+                                    );
+                                    ui.weak("per channel, 0 matches only the exact colour");
+                                });
+                                ui.separator();
+                                egui::Grid::new("image_more_settings")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label("Shadows");
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut image.settings.shadow_lift,
+                                                -1.0..=1.0,
+                                            )
+                                            .fixed_decimals(2),
+                                        );
+                                        ui.end_row();
+                                        ui.label("Midtones");
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut image.settings.midtone_shift,
+                                                -1.0..=1.0,
+                                            )
+                                            .fixed_decimals(2),
+                                        );
+                                        ui.end_row();
+                                        ui.label("Highlights");
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut image.settings.highlight_lift,
+                                                -1.0..=1.0,
+                                            )
+                                            .fixed_decimals(2),
+                                        );
+                                        ui.end_row();
+                                        ui.label("Tone curve");
+                                        if ui.button("Reset curve").clicked() {
+                                            image.settings.shadow_lift = 0.0;
+                                            image.settings.midtone_shift = 0.0;
+                                            image.settings.highlight_lift = 0.0;
+                                        }
+                                        ui.end_row();
+                                        ui.label("Black / white clip");
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut image.settings.black_clip,
+                                                )
+                                                .range(0..=254),
+                                            );
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut image.settings.white_clip,
+                                                )
+                                                .range(1..=255),
+                                            );
+                                        });
+                                        ui.end_row();
+                                        ui.label("Enhance denoise");
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut image.settings.enhance_denoise,
+                                            )
                                             .speed(0.1)
                                             .range(0.0..=10.0)
                                             .fixed_decimals(1),
-                                    )
-                                    .on_hover_text(
-                                        "Keep low-contrast noise in smooth areas from being sharpened",
-                                    );
-                                    ui.end_row();
-                                    ui.label("Grey mix");
-                                    ui.horizontal(|ui| {
-                                        ui.add(
-                                            egui::DragValue::new(&mut image.settings.gray_red)
+                                        )
+                                        .on_hover_text(
+                                            "Keep low-contrast noise in smooth areas from being sharpened",
+                                        );
+                                        ui.end_row();
+                                        ui.label("Grey mix");
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut image.settings.gray_red,
+                                                )
                                                 .speed(0.01)
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
-                                        )
-                                        .on_hover_text("Red weight");
-                                        ui.add(
-                                            egui::DragValue::new(&mut image.settings.gray_green)
+                                            )
+                                            .on_hover_text("Red weight");
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut image.settings.gray_green,
+                                                )
                                                 .speed(0.01)
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
-                                        )
-                                        .on_hover_text("Green weight");
-                                        ui.add(
-                                            egui::DragValue::new(&mut image.settings.gray_blue)
+                                            )
+                                            .on_hover_text("Green weight");
+                                            ui.add(
+                                                egui::DragValue::new(
+                                                    &mut image.settings.gray_blue,
+                                                )
                                                 .speed(0.01)
                                                 .range(0.0..=1.0)
                                                 .fixed_decimals(2),
-                                        )
-                                        .on_hover_text("Blue weight");
+                                            )
+                                            .on_hover_text("Blue weight");
+                                        });
+                                        ui.end_row();
+                                        ui.label("Despeckle");
+                                        ui.checkbox(&mut image.settings.despeckle, "3×3 median");
+                                        ui.end_row();
                                     });
-                                    ui.end_row();
-                                    ui.label("Despeckle");
-                                    ui.checkbox(&mut image.settings.despeckle, "3×3 median");
-                                    ui.end_row();
-                                });
-                        });
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            egui::ComboBox::from_id_salt("image_adjust_presets")
-                                .selected_text("Presets")
-                                .width(180.0)
-                                .show_ui(ui, |ui| {
-                                    for profile in &self.profiles.images {
-                                        let selected = self.selected_image_profile.as_deref()
-                                            == Some(profile.id.as_str());
-                                        if ui.selectable_label(selected, &profile.name).clicked() {
-                                            preset = Some(profile.settings);
-                                            self.selected_image_profile =
-                                                Some(profile.id.clone());
-                                        }
+                                ui.separator();
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button("Photo").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::Jarvis,
+                                            contrast: 1.15,
+                                            gamma: 0.9,
+                                            enhance_radius_px: 1,
+                                            enhance_amount: 0.6,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
+                                    }
+                                    if ui.button("Wood").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::Stucki,
+                                            contrast: 1.25,
+                                            gamma: 1.1,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
+                                    }
+                                    if ui.button("Metal").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::Atkinson,
+                                            contrast: 1.4,
+                                            gamma: 1.2,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
+                                    }
+                                    if ui.button("Acrylic").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::FloydSteinberg,
+                                            contrast: 1.1,
+                                            gamma: 0.95,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
+                                    }
+                                    if ui.button("Newsprint").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::Newsprint,
+                                            contrast: 1.2,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
+                                    }
+                                    if ui.button("Sketch").clicked() {
+                                        preset = Some(crate::objects::ImageSettings {
+                                            mode: crate::objects::ImageMode::Sketch,
+                                            contrast: 1.3,
+                                            ..crate::objects::ImageSettings::default()
+                                        });
                                     }
                                 });
-                            let selected_profile = self.selected_image_profile.clone();
-                            if ui
-                                .add_enabled(
-                                    selected_profile.is_some(),
-                                    egui::Button::new("Duplicate preset"),
-                                )
-                                .on_hover_text("Copy the selected image profile")
-                                .clicked()
-                            {
-                                if let Some(id) = &selected_profile {
-                                    if let Some(copy) = self.profiles.duplicate_image(id) {
-                                        self.selected_image_profile = Some(copy);
-                                        self.save_profiles();
-                                        self.status = "Image profile duplicated".to_string();
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button("Auto levels").clicked() {
+                                        auto_levels = true;
                                     }
-                                }
-                            }
-                            let removable = selected_profile
-                                .as_deref()
-                                .and_then(|id| self.profiles.image(id))
-                                .is_some_and(|profile| !profile.builtin);
-                            if ui
-                                .add_enabled(removable, egui::Button::new("Delete preset"))
-                                .on_hover_text("Remove the selected image profile")
-                                .clicked()
-                            {
-                                if let Some(id) = &selected_profile {
-                                    match self.profiles.remove_image(id) {
-                                        Ok(()) => {
-                                            self.selected_image_profile = None;
-                                            self.save_profiles();
-                                            self.status = "Image profile deleted".to_string();
-                                        }
-                                        Err(error) => self.status = error,
+                                    if ui.button("Export prepared PNG").clicked() {
+                                        export_prepared = true;
                                     }
-                                }
-                            }
-                            if ui.button("Reset all").clicked() {
-                                reset = true;
-                            }
-                            if ui
-                                .button("Auto levels")
-                                .on_hover_text(
-                                    "Set the black and white clip from the image histogram",
-                                )
-                                .clicked()
-                            {
-                                auto_levels = true;
-                            }
-                            if ui.button("Export prepared PNG").clicked() {
-                                export_prepared = true;
-                            }
-                            if ui.button("Test grid...").clicked() {
-                                open_test_grid = true;
-                            }
-                            if ui.button("Apply to selected images").clicked() {
-                                apply_all = true;
-                            }
-                            if ui
-                                .button("Save as profile")
-                                .on_hover_text(
-                                    "Store the current settings as a reusable image profile",
-                                )
-                                .clicked()
-                            {
-                                let mut index = self.profiles.images.len() + 1;
-                                let name = loop {
-                                    let candidate = format!("Image profile {index}");
-                                    if !self
-                                        .profiles
-                                        .images
-                                        .iter()
-                                        .any(|profile| profile.name == candidate)
+                                    if ui.button("Test grid...").clicked() {
+                                        open_test_grid = true;
+                                    }
+                                    if ui.button("Apply to selected images").clicked() {
+                                        apply_all = true;
+                                    }
+                                    if ui
+                                        .button("Save as profile")
+                                        .on_hover_text(
+                                            "Store the current settings as a reusable image profile",
+                                        )
+                                        .clicked()
                                     {
-                                        break candidate;
+                                        let mut index = self.profiles.images.len() + 1;
+                                        let name = loop {
+                                            let candidate = format!("Image profile {index}");
+                                            if !self
+                                                .profiles
+                                                .images
+                                                .iter()
+                                                .any(|profile| profile.name == candidate)
+                                            {
+                                                break candidate;
+                                            }
+                                            index += 1;
+                                        };
+                                        let mut profile =
+                                            crate::profiles::ImageProfile::new(name.clone());
+                                        profile.settings = image.settings;
+                                        profile.meta.category = "Custom".to_string();
+                                        let id = self.profiles.add_image(profile).id.clone();
+                                        self.selected_image_profile = Some(id);
+                                        self.save_profiles();
+                                        profile_saved =
+                                            Some(format!("Saved \"{name}\" as an image profile"));
                                     }
-                                    index += 1;
-                                };
-                                let mut profile =
-                                    crate::profiles::ImageProfile::new(name.clone());
-                                profile.settings = image.settings;
-                                profile.meta.category = "Custom".to_string();
-                                let id = self.profiles.add_image(profile).id.clone();
-                                self.selected_image_profile = Some(id);
-                                self.save_profiles();
-                                profile_saved = Some(format!("Saved \"{name}\" as an image profile"));
-                            }
-                            ui.checkbox(&mut compare, "Compare with original");
-                            if ui.button("Photo").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::Jarvis,
-                                    contrast: 1.15,
-                                    gamma: 0.9,
-                                    enhance_radius_px: 1,
-                                    enhance_amount: 0.6,
-                                    ..crate::objects::ImageSettings::default()
                                 });
-                            }
-                            if ui.button("Wood").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::Stucki,
-                                    contrast: 1.25,
-                                    gamma: 1.1,
-                                    ..crate::objects::ImageSettings::default()
-                                });
-                            }
-                            if ui.button("Metal").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::Atkinson,
-                                    contrast: 1.4,
-                                    gamma: 1.2,
-                                    ..crate::objects::ImageSettings::default()
-                                });
-                            }
-                            if ui.button("Acrylic").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::FloydSteinberg,
-                                    contrast: 1.1,
-                                    gamma: 0.95,
-                                    ..crate::objects::ImageSettings::default()
-                                });
-                            }
-                            if ui.button("Newsprint").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::Newsprint,
-                                    contrast: 1.2,
-                                    ..crate::objects::ImageSettings::default()
-                                });
-                            }
-                            if ui.button("Sketch").clicked() {
-                                preset = Some(crate::objects::ImageSettings {
-                                    mode: crate::objects::ImageMode::Sketch,
-                                    contrast: 1.3,
-                                    ..crate::objects::ImageSettings::default()
-                                });
-                            }
-                        });
+                                ui.separator();
+                                if let Some(preview) = self.image_previews.get(&id) {
+                                    ui.weak(preview.stats.coverage_text());
+                                    if let Some((name, speed, power, passes)) = &cut_entry {
+                                        let passes_text = if *passes == 1 {
+                                            "1 pass".to_string()
+                                        } else {
+                                            format!("{passes} passes")
+                                        };
+                                        ui.weak(format!(
+                                            "{name}: {speed:.0} mm/min, {power:.0}%, {passes_text}"
+                                        ));
+                                        if let Some((_, _, seconds)) =
+                                            crate::raster::estimate_engraving(
+                                                preview.stats,
+                                                image.width_mm(),
+                                                *speed,
+                                            )
+                                        {
+                                            let seconds = seconds * f64::from(*passes);
+                                            let minutes = seconds / 60.0;
+                                            let time = if minutes >= 1.5 {
+                                                format!("{minutes:.1} min")
+                                            } else {
+                                                format!("{seconds:.0} s")
+                                            };
+                                            ui.weak(format!(
+                                                "Estimated: {time} at this cut entry"
+                                            ));
+                                        }
+                                    }
+                                }
+                            });
                     });
                 ui.separator();
                 ui.horizontal(|ui| {

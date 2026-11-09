@@ -403,6 +403,14 @@ fn ui_harness(app: BeamBurinApp) -> egui_kittest::Harness<'static, BeamBurinApp>
         .build_ui_state(|ui, app| app.show(ui), app)
 }
 
+fn open_image_more(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>) {
+    use egui_kittest::kittest::Queryable as _;
+    if harness.query_by_label("More options").is_some() {
+        harness.get_by_label("More options").click_accesskit();
+        harness.run();
+    }
+}
+
 fn ui_temp_path(prefix: &str) -> std::path::PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -3271,6 +3279,7 @@ fn the_image_adjust_window_edits_the_settings() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     assert!(
         harness.query_by_label_contains("burned").is_some(),
         "the burn coverage is missing"
@@ -3353,6 +3362,7 @@ fn the_image_adjust_auto_levels_uses_the_histogram() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     harness.get_by_label("Auto levels").click_accesskit();
     harness.run();
     let object = harness
@@ -3394,6 +3404,7 @@ fn the_image_adjust_target_sets_the_working_size_and_interval() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     harness.get_by_label("Apply target").click_accesskit();
     harness.run();
     let object = harness
@@ -3438,6 +3449,7 @@ fn the_image_adjust_window_applies_every_preset() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     for (label, mode, contrast) in [
         ("Photo", crate::objects::ImageMode::Jarvis, 1.15),
         ("Wood", crate::objects::ImageMode::Stucki, 1.25),
@@ -3536,6 +3548,7 @@ fn cancel_restores_every_image_touched_by_apply_to_selected() {
     app.image_adjust = Some(first_id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     harness
         .get_by_role_and_label(egui::accesskit::Role::CheckBox, "Negative image")
         .click_accesskit();
@@ -3583,6 +3596,7 @@ fn the_image_preview_can_zoom() {
     app.image_adjust = Some(id);
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     harness.get_by_value("Fit").click_accesskit();
     harness.run();
     harness
@@ -3618,6 +3632,7 @@ fn compare_with_original_shows_the_opening_settings_without_losing_the_edit() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     let mode_of = |app: &BeamBurinApp| {
         let object = app
             .editor
@@ -3714,6 +3729,7 @@ fn the_image_mask_can_be_cleared_and_cancelled() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     assert!(
         harness.query_by_label("Mask").is_some(),
         "the mask controls are missing"
@@ -3767,6 +3783,7 @@ fn the_image_colour_mask_toggles_and_cancels() {
     app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     let colours_of = |app: &BeamBurinApp| {
         let object = app
             .editor
@@ -3957,6 +3974,7 @@ fn the_image_adjust_can_save_the_current_settings_as_a_profile() {
     let before = app.profiles.images.len();
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     harness.get_by_label("Wood").click_accesskit();
     harness.run();
     harness.get_by_label("Save as profile").click_accesskit();
@@ -4014,6 +4032,7 @@ fn the_image_adjust_shows_the_cut_entry_and_the_estimate() {
     app.image_adjust = Some(id);
     let mut harness = ui_harness(app);
     harness.run();
+    open_image_more(&mut harness);
     assert!(
         harness.query_by_label_contains("mm/min").is_some(),
         "the cut entry summary is missing"
