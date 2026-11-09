@@ -16,6 +16,7 @@ use crate::document::Document;
 use crate::document::model::Object;
 use crate::document::shape::{Shape, Style};
 use crate::errors::{BeamError, Result};
+use crate::geometry::boolean::{point_in_polygon, polygon_area};
 use crate::geometry::{CubicBezier, Path, Point2, Transform2, path::Segment};
 use crate::objects::{ImageObject, TextObject};
 
@@ -552,12 +553,149 @@ fn import_path(
             return;
         }
     };
-    for path in bezpath_to_paths(&bez) {
-        let object = Object::new(layer_id, Shape::Path(path))
+    import_paths(bezpath_to_paths(&bez), transform, style, doc, layer_id);
+}
+
+/// Add the subpaths of one SVG `<path>`.
+///
+/// A compound path keeps its holes: contours are nested by containment, and an
+/// odd depth marks a hole of the nearest containing contour. G-code fills and
+/// PNG fills then leave that area empty instead of filling it as a separate
+/// shape.
+fn import_paths(
+    paths: Vec<Path>,
+    transform: Transform2,
+    style: &SvgStyle,
+    doc: &mut Document,
+    layer_id: &str,
+) {
+    if paths.len() < 2 {
+        for path in paths {
+            add_path_object(path, transform, style, doc, layer_id);
+        }
+        return;
+    }
+    let polygons: Vec<Vec<(f64, f64)>> = paths
+        .iter()
+        .map(|path| {
+            path.flatten(0.05)
+                .into_iter()
+                .map(|point| (point.x, point.y))
+                .collect()
+        })
+        .collect();
+    let interiors: Vec<Option<(f64, f64)>> = polygons
+        .iter()
+        .map(|polygon| interior_point(polygon))
+        .collect();
+    let depths: Vec<usize> = (0..paths.len())
+        .map(|index| {
+            if !paths[index].closed {
+                return 0;
+            }
+            let Some(point) = interiors[index] else {
+                return 0;
+            };
+            polygons
+                .iter()
+                .enumerate()
+                .filter(|(other, polygon)| {
+                    *other != index
+                        && polygon.len() >= 3
+                        && point_in_polygon(point.0, point.1, polygon)
+                })
+                .count()
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..paths.len()).collect();
+    order.sort_by_key(|&index| depths[index]);
+    let mut ids: Vec<Option<String>> = vec![None; paths.len()];
+    for index in order {
+        let depth = depths[index];
+        let parent = interiors[index].and_then(|point| {
+            (0..paths.len())
+                .filter(|&other| {
+                    other != index
+                        && depths[other] + 1 == depth
+                        && polygons[other].len() >= 3
+                        && point_in_polygon(point.0, point.1, &polygons[other])
+                })
+                .min_by(|&first, &second| {
+                    polygon_area(&polygons[first])
+                        .abs()
+                        .total_cmp(&polygon_area(&polygons[second]).abs())
+                })
+        });
+        let mut object = Object::new(layer_id, Shape::Path(paths[index].clone()))
             .with_transform(transform)
             .with_style(style.to_object_style(&transform));
-        doc.add_object(object);
+        if depth % 2 == 1
+            && let Some(parent_id) = parent.and_then(|parent| ids[parent].clone())
+        {
+            object.hole_of = Some(parent_id);
+            object.name = "Hole".to_string();
+        }
+        ids[index] = Some(doc.add_object(object).id.clone());
     }
+}
+
+fn add_path_object(
+    path: Path,
+    transform: Transform2,
+    style: &SvgStyle,
+    doc: &mut Document,
+    layer_id: &str,
+) {
+    let object = Object::new(layer_id, Shape::Path(path))
+        .with_transform(transform)
+        .with_style(style.to_object_style(&transform));
+    doc.add_object(object);
+}
+
+/// A point strictly inside a simple polygon.
+///
+/// Walks edge midpoints and steps a tiny distance towards the interior
+/// (determined by the winding sign), which stays inside concave contours where
+/// a vertex average can fall outside.
+fn interior_point(polygon: &[(f64, f64)]) -> Option<(f64, f64)> {
+    if polygon.len() < 3 {
+        return None;
+    }
+    let area = polygon_area(polygon);
+    if area.abs() < 1e-12 {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for &(x, y) in polygon {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    let epsilon = (max_x - min_x).max(max_y - min_y).max(1e-6) * 1e-4;
+    let side = if area > 0.0 { 1.0 } else { -1.0 };
+    for pair in polygon.windows(2) {
+        let (x0, y0) = pair[0];
+        let (x1, y1) = pair[1];
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let length = dx.hypot(dy);
+        if length < 1e-12 {
+            continue;
+        }
+        let point = (
+            f64::midpoint(x0, x1) - dy / length * side * epsilon,
+            f64::midpoint(y0, y1) + dx / length * side * epsilon,
+        );
+        if point_in_polygon(point.0, point.1, polygon) {
+            return Some(point);
+        }
+    }
+    let center = (f64::midpoint(min_x, max_x), f64::midpoint(min_y, max_y));
+    point_in_polygon(center.0, center.1, polygon).then_some(center)
 }
 
 fn import_text(
@@ -1088,6 +1226,8 @@ mod tests {
     const SVG_USE: &str = r##"<svg width="10" height="10"><use href="#x"/></svg>"##;
     const SVG_STYLE: &str = r##"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><rect width="1" height="1" stroke="none" fill="#ff0000" stroke-width="0.3"/></svg>"##;
     const SVG_TEXT: &str = r#"<svg><text x="1" y="2" font-size="4">hello</text></svg>"#;
+    const SVG_COMPOUND: &str = r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><path d="M1 1 H9 V9 H1 Z M3 3 V7 H7 V3 Z"/></svg>"#;
+    const SVG_COMPOUND_ISLAND: &str = r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><path d="M1 1 H9 V9 H1 Z M3 3 V7 H7 V3 Z M4 4 H6 V6 H4 Z"/></svg>"#;
 
     #[test]
     fn empty_svg() {
@@ -1139,6 +1279,53 @@ mod tests {
         );
         let doc = import_svg(&svg).unwrap();
         assert_eq!(doc.objects.len(), 1);
+    }
+
+    #[test]
+    fn a_compound_path_keeps_its_hole() {
+        let doc = import_svg(SVG_COMPOUND).unwrap();
+        assert_eq!(doc.objects.len(), 2);
+        let hole = doc
+            .objects
+            .iter()
+            .find(|object| object.hole_of.is_some())
+            .expect("the inner contour is not marked as a hole");
+        let outer = doc
+            .objects
+            .iter()
+            .find(|object| object.id != hole.id)
+            .expect("the outer contour is missing");
+        assert_eq!(hole.hole_of.as_deref(), Some(outer.id.as_str()));
+        let (min, max) = hole.bounds().unwrap();
+        assert!((min.x - 3.0).abs() < 1e-6);
+        assert!((min.y - 3.0).abs() < 1e-6);
+        assert!((max.x - 7.0).abs() < 1e-6);
+        assert!((max.y - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn an_island_inside_a_hole_stays_a_solid_shape() {
+        let doc = import_svg(SVG_COMPOUND_ISLAND).unwrap();
+        assert_eq!(doc.objects.len(), 3);
+        let holes: Vec<_> = doc
+            .objects
+            .iter()
+            .filter(|object| object.hole_of.is_some())
+            .collect();
+        assert_eq!(holes.len(), 1, "an island was mistaken for a hole");
+        let island = doc
+            .objects
+            .iter()
+            .find(|object| {
+                object.hole_of.is_none()
+                    && object
+                        .bounds()
+                        .is_some_and(|(min, _)| (min.x - 4.0).abs() < 1e-6)
+            })
+            .expect("the island is missing");
+        let (min, max) = island.bounds().unwrap();
+        assert!((min.x - 4.0).abs() < 1e-6);
+        assert!((max.x - 6.0).abs() < 1e-6);
     }
 
     #[test]

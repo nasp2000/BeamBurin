@@ -67,6 +67,7 @@ pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<S
         {
             write_object(
                 &mut out,
+                doc,
                 object,
                 layer.rgb(),
                 view,
@@ -102,6 +103,7 @@ impl View {
 #[allow(clippy::too_many_lines)]
 fn write_object(
     out: &mut String,
+    document: &Document,
     object: &Object,
     layer_rgb: (u8, u8, u8),
     view: View,
@@ -219,6 +221,11 @@ fn write_object(
             );
         }
         _ => {
+            if object.hole_of.is_some() {
+                // The parent writes the hole as an extra subpath so fill-rule
+                // keeps the area empty instead of drawing a second filled path.
+                return;
+            }
             let flip = Transform2 {
                 a: 1.0,
                 b: 0.0,
@@ -227,14 +234,30 @@ fn write_object(
                 tx: -view.x,
                 ty: view.y + view.height,
             };
-            let path = object.world_path().transform(&flip);
-            let d = path_to_svg(&path);
+            let mut d = path_to_svg(&object.world_path().transform(&flip));
             if d.is_empty() {
                 return;
             }
+            let mut compound = false;
+            for hole in document
+                .objects
+                .iter()
+                .filter(|candidate| candidate.hole_of.as_deref() == Some(object.id.as_str()))
+            {
+                let hole = path_to_svg(&hole.world_path().transform(&flip));
+                if !hole.is_empty() {
+                    d.push_str(&hole);
+                    compound = true;
+                }
+            }
+            let rule = if compound {
+                " fill-rule=\"evenodd\""
+            } else {
+                ""
+            };
             let _ = writeln!(
                 out,
-                "    <path d=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                "    <path d=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{rule}/>",
                 d,
                 fill,
                 stroke,
@@ -438,6 +461,49 @@ mod tests {
         assert_eq!(base64(b"fo"), "Zm8=");
         assert_eq!(base64(b"foo"), "Zm9v");
         assert_eq!(base64(b"hello"), "aGVsbG8=");
+    }
+
+    #[test]
+    fn a_compound_hole_is_written_as_one_path() {
+        let mut doc = Document {
+            width_mm: 10.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = doc.layers[0].id.clone();
+        let mut outer = Object::new(
+            layer_id.clone(),
+            Shape::Rect {
+                width: 8.0,
+                height: 8.0,
+                corner_radius: 0.0,
+            },
+        );
+        outer.transform = Transform2::translate(1.0, 1.0);
+        outer.style.fill = Some("#000000".to_string());
+        doc.add_object(outer);
+        let outer_id = doc.objects[0].id.clone();
+        let mut hole = Object::new(
+            layer_id,
+            Shape::Rect {
+                width: 4.0,
+                height: 4.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.transform = Transform2::translate(3.0, 3.0);
+        hole.style.fill = Some("#000000".to_string());
+        hole.hole_of = Some(outer_id);
+        doc.add_object(hole);
+
+        let svg = export_svg(&doc).unwrap();
+        assert_eq!(svg.matches("<path").count(), 1, "{svg}");
+        assert!(svg.contains("fill-rule=\"evenodd\""), "{svg}");
+        let path = svg
+            .lines()
+            .find(|line| line.contains("<path"))
+            .expect("the compound path is missing");
+        assert_eq!(path.matches('M').count(), 2, "{path}");
     }
 
     #[test]

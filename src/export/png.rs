@@ -247,11 +247,21 @@ impl Canvas {
         self.pixels[index + 3] = 255;
     }
 
-    fn fill_polygon(&mut self, points: &[Point2], color: [u8; 4]) {
+    fn fill_polygon_with_holes(
+        &mut self,
+        points: &[Point2],
+        holes: &[Vec<Point2>],
+        color: [u8; 4],
+    ) {
         if points.len() < 3 {
             return;
         }
         let pixels: Vec<(f64, f64)> = points.iter().map(|point| self.px(*point)).collect();
+        let hole_pixels: Vec<Vec<(f64, f64)>> = holes
+            .iter()
+            .filter(|hole| hole.len() >= 3)
+            .map(|hole| hole.iter().map(|point| self.px(*point)).collect())
+            .collect();
         let min_y = pixels
             .iter()
             .map(|(_, y)| *y)
@@ -268,12 +278,14 @@ impl Canvas {
         while f64::from(row as i32) <= max_y {
             let scan = row as f64 + 0.5;
             let mut crossings: Vec<f64> = Vec::new();
-            for index in 0..pixels.len() {
-                let (x0, y0) = pixels[index];
-                let (x1, y1) = pixels[(index + 1) % pixels.len()];
-                if (y0 <= scan) != (y1 <= scan) {
-                    let t = (scan - y0) / (y1 - y0);
-                    crossings.push(x0 + t * (x1 - x0));
+            for contour in std::iter::once(&pixels).chain(hole_pixels.iter()) {
+                for index in 0..contour.len() {
+                    let (x0, y0) = contour[index];
+                    let (x1, y1) = contour[(index + 1) % contour.len()];
+                    if (y0 <= scan) != (y1 <= scan) {
+                        let t = (scan - y0) / (y1 - y0);
+                        crossings.push(x0 + t * (x1 - x0));
+                    }
                 }
             }
             crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -367,7 +379,18 @@ pub fn render_rgba_cancellable(
             if cancel() {
                 return Err(png_cancelled());
             }
-            draw_object(&mut canvas, object, (lr, lg, lb), &mut warnings);
+            let holes: Vec<Vec<Point2>> = if object.hole_of.is_some() {
+                Vec::new()
+            } else {
+                document
+                    .objects
+                    .iter()
+                    .filter(|candidate| candidate.hole_of.as_deref() == Some(object.id.as_str()))
+                    .map(|candidate| candidate.world_path().flatten(0.1))
+                    .filter(|points| points.len() >= 3)
+                    .collect()
+            };
+            draw_object(&mut canvas, object, (lr, lg, lb), &holes, &mut warnings);
         }
     }
     #[allow(clippy::cast_possible_truncation)]
@@ -381,6 +404,7 @@ fn draw_object(
     canvas: &mut Canvas,
     object: &Object,
     layer_rgb: (u8, u8, u8),
+    holes: &[Vec<Point2>],
     warnings: &mut Vec<String>,
 ) {
     let stroke_fallback = [layer_rgb.0, layer_rgb.1, layer_rgb.2];
@@ -438,8 +462,10 @@ fn draw_object(
         _ => {
             let path = object.world_path();
             let points = path.flatten(0.1);
-            if let Some((r, g, b)) = fill {
-                canvas.fill_polygon(&points, [r, g, b, 255]);
+            if let Some((r, g, b)) = fill
+                && object.hole_of.is_none()
+            {
+                canvas.fill_polygon_with_holes(&points, holes, [r, g, b, 255]);
             }
             if object.style.stroke.is_some() {
                 canvas.stroke_polyline(
@@ -533,6 +559,65 @@ mod tests {
         assert_eq!(warnings.len(), 0);
         let index = (2 * 4 + 2) * 4;
         assert_eq!(&pixels[index..index + 4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn a_filled_shape_keeps_its_hole_empty() {
+        let mut document = Document {
+            width_mm: 10.0,
+            height_mm: 10.0,
+            ..Document::default()
+        };
+        let layer_id = document.layers[0].id.clone();
+        let style = Style {
+            stroke: None,
+            fill: Some("#000000".to_string()),
+            stroke_width_mm: 0.0,
+        };
+        let mut outer = Object::new(
+            layer_id.clone(),
+            Shape::Rect {
+                width: 8.0,
+                height: 8.0,
+                corner_radius: 0.0,
+            },
+        );
+        outer.transform = Transform2::translate(1.0, 1.0);
+        outer.style = style.clone();
+        document.add_object(outer);
+        let outer_id = document.objects[0].id.clone();
+        let mut hole = Object::new(
+            layer_id,
+            Shape::Rect {
+                width: 4.0,
+                height: 4.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.transform = Transform2::translate(3.0, 3.0);
+        hole.style = style;
+        hole.hole_of = Some(outer_id);
+        document.add_object(hole);
+
+        let options = PngOptions {
+            dpi: 25.4,
+            transparent: false,
+            width_px: None,
+            height_px: None,
+            margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            area: None,
+        };
+        let (pixels, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (10, 10));
+        assert_eq!(warnings.len(), 0);
+        let pixel = |x: usize, y: usize| {
+            let index = (y * width as usize + x) * 4;
+            &pixels[index..index + 4]
+        };
+        assert_eq!(pixel(2, 5), &[0, 0, 0, 255], "the outer band is not filled");
+        assert_eq!(pixel(5, 5), &[255, 255, 255, 255], "the hole was filled");
     }
 
     #[test]
