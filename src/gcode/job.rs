@@ -5,7 +5,6 @@ use crate::document::{Document, Object};
 use crate::errors::{BeamError, Result};
 use crate::gcode::dialect::GCodeOptions;
 use crate::gcode::toolpath::{MoveKind, Toolpath};
-use crate::gcode::writer::GCodeWriter;
 use crate::geometry::Point2;
 use crate::operations::model::OperationParams;
 use crate::operations::{Operation, OperationType};
@@ -1696,54 +1695,10 @@ pub fn render_job_cancellable(
     options: &JobOptions,
     cancel: &dyn Fn() -> bool,
 ) -> Result<(String, JobReport)> {
-    document.validate().map_err(BeamError::InvalidInput)?;
-    let (mut toolpaths, mut warnings) = planned_toolpaths_cancellable(document, options, cancel)?;
-    if cancel() {
-        return Err(cancelled());
-    }
-    if options.offset_to_origin {
-        shift_to_origin(&mut toolpaths);
-    }
-    if options.origin != JobOrigin::BottomLeft {
-        let (dx, dy) = options.origin.offset(document.width_mm, document.height_mm);
-        shift_by(&mut toolpaths, -dx, -dy);
-    }
-    if options.smooth_mm > 0.0 {
-        smooth_toolpaths(&mut toolpaths, options.smooth_mm);
-    }
-    merge_collinear(&mut toolpaths);
-    validate_bounds(document, &toolpaths)?;
-    for (index, toolpath) in toolpaths.iter().enumerate() {
-        if index % 64 == 0 && cancel() {
-            return Err(cancelled());
-        }
-        if toolpath.speed <= 0.0 {
-            return Err(BeamError::InvalidInput(format!(
-                "'{}' has a non-positive feed rate",
-                toolpath.name
-            )));
-        }
-        if !(0.0..=1000.0).contains(&toolpath.power) {
-            return Err(BeamError::InvalidInput(format!(
-                "'{}' has power outside the supported range",
-                toolpath.name
-            )));
-        }
-    }
-    if cancel() {
-        return Err(cancelled());
-    }
-    if options.origin == JobOrigin::BottomLeft {
-        warnings.extend(bounds_warnings(document, &toolpaths));
-    }
-    let text = GCodeWriter::new(options.gcode).render(&toolpaths);
-    let report = JobReport {
-        lines: text.lines().count(),
-        bytes: text.len(),
-        seconds: estimate_seconds(&toolpaths, options.travel_speed_mm_min),
-        paths: toolpaths.len(),
-        warnings,
-    };
+    let mut bytes = Vec::new();
+    let report = stream_job(document, options, cancel, &mut bytes, None)?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| BeamError::InvalidInput(format!("G-code is not UTF-8: {error}")))?;
     Ok((text, report))
 }
 
