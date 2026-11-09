@@ -12,19 +12,21 @@ pub struct GCodeWriter {
     options: GCodeOptions,
 }
 
+/// State carried across toolpath chunks.
+pub struct WriterChunk {
+    air_on: bool,
+    laser_command: &'static str,
+    index: usize,
+}
+
 impl GCodeWriter {
     pub fn new(options: GCodeOptions) -> Self {
         Self { options }
     }
 
-    #[allow(clippy::too_many_lines)]
-    pub fn render(&self, toolpaths: &[Toolpath]) -> String {
-        let newline = if self.options.line_ending_crlf {
-            "\r\n"
-        } else {
-            "\n"
-        };
-        let mut out = String::new();
+    /// Write the fixed header and return the state shared by every chunk.
+    pub fn begin(&self, out: &mut String) -> WriterChunk {
+        let newline = self.newline();
         if self.options.include_comments {
             let _ = write!(out, "(BeamBurin job){newline}");
         }
@@ -36,142 +38,172 @@ impl GCodeWriter {
             .dialect
             .laser_command(self.options.laser_mode == LaserMode::ConstantPower);
         let _ = write!(out, "{initial_command}{newline}");
+        WriterChunk {
+            air_on: false,
+            laser_command: initial_command,
+            index: 0,
+        }
+    }
+
+    /// Write the fixed footer.
+    pub fn finish(&self, out: &mut String) {
+        let newline = self.newline();
+        let _ = write!(out, "S0{newline}");
+        let _ = write!(out, "M5{newline}");
+    }
+
+    /// Append one toolpath to `out`, carrying air and laser state in `state`.
+    #[allow(clippy::too_many_lines)]
+    pub fn toolpath(&self, out: &mut String, toolpath: &Toolpath, state: &mut WriterChunk) {
+        let newline = self.newline();
         let precision = self.options.decimals as usize;
-        let mut air_on = false;
-        let mut laser_command = initial_command;
-        for (index, toolpath) in toolpaths.iter().enumerate() {
-            if toolpath.air_assist && !air_on {
-                let _ = write!(out, "M8{newline}");
-                air_on = true;
-            } else if !toolpath.air_assist && air_on {
-                let _ = write!(out, "M9{newline}");
-                air_on = false;
+        if toolpath.air_assist && !state.air_on {
+            let _ = write!(out, "M8{newline}");
+            state.air_on = true;
+        } else if !toolpath.air_assist && state.air_on {
+            let _ = write!(out, "M9{newline}");
+            state.air_on = false;
+        }
+        if self.options.dialect.supports_dynamic_power() {
+            let command = self.options.dialect.laser_command(toolpath.constant_power);
+            if command != state.laser_command {
+                let _ = write!(out, "{command}{newline}");
+                state.laser_command = command;
             }
-            if self.options.dialect.supports_dynamic_power() {
-                let command = self.options.dialect.laser_command(toolpath.constant_power);
-                if command != laser_command {
-                    let _ = write!(out, "{command}{newline}");
-                    laser_command = command;
-                }
+        }
+        if self.options.include_comments {
+            let operation = toolpath
+                .operation_name
+                .as_deref()
+                .unwrap_or("Default parameters");
+            let _ = write!(
+                out,
+                "(Operation {}: {} - {} | F{:.0} S{:.0} x{}){newline}",
+                state.index + 1,
+                operation.replace(['(', ')'], " "),
+                toolpath.name.replace(['(', ')'], " "),
+                toolpath.speed,
+                toolpath.power,
+                toolpath.passes
+            );
+        }
+        let _ = write!(out, "S0{newline}");
+        let mut position: Option<(f64, f64)> = None;
+        for pass in 0..toolpath.passes {
+            if pass > 0 {
+                let _ = write!(out, "S0{newline}");
             }
-            if self.options.include_comments {
-                let operation = toolpath
-                    .operation_name
-                    .as_deref()
-                    .unwrap_or("Default parameters");
-                let _ = write!(
-                    out,
-                    "(Operation {}: {} - {} | F{:.0} S{:.0} x{}){newline}",
-                    index + 1,
-                    operation.replace(['(', ')'], " "),
-                    toolpath.name.replace(['(', ')'], " "),
-                    toolpath.speed,
-                    toolpath.power,
-                    toolpath.passes
-                );
-            }
-            let _ = write!(out, "S0{newline}");
-            let mut position: Option<(f64, f64)> = None;
-            for pass in 0..toolpath.passes {
-                if pass > 0 {
-                    let _ = write!(out, "S0{newline}");
-                }
-                let mut laser_on = false;
-                let mut current_power = 0.0;
-                let mut index = 0;
-                while index < toolpath.moves.len() {
-                    let movement = toolpath.moves[index];
-                    match movement.kind {
-                        MoveKind::Travel => {
+            let mut laser_on = false;
+            let mut current_power = 0.0;
+            let mut index = 0;
+            while index < toolpath.moves.len() {
+                let movement = toolpath.moves[index];
+                match movement.kind {
+                    MoveKind::Travel => {
+                        if laser_on {
+                            let _ = write!(out, "S0{newline}");
+                            laser_on = false;
+                            current_power = 0.0;
+                        }
+                        if self.options.include_travel || pass == 0 {
+                            let _ = write!(
+                                out,
+                                "G0 X{} Y{}{newline}",
+                                fmt_num(movement.x, precision),
+                                fmt_num(movement.y, precision)
+                            );
+                        }
+                        position = Some((movement.x, movement.y));
+                        index += 1;
+                    }
+                    MoveKind::Cut => {
+                        let power = movement.power.unwrap_or(toolpath.power);
+                        let arc = if self.options.arcs {
+                            position.and_then(|start| {
+                                arc_run(&toolpath.moves, index, start, power, toolpath.power)
+                            })
+                        } else {
+                            None
+                        };
+                        if let Some(arc) = arc {
+                            let command = if arc.clockwise { "G2" } else { "G3" };
                             if laser_on {
-                                let _ = write!(out, "S0{newline}");
-                                laser_on = false;
-                                current_power = 0.0;
-                            }
-                            if self.options.include_travel || pass == 0 {
+                                if (power - current_power).abs() > 0.5 {
+                                    let _ = write!(out, "S{power:.0}{newline}");
+                                    current_power = power;
+                                }
                                 let _ = write!(
                                     out,
-                                    "G0 X{} Y{}{newline}",
+                                    "{command} X{} Y{} I{} J{}{newline}",
+                                    fmt_num(arc.x, precision),
+                                    fmt_num(arc.y, precision),
+                                    fmt_num(arc.i, precision),
+                                    fmt_num(arc.j, precision)
+                                );
+                            } else {
+                                let _ = write!(
+                                    out,
+                                    "{command} X{} Y{} I{} J{} F{:.0} S{power:.0}{newline}",
+                                    fmt_num(arc.x, precision),
+                                    fmt_num(arc.y, precision),
+                                    fmt_num(arc.i, precision),
+                                    fmt_num(arc.j, precision),
+                                    toolpath.speed
+                                );
+                                laser_on = true;
+                                current_power = power;
+                            }
+                            position = Some((arc.x, arc.y));
+                            index += arc.moves;
+                        } else {
+                            if laser_on {
+                                if (power - current_power).abs() > 0.5 {
+                                    let _ = write!(out, "S{power:.0}{newline}");
+                                    current_power = power;
+                                }
+                                let _ = write!(
+                                    out,
+                                    "G1 X{} Y{}{newline}",
                                     fmt_num(movement.x, precision),
                                     fmt_num(movement.y, precision)
                                 );
+                            } else {
+                                let _ = write!(
+                                    out,
+                                    "G1 X{} Y{} F{:.0} S{power:.0}{newline}",
+                                    fmt_num(movement.x, precision),
+                                    fmt_num(movement.y, precision),
+                                    toolpath.speed
+                                );
+                                laser_on = true;
+                                current_power = power;
                             }
                             position = Some((movement.x, movement.y));
                             index += 1;
-                        }
-                        MoveKind::Cut => {
-                            let power = movement.power.unwrap_or(toolpath.power);
-                            let arc = if self.options.arcs {
-                                position.and_then(|start| {
-                                    arc_run(&toolpath.moves, index, start, power, toolpath.power)
-                                })
-                            } else {
-                                None
-                            };
-                            if let Some(arc) = arc {
-                                let command = if arc.clockwise { "G2" } else { "G3" };
-                                if laser_on {
-                                    if (power - current_power).abs() > 0.5 {
-                                        let _ = write!(out, "S{power:.0}{newline}");
-                                        current_power = power;
-                                    }
-                                    let _ = write!(
-                                        out,
-                                        "{command} X{} Y{} I{} J{}{newline}",
-                                        fmt_num(arc.x, precision),
-                                        fmt_num(arc.y, precision),
-                                        fmt_num(arc.i, precision),
-                                        fmt_num(arc.j, precision)
-                                    );
-                                } else {
-                                    let _ = write!(
-                                        out,
-                                        "{command} X{} Y{} I{} J{} F{:.0} S{power:.0}{newline}",
-                                        fmt_num(arc.x, precision),
-                                        fmt_num(arc.y, precision),
-                                        fmt_num(arc.i, precision),
-                                        fmt_num(arc.j, precision),
-                                        toolpath.speed
-                                    );
-                                    laser_on = true;
-                                    current_power = power;
-                                }
-                                position = Some((arc.x, arc.y));
-                                index += arc.moves;
-                            } else {
-                                if laser_on {
-                                    if (power - current_power).abs() > 0.5 {
-                                        let _ = write!(out, "S{power:.0}{newline}");
-                                        current_power = power;
-                                    }
-                                    let _ = write!(
-                                        out,
-                                        "G1 X{} Y{}{newline}",
-                                        fmt_num(movement.x, precision),
-                                        fmt_num(movement.y, precision)
-                                    );
-                                } else {
-                                    let _ = write!(
-                                        out,
-                                        "G1 X{} Y{} F{:.0} S{power:.0}{newline}",
-                                        fmt_num(movement.x, precision),
-                                        fmt_num(movement.y, precision),
-                                        toolpath.speed
-                                    );
-                                    laser_on = true;
-                                    current_power = power;
-                                }
-                                position = Some((movement.x, movement.y));
-                                index += 1;
-                            }
                         }
                     }
                 }
             }
         }
-        let _ = write!(out, "S0{newline}");
-        let _ = write!(out, "M5{newline}");
+        state.index += 1;
+    }
+
+    pub fn render(&self, toolpaths: &[Toolpath]) -> String {
+        let mut out = String::new();
+        let mut state = self.begin(&mut out);
+        for toolpath in toolpaths {
+            self.toolpath(&mut out, toolpath, &mut state);
+        }
+        self.finish(&mut out);
         out
+    }
+
+    fn newline(&self) -> &'static str {
+        if self.options.line_ending_crlf {
+            "\r\n"
+        } else {
+            "\n"
+        }
     }
 }
 

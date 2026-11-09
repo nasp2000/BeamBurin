@@ -9,6 +9,8 @@ use crate::gcode::writer::GCodeWriter;
 use crate::geometry::Point2;
 use crate::operations::model::OperationParams;
 use crate::operations::{Operation, OperationType};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 /// Job generation options that are not part of a single operation.
 /// Which point of the work area becomes the machine origin in the file.
@@ -629,12 +631,95 @@ fn max_raster_moves() -> usize {
     }
 }
 
-fn raster_toolpath(
+/// A processed image ready to emit row bands without keeping all moves.
+struct RasterJob {
+    object: Object,
+    resolved: Resolved,
+    bitmap: crate::raster::RasterBitmap,
+    width_mm: f64,
+    height_mm: f64,
+    variable: bool,
+}
+
+impl RasterJob {
+    /// Build one band of rows as a normal toolpath.
+    fn band(&self, row_start: usize, row_end: usize, shift: (f64, f64)) -> Option<Toolpath> {
+        let mut toolpath = Toolpath::new(
+            self.object.name.clone(),
+            self.resolved.speed,
+            self.resolved.power,
+            self.resolved.passes,
+        );
+        #[allow(clippy::cast_precision_loss)]
+        let pixel_x = self.width_mm / self.bitmap.width as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let pixel_y = self.height_mm / self.bitmap.height as f64;
+        let local = TransformBake {
+            transform: self.object.transform,
+            pixel_x,
+            pixel_y,
+            height_px: self.bitmap.height,
+            shift_x: shift.0,
+            shift_y: shift.1,
+        };
+        for row in row_start..row_end.min(self.bitmap.height) {
+            if self.variable {
+                let mut run: Option<(usize, u8)> = None;
+                for column in 0..=self.bitmap.width {
+                    let level = if column < self.bitmap.width {
+                        grayscale_level(self.bitmap.power_at(column, row))
+                    } else {
+                        0
+                    };
+                    match (level, run) {
+                        (0, None) => {}
+                        (0, Some((start, current))) => {
+                            push_raster_run(&mut toolpath, &local, start, column, row, current);
+                            run = None;
+                        }
+                        (next, Some((_, current))) if next == current => {}
+                        (next, Some((start, current))) => {
+                            push_raster_run(&mut toolpath, &local, start, column, row, current);
+                            run = Some((column, next));
+                        }
+                        (next, None) => run = Some((column, next)),
+                    }
+                }
+            } else {
+                let mut run_start: Option<usize> = None;
+                for column in 0..=self.bitmap.width {
+                    let burned = column < self.bitmap.width && self.bitmap.get(column, row);
+                    match (burned, run_start) {
+                        (true, None) => run_start = Some(column),
+                        (false, Some(start)) => {
+                            let (x0, y0) = local.point(start, row);
+                            let (x1, y1) = local.point(column, row);
+                            toolpath.push(MoveKind::Travel, x0, y0);
+                            toolpath.push(MoveKind::Cut, x1, y1);
+                            run_start = None;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if toolpath.is_empty() {
+            return None;
+        }
+        Some(
+            toolpath
+                .with_operation(self.object.operation_id.as_deref())
+                .with_operation_name(self.resolved.operation_name.as_deref()),
+        )
+    }
+}
+
+/// Decode, process and budget one image before any moves are allocated.
+fn prepare_raster(
     object: &Object,
     image: &crate::objects::ImageObject,
     resolved: &Resolved,
-    cancel: &dyn Fn() -> bool,
-) -> Result<Option<Toolpath>> {
+) -> Result<Option<RasterJob>> {
     let path = std::path::Path::new(&image.path);
     if !path.is_file() {
         return Err(BeamError::InvalidInput(format!(
@@ -643,9 +728,6 @@ fn raster_toolpath(
         )));
     }
     let bitmap = crate::raster::process_object(path, image)?;
-    // Count runs before allocating moves: a detailed image at a huge working
-    // size can otherwise materialise hundreds of megabytes of travel/cut moves
-    // and take minutes to write.
     let stats = crate::raster::RasterStats::of(&bitmap);
     let needed_moves = stats.runs.saturating_mul(2);
     let limit = max_raster_moves();
@@ -655,77 +737,41 @@ fn raster_toolpath(
             object.name
         )));
     }
-    let mut toolpath = Toolpath::new(
-        object.name.clone(),
-        resolved.speed,
-        resolved.power,
-        resolved.passes,
-    );
-    let width_mm = image.width_mm();
-    let height_mm = image.height_mm();
-    #[allow(clippy::cast_precision_loss)]
-    let pixel_x = width_mm / bitmap.width as f64;
-    #[allow(clippy::cast_precision_loss)]
-    let pixel_y = height_mm / bitmap.height as f64;
-    let local = TransformBake {
-        transform: object.transform,
-        pixel_x,
-        pixel_y,
-        height_px: bitmap.height,
+    Ok(Some(RasterJob {
+        object: object.clone(),
+        resolved: resolved.clone(),
+        width_mm: image.width_mm(),
+        height_mm: image.height_mm(),
+        variable: image.settings.mode == crate::objects::ImageMode::Grayscale,
+        bitmap,
+    }))
+}
+
+fn raster_toolpath(
+    object: &Object,
+    image: &crate::objects::ImageObject,
+    resolved: &Resolved,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Option<Toolpath>> {
+    let Some(job) = prepare_raster(object, image, resolved)? else {
+        return Ok(None);
     };
-    let variable = image.settings.mode == crate::objects::ImageMode::Grayscale;
-    for row in 0..bitmap.height {
-        if row % 64 == 0 && cancel() {
+    // Check between bands while building the all-rows toolpath.
+    let mut toolpath: Option<Toolpath> = None;
+    for start in (0..job.bitmap.height).step_by(256) {
+        if cancel() {
             return Err(cancelled());
         }
-        if variable {
-            let mut run: Option<(usize, u8)> = None;
-            for column in 0..=bitmap.width {
-                let level = if column < bitmap.width {
-                    grayscale_level(bitmap.power_at(column, row))
-                } else {
-                    0
-                };
-                match (level, run) {
-                    (0, None) => {}
-                    (0, Some((start, current))) => {
-                        push_raster_run(&mut toolpath, &local, start, column, row, current);
-                        run = None;
-                    }
-                    (next, Some((_, current))) if next == current => {}
-                    (next, Some((start, current))) => {
-                        push_raster_run(&mut toolpath, &local, start, column, row, current);
-                        run = Some((column, next));
-                    }
-                    (next, None) => run = Some((column, next)),
-                }
-            }
+        let Some(mut band) = job.band(start, start + 256, (0.0, 0.0)) else {
+            continue;
+        };
+        if let Some(all) = &mut toolpath {
+            all.moves.append(&mut band.moves);
         } else {
-            let mut run_start: Option<usize> = None;
-            for column in 0..=bitmap.width {
-                let burned = column < bitmap.width && bitmap.get(column, row);
-                match (burned, run_start) {
-                    (true, None) => run_start = Some(column),
-                    (false, Some(start)) => {
-                        let (x0, y0) = local.point(start, row);
-                        let (x1, y1) = local.point(column, row);
-                        toolpath.push(MoveKind::Travel, x0, y0);
-                        toolpath.push(MoveKind::Cut, x1, y1);
-                        run_start = None;
-                    }
-                    _ => {}
-                }
-            }
+            toolpath = Some(band);
         }
     }
-    if toolpath.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(
-        toolpath
-            .with_operation(object.operation_id.as_deref())
-            .with_operation_name(resolved.operation_name.as_deref()),
-    ))
+    Ok(toolpath)
 }
 
 /// Quantise a 0–255 pixel power to one of sixteen engraving levels.
@@ -754,6 +800,8 @@ struct TransformBake {
     pixel_x: f64,
     pixel_y: f64,
     height_px: usize,
+    shift_x: f64,
+    shift_y: f64,
 }
 
 impl TransformBake {
@@ -765,7 +813,7 @@ impl TransformBake {
         let point = self
             .transform
             .apply(crate::geometry::Point2::new(local_x, local_y));
-        (point.x, point.y)
+        (point.x + self.shift_x, point.y + self.shift_y)
     }
 }
 
@@ -1711,14 +1759,220 @@ pub fn export_job_cancellable(
     options: &JobOptions,
     cancel: &dyn Fn() -> bool,
 ) -> Result<JobReport> {
-    let (text, report) = render_job_cancellable(document, options, cancel)?;
+    document.validate().map_err(BeamError::InvalidInput)?;
+    // Stock clipping and restricted areas need the whole move list; keep the
+    // buffered path for those documents.
+    if document.stock.is_some() || !document.restricted_areas.is_empty() {
+        let (text, report) = render_job_cancellable(document, options, cancel)?;
+        if cancel() {
+            return Err(cancelled());
+        }
+        let temporary = path.with_extension("nc.tmp");
+        std::fs::write(&temporary, text)?;
+        std::fs::rename(&temporary, path)?;
+        return Ok(report);
+    }
+    export_streaming(document, path, options, cancel)
+}
+
+enum JobItem {
+    Toolpath(Toolpath),
+    Raster(Box<RasterJob>),
+}
+
+/// Write the job chunk by chunk, keeping only one raster band of moves.
+#[allow(clippy::too_many_lines)]
+fn export_streaming(
+    document: &Document,
+    path: &Path,
+    options: &JobOptions,
+    cancel: &dyn Fn() -> bool,
+) -> Result<JobReport> {
+    let mut warnings = Vec::new();
+    let mut vector_document = document.clone();
+    for object in &mut vector_document.objects {
+        if matches!(object.shape, Shape::Image(_)) {
+            object.visible = false;
+        }
+    }
+    let (mut toolpaths, vector_warnings) = build_toolpaths_cancellable(&vector_document, cancel)?;
+    warnings.extend(vector_warnings);
+    if options.assisted_ordering {
+        order_toolpaths(&mut toolpaths);
+    }
+    let mut items: Vec<JobItem> = toolpaths.iter().cloned().map(JobItem::Toolpath).collect();
+    let mut layers: Vec<_> = document.layers.iter().collect();
+    layers.sort_by_key(|layer| layer.order);
+    for layer in layers {
+        if !layer.visible {
+            continue;
+        }
+        for object in document
+            .objects
+            .iter()
+            .filter(|object| object.layer_id == layer.id && object.visible)
+        {
+            let Shape::Image(image) = &object.shape else {
+                continue;
+            };
+            let Some(resolved) = resolve(object, document) else {
+                continue;
+            };
+            match prepare_raster(object, image, &resolved) {
+                Ok(Some(job)) => items.push(JobItem::Raster(Box::new(job))),
+                Ok(None) => {}
+                Err(error) => {
+                    warnings.push(format!("image '{}' was omitted: {error}", object.name));
+                }
+            }
+        }
+    }
+    let operation_order = ordered_operation_ids(document);
+    items.sort_by_key(|item| {
+        let operation = match item {
+            JobItem::Toolpath(toolpath) => toolpath.operation_id.as_deref(),
+            JobItem::Raster(raster) => raster.object.operation_id.as_deref(),
+        };
+        operation
+            .and_then(|id| operation_order.iter().position(|ordered| ordered == id))
+            .unwrap_or(usize::MAX)
+    });
+
+    // Work out one translation shared by vector moves and raster bands.
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    for toolpath in &toolpaths {
+        for movement in &toolpath.moves {
+            min_x = min_x.min(movement.x);
+            min_y = min_y.min(movement.y);
+        }
+    }
+    for item in &items {
+        if let JobItem::Raster(raster) = item
+            && let Some((min, _)) = raster.object.bounds()
+        {
+            min_x = min_x.min(min.x);
+            min_y = min_y.min(min.y);
+        }
+    }
+    let mut dx = 0.0;
+    let mut dy = 0.0;
+    if options.offset_to_origin && min_x.is_finite() && min_y.is_finite() {
+        dx -= min_x;
+        dy -= min_y;
+    }
+    if options.origin != JobOrigin::BottomLeft {
+        let (ox, oy) = options.origin.offset(document.width_mm, document.height_mm);
+        dx -= ox;
+        dy -= oy;
+    }
+    if dx != 0.0 || dy != 0.0 {
+        shift_by(&mut toolpaths, dx, dy);
+    }
+    if options.smooth_mm > 0.0 {
+        smooth_toolpaths(&mut toolpaths, options.smooth_mm);
+    }
+    merge_collinear(&mut toolpaths);
+    validate_bounds(document, &toolpaths)?;
+    if options.origin == JobOrigin::BottomLeft {
+        warnings.extend(bounds_warnings(document, &toolpaths));
+    }
+    // The vector copy was made before the shift, so refresh it now.
+    items.retain(|item| !matches!(item, JobItem::Toolpath(_)));
+    items.extend(toolpaths.iter().cloned().map(JobItem::Toolpath));
+    items.sort_by_key(|item| {
+        let operation = match item {
+            JobItem::Toolpath(toolpath) => toolpath.operation_id.as_deref(),
+            JobItem::Raster(raster) => raster.object.operation_id.as_deref(),
+        };
+        operation
+            .and_then(|id| operation_order.iter().position(|ordered| ordered == id))
+            .unwrap_or(usize::MAX)
+    });
+    for toolpath in &toolpaths {
+        if toolpath.speed <= 0.0 {
+            return Err(BeamError::InvalidInput(format!(
+                "'{}' has a non-positive feed rate",
+                toolpath.name
+            )));
+        }
+        if !(0.0..=1000.0).contains(&toolpath.power) {
+            return Err(BeamError::InvalidInput(format!(
+                "'{}' has power outside the supported range",
+                toolpath.name
+            )));
+        }
+    }
     if cancel() {
         return Err(cancelled());
     }
+
     let temporary = path.with_extension("nc.tmp");
-    std::fs::write(&temporary, text)?;
+    let file = File::create(&temporary)?;
+    let mut file = BufWriter::new(file);
+    let writer = crate::gcode::writer::GCodeWriter::new(options.gcode);
+    let mut buffer = String::new();
+    let mut state = writer.begin(&mut buffer);
+    let mut bytes = 0;
+    let mut lines = 0;
+    let mut seconds = estimate_seconds(&toolpaths, options.travel_speed_mm_min);
+    let mut flush = |buffer: &mut String, bytes: &mut usize, lines: &mut usize| -> Result<()> {
+        *bytes += buffer.len();
+        *lines += buffer.lines().count();
+        file.write_all(buffer.as_bytes())?;
+        buffer.clear();
+        Ok(())
+    };
+    flush(&mut buffer, &mut bytes, &mut lines)?;
+    let mut paths = 0;
+    for item in &mut items {
+        if cancel() {
+            return Err(cancelled());
+        }
+        match item {
+            JobItem::Toolpath(toolpath) => {
+                writer.toolpath(&mut buffer, toolpath, &mut state);
+                flush(&mut buffer, &mut bytes, &mut lines)?;
+                paths += 1;
+            }
+            JobItem::Raster(raster) => {
+                paths += 1;
+                for start in (0..raster.bitmap.height).step_by(256) {
+                    if cancel() {
+                        return Err(cancelled());
+                    }
+                    let Some(mut band) = raster.band(start, start + 256, (dx, dy)) else {
+                        continue;
+                    };
+                    if options.smooth_mm > 0.0 {
+                        smooth_toolpaths(std::slice::from_mut(&mut band), options.smooth_mm);
+                    }
+                    merge_collinear(std::slice::from_mut(&mut band));
+                    validate_bounds(document, std::slice::from_ref(&band))?;
+                    seconds +=
+                        estimate_seconds(std::slice::from_ref(&band), options.travel_speed_mm_min);
+                    writer.toolpath(&mut buffer, &band, &mut state);
+                    flush(&mut buffer, &mut bytes, &mut lines)?;
+                }
+            }
+        }
+    }
+    writer.finish(&mut buffer);
+    flush(&mut buffer, &mut bytes, &mut lines)?;
+    file.flush()?;
+    drop(file);
+    if cancel() {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(cancelled());
+    }
     std::fs::rename(&temporary, path)?;
-    Ok(report)
+    Ok(JobReport {
+        lines,
+        bytes,
+        seconds,
+        paths,
+        warnings,
+    })
 }
 
 #[cfg(test)]
@@ -2355,6 +2609,83 @@ mod tests {
             "{warnings:?}"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn streaming_export_matches_the_buffered_raster_text() {
+        let path = std::env::temp_dir().join("beamburin_stream_parity.png");
+        let mut image = image::GrayImage::new(4, 2);
+        for (x, _y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = if x < 2 {
+                image::Luma([0])
+            } else {
+                image::Luma([255])
+            };
+        }
+        image.save(&path).unwrap();
+        let document = image_document(&path);
+        let options = JobOptions::default();
+        let (buffered, _) = render_job(&document, &options).unwrap();
+        let output = std::env::temp_dir().join("beamburin_stream_parity.nc");
+        let report = export_job(&document, &output, &options).unwrap();
+        let streamed = std::fs::read_to_string(&output).unwrap();
+        assert_eq!(streamed, buffered);
+        assert_eq!(report.lines, buffered.lines().count());
+        assert_eq!(report.bytes, buffered.len());
+        assert_eq!(report.paths, 1);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&output);
+    }
+
+    #[test]
+    fn streaming_export_splits_a_tall_raster_into_bands() {
+        let path = std::env::temp_dir().join("beamburin_stream_bands.png");
+        let mut image = image::GrayImage::new(400, 400);
+        for y in 20..60 {
+            for x in 20..60 {
+                image.put_pixel(x, y, image::Luma([255]));
+            }
+        }
+        image.save(&path).unwrap();
+        let document = image_document(&path);
+        let output = std::env::temp_dir().join("beamburin_stream_bands.nc");
+        let report = export_job(&document, &output, &JobOptions::default()).unwrap();
+        let text = std::fs::read_to_string(&output).unwrap();
+        assert!(report.paths >= 1);
+        assert!(
+            text.matches("(Operation").count() >= 2,
+            "the raster was not streamed in bands"
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&output);
+    }
+
+    #[test]
+    fn streaming_export_reports_a_raster_over_budget() {
+        let path = std::env::temp_dir().join("beamburin_stream_budget.png");
+        let mut image = image::GrayImage::new(160, 160);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = if (x + y) % 2 == 0 {
+                image::Luma([255])
+            } else {
+                image::Luma([0])
+            };
+        }
+        image.save(&path).unwrap();
+        let document = image_document(&path);
+        let output = std::env::temp_dir().join("beamburin_stream_budget.nc");
+        let report = export_job(&document, &output, &JobOptions::default()).unwrap();
+        assert_eq!(report.paths, 0);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("engraving moves")),
+            "{:?}",
+            report.warnings
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&output);
     }
 
     #[test]
