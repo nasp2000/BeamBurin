@@ -465,9 +465,16 @@ fn process_node(
         .unwrap_or_default();
     let transform = parent_transform.compose(&local);
     let style = parent_style.inherit(node);
+    let objects_before = doc.objects.len();
 
     match node.name.as_str() {
         "g" | "a" | "svg" => {
+            if node.attr("clip-path").is_some() {
+                warnings.push(
+                    "clip paths on groups are not supported; the children are imported unclipped"
+                        .to_string(),
+                );
+            }
             for child in &node.children {
                 process_node(
                     child, transform, &style, doc, layer_id, warnings, ids, depth, dpi, base_dir,
@@ -551,6 +558,227 @@ fn process_node(
         "text" => import_text(node, transform, &style, doc, layer_id),
         "image" => import_image(node, transform, &style, doc, layer_id, dpi),
         other => warnings.push(format!("unsupported SVG element: <{other}>")),
+    }
+    if matches!(
+        node.name.as_str(),
+        "rect" | "circle" | "ellipse" | "line" | "polyline" | "polygon" | "path" | "text" | "image"
+    ) {
+        apply_clip(node, transform, doc, objects_before, ids, warnings);
+    }
+}
+
+/// Apply a `clip-path="url(#id)"` on one shape to the objects it produced.
+///
+/// The clip contours are flattened and intersected with each closed path; the
+/// result is written as straight segments. Text, images and open paths are
+/// reported and left unclipped. Group clips are not expanded.
+fn apply_clip(
+    node: &Node,
+    transform: Transform2,
+    doc: &mut Document,
+    start: usize,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+) {
+    use crate::geometry::boolean::{BooleanOp, boolean_contours};
+
+    let Some(value) = node.attr("clip-path") else {
+        return;
+    };
+    let id = value
+        .trim()
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or_default();
+    if id.is_empty() {
+        warnings.push(format!("clip path '{value}' is not a local reference"));
+        return;
+    }
+    let Some(target) = ids.get(id) else {
+        warnings.push(format!("clip path references missing #{id}"));
+        return;
+    };
+    if target.name != "clipPath" {
+        warnings.push(format!("#{id} is not a clipPath"));
+        return;
+    }
+    let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
+    for child in &target.children {
+        contours.extend(clip_contours(child, transform));
+    }
+    let contours = weld_contours(contours);
+    if contours.is_empty() {
+        warnings.push(format!("clip path #{id} has no usable shape"));
+        return;
+    }
+    let objects: Vec<Object> = doc.objects.split_off(start);
+    let mut replaced = Vec::new();
+    let mut applied = false;
+    for object in objects {
+        match &object.shape {
+            Shape::Text(_) | Shape::Image(_) => {
+                warnings.push(format!(
+                    "clip path was not applied to {} '{}'",
+                    object.shape.kind_name(),
+                    object.name
+                ));
+                replaced.push(object);
+                continue;
+            }
+            _ => {}
+        }
+        let path = object.world_path();
+        if !path.closed {
+            warnings.push(format!(
+                "clip path was not applied to open path '{}'",
+                object.name
+            ));
+            replaced.push(object);
+            continue;
+        }
+        let mut pieces = vec![
+            path.flatten(0.1)
+                .into_iter()
+                .map(|point| (point.x, point.y))
+                .collect::<Vec<_>>(),
+        ];
+        for clip in &contours {
+            pieces = pieces
+                .into_iter()
+                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .collect();
+        }
+        if pieces.is_empty() {
+            applied = true;
+            continue;
+        }
+        applied = true;
+        let resolved: Vec<Path> = pieces
+            .iter()
+            .map(|contour| {
+                let points: Vec<Point2> =
+                    contour.iter().map(|(x, y)| Point2::new(*x, *y)).collect();
+                crate::vectorize::to_path(&points)
+            })
+            .collect();
+        let parents = crate::geometry::path::contour_parents(&resolved);
+        let mut order: Vec<usize> = (0..resolved.len()).collect();
+        order.sort_by_key(|&index| parents[index].is_some());
+        let mut new_ids: Vec<Option<String>> = vec![None; resolved.len()];
+        for index in order {
+            let mut clipped = Object::new(
+                object.layer_id.clone(),
+                Shape::Path(resolved[index].clone()),
+            )
+            .with_style(object.style.clone());
+            clipped.name = if parents[index].is_some() {
+                "Hole".to_string()
+            } else {
+                format!("{} clipped", object.name)
+            };
+            clipped.color.clone_from(&object.color);
+            clipped.operation_id.clone_from(&object.operation_id);
+            clipped.group_id.clone_from(&object.group_id);
+            clipped.visible = object.visible;
+            clipped.locked = object.locked;
+            if let Some(parent_id) = parents[index].and_then(|parent| new_ids[parent].clone()) {
+                clipped.hole_of = Some(parent_id);
+            }
+            new_ids[index] = Some(doc.add_object(clipped).id.clone());
+        }
+    }
+    doc.objects.extend(replaced);
+    if applied {
+        warnings.push(format!("clip path #{id} was applied as straight segments"));
+    }
+}
+
+/// Flatten the geometry of one clipPath child in document coordinates.
+fn clip_contours(node: &Node, transform: Transform2) -> Vec<Vec<(f64, f64)>> {
+    let local = node
+        .attr("transform")
+        .map(parse_transform)
+        .unwrap_or_default();
+    let transform = transform.compose(&local);
+    let points = |points: Vec<Point2>| {
+        points
+            .into_iter()
+            .map(|point| {
+                let point = transform.apply(point);
+                (point.x, point.y)
+            })
+            .collect::<Vec<_>>()
+    };
+    match node.name.as_str() {
+        "rect" => {
+            let x = node.number("x").unwrap_or(0.0);
+            let y = node.number("y").unwrap_or(0.0);
+            let width = node.number("width").unwrap_or(0.0);
+            let height = node.number("height").unwrap_or(0.0);
+            if width <= 0.0 || height <= 0.0 {
+                return Vec::new();
+            }
+            vec![points(vec![
+                Point2::new(x, y),
+                Point2::new(x + width, y),
+                Point2::new(x + width, y + height),
+                Point2::new(x, y + height),
+            ])]
+        }
+        "circle" | "ellipse" => {
+            let cx = node.number("cx").unwrap_or(0.0);
+            let cy = node.number("cy").unwrap_or(0.0);
+            let (rx, ry) = if node.name == "circle" {
+                let radius = node.number("r").unwrap_or(0.0);
+                (radius, radius)
+            } else {
+                (
+                    node.number("rx").unwrap_or(0.0),
+                    node.number("ry").unwrap_or(0.0),
+                )
+            };
+            if rx <= 0.0 || ry <= 0.0 {
+                return Vec::new();
+            }
+            let mut contour = Vec::with_capacity(32);
+            for index in 0..32 {
+                let angle = std::f64::consts::TAU * f64::from(index) / 32.0;
+                contour.push(Point2::new(cx + rx * angle.cos(), cy + ry * angle.sin()));
+            }
+            vec![points(contour)]
+        }
+        "path" => {
+            let Some(data) = node.attr("d") else {
+                return Vec::new();
+            };
+            let Ok(path) = kurbo::BezPath::from_svg(data) else {
+                return Vec::new();
+            };
+            bezpath_to_paths(&path)
+                .into_iter()
+                .map(|path| points(path.flatten(0.1)))
+                .filter(|contour| contour.len() >= 3)
+                .collect()
+        }
+        "polygon" => {
+            let Some(raw) = node.attr("points") else {
+                return Vec::new();
+            };
+            let values: Vec<f64> = raw
+                .split(|character: char| character == ',' || character.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .filter_map(|part| part.parse::<f64>().ok())
+                .collect();
+            if values.len() < 6 || values.len() % 2 != 0 {
+                return Vec::new();
+            }
+            let contour: Vec<Point2> = values
+                .chunks_exact(2)
+                .map(|pair| Point2::new(pair[0], pair[1]))
+                .collect();
+            vec![points(contour)]
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -1814,6 +2042,45 @@ mod tests {
         assert!(
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
+        );
+    }
+
+    #[test]
+    fn a_clip_path_intersects_the_shape() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><clipPath id="c"><rect x="1" y="1" width="4" height="4"/></clipPath></defs><rect x="0" y="0" width="10" height="10" clip-path="url(#c)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
+        assert!((min.y - 5.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 9.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("applied as straight segments")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_missing_clip_path_is_reported() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm"><rect width="5" height="5" clip-path="url(#missing)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("missing #missing")),
+            "{:?}",
+            report.warnings
         );
     }
 
