@@ -102,7 +102,9 @@ pub fn import_with_report_cancellable(
             }
         }
         "raster" => ImportOutcome {
-            document: crate::import::raster::import_raster_with_limit(path, max_pixels)?,
+            document: crate::import::raster::import_raster_with_limit_cancellable(
+                path, max_pixels, cancel,
+            )?,
             warnings: Vec::new(),
         },
         other => {

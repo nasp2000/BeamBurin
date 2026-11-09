@@ -2,6 +2,8 @@ use crate::document::Document;
 use crate::document::model::{Object, Shape};
 use crate::errors::{BeamError, Result};
 use crate::objects::{ImageMode, ImageObject};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 /// Default resolution assumed when the file carries no usable DPI metadata.
@@ -17,6 +19,22 @@ pub fn import_raster(path: &Path) -> Result<Document> {
 /// `max_pixels` rejects images that would use more memory than the configured
 /// limit before they are decoded into a document.
 pub fn import_raster_with_limit(path: &Path, max_pixels: u64) -> Result<Document> {
+    import_raster_with_limit_cancellable(path, max_pixels, &|| false)
+}
+
+/// Import a raster image, stopping inside the decoder when `cancel` is set.
+///
+/// The image library reads through [`CancellableReader`], so the flag is checked
+/// on every file read; a cancelled import returns "cancelled" instead of
+/// finishing the decode in the background.
+pub fn import_raster_with_limit_cancellable(
+    path: &Path,
+    max_pixels: u64,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Document> {
+    if cancel() {
+        return Err(BeamError::InvalidInput("cancelled".to_string()));
+    }
     // Read the dimensions from the header first. Decoding a file that is over
     // the limit would allocate its full pixel buffer before the check below
     // could reject it.
@@ -30,8 +48,7 @@ pub fn import_raster_with_limit(path: &Path, max_pixels: u64) -> Result<Document
             "image has {pixels} pixels; the limit is {max_pixels}"
         )));
     }
-    let image = image::open(path)
-        .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
+    let image = decode_cancellable(path, cancel)?;
     let width_px = image.width();
     let height_px = image.height();
     if width_px == 0 || height_px == 0 {
@@ -60,6 +77,69 @@ pub fn import_raster_with_limit(path: &Path, max_pixels: u64) -> Result<Document
     Ok(document)
 }
 
+/// Decode through a reader that turns the cancel flag into an I/O error.
+///
+/// A plain `Interrupted` error would be retried by `read_exact`, so the reader
+/// uses `Other` and the decode error is mapped back to "cancelled".
+fn decode_cancellable(path: &Path, cancel: &dyn Fn() -> bool) -> Result<image::DynamicImage> {
+    let file = File::open(path)?;
+    let reader = CancellableReader {
+        inner: BufReader::new(file),
+        cancel,
+    };
+    image::ImageReader::new(reader)
+        .with_guessed_format()
+        .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?
+        .decode()
+        .map_err(|error| {
+            if cancel() {
+                BeamError::InvalidInput("cancelled".to_string())
+            } else {
+                BeamError::InvalidInput(format!("cannot read image: {error}"))
+            }
+        })
+}
+
+struct CancellableReader<'a, R> {
+    inner: R,
+    cancel: &'a dyn Fn() -> bool,
+}
+
+fn cancelled_read() -> io::Error {
+    io::Error::other("cancelled")
+}
+
+impl<R: Read> Read for CancellableReader<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if (self.cancel)() {
+            return Err(cancelled_read());
+        }
+        self.inner.read(buffer)
+    }
+}
+
+impl<R: BufRead> BufRead for CancellableReader<'_, R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if (self.cancel)() {
+            return Err(cancelled_read());
+        }
+        self.inner.fill_buf()
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.inner.consume(amount);
+    }
+}
+
+impl<R: Seek> Seek for CancellableReader<'_, R> {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        if (self.cancel)() {
+            return Err(cancelled_read());
+        }
+        self.inner.seek(position)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,6 +155,28 @@ mod tests {
             panic!("the imported object is not an image");
         };
         assert_eq!(image.settings.mode, ImageMode::Grayscale);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn cancel_stops_inside_the_decoder() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let path = temp_dir().join("bw_cancel_decode.png");
+        let image = image::RgbaImage::from_fn(1024, 1024, |x, y| {
+            let value = ((x * 7 + y * 13) % 251) as u8;
+            image::Rgba([value, value.wrapping_mul(3), value.wrapping_add(17), 255])
+        });
+        image.save(&path).unwrap();
+        let calls = AtomicUsize::new(0);
+        let cancel = || calls.fetch_add(1, Ordering::Relaxed) >= 2;
+        let error = import_raster_with_limit_cancellable(&path, crate::raster::MAX_PIXELS, &cancel)
+            .unwrap_err();
+        assert!(error.to_string().contains("cancelled"), "{error}");
+        assert!(
+            calls.load(Ordering::Relaxed) > 2,
+            "the decoder ignored the cancel flag"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
