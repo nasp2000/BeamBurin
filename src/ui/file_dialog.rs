@@ -311,6 +311,17 @@ impl FileDialog {
                         self.create_folder();
                     }
                 });
+                ui.horizontal(|ui| {
+                    let name_label = ui.label("File name:");
+                    let response = ui
+                        .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0))
+                        .labelled_by(name_label.id);
+                    if response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    {
+                        accept = true;
+                    }
+                });
                 ui.separator();
                 let mut target: Option<PathBuf> = None;
                 ui.horizontal(|ui| {
@@ -366,18 +377,6 @@ impl FileDialog {
                 if let Some(path) = target {
                     self.navigate(path);
                 }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    let name_label = ui.label("File name:");
-                    let response = ui
-                        .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0))
-                        .labelled_by(name_label.id);
-                    if response.lost_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
-                    {
-                        accept = true;
-                    }
-                });
                 if let Some(error) = &self.error {
                     ui.colored_label(egui::Color32::from_rgb(200, 60, 60), error);
                 }
@@ -478,6 +477,7 @@ impl FileDialog {
             .count()
     }
 
+    #[allow(clippy::too_many_lines)]
     fn listing(&mut self, ui: &mut egui::Ui) -> ListingAction {
         let entries = match std::fs::read_dir(&self.directory) {
             Ok(entries) => entries,
@@ -505,8 +505,16 @@ impl FileDialog {
             ui.weak("This folder is empty or has no supported files.");
             return ListingAction::None;
         }
+        let ordered: Vec<(PathBuf, bool)> = directories
+            .iter()
+            .cloned()
+            .map(|path| (path, true))
+            .chain(files.iter().cloned().map(|path| (path, false)))
+            .collect();
+        let list_id = ui.make_persistent_id("dialog_file_list");
         let mut action = ListingAction::None;
-        egui::Grid::new("dialog_listing")
+        let mut row_rects: Vec<egui::Rect> = Vec::with_capacity(ordered.len());
+        let grid = egui::Grid::new("dialog_listing")
             .num_columns(3)
             .striped(true)
             .spacing([8.0, 2.0])
@@ -525,10 +533,17 @@ impl FileDialog {
                         ui.add(icons::image_at(ui.ctx(), Icon::Folder, 16.0));
                         let selected = self.selected.as_deref() == Some(directory.as_path());
                         let response = ui
-                            .selectable_label(selected, name.as_str())
+                            .add(
+                                egui::Button::new(name.as_str())
+                                    .frame(false)
+                                    .selected(selected)
+                                    .sense(egui::Sense::CLICK),
+                            )
                             .on_hover_text("Double-click to open this folder");
+                        row_rects.push(response.rect);
                         if response.clicked() {
                             self.selected = Some(directory.clone());
+                            ui.memory_mut(|memory| memory.request_focus(list_id));
                         }
                         if response.double_clicked() {
                             self.selected = Some(directory.clone());
@@ -548,12 +563,19 @@ impl FileDialog {
                         ui.add(icons::image_at(ui.ctx(), file_icon(&file), 16.0));
                         let selected = self.selected.as_deref() == Some(file.as_path());
                         let response = ui
-                            .selectable_label(selected, name)
+                            .add(
+                                egui::Button::new(name)
+                                    .frame(false)
+                                    .selected(selected)
+                                    .sense(egui::Sense::CLICK),
+                            )
                             .on_hover_text("Double-click to choose this file");
+                        row_rects.push(response.rect);
                         if response.clicked() {
                             self.selected = Some(file.clone());
                             self.file_name = name.to_string();
                             self.error = None;
+                            ui.memory_mut(|memory| memory.request_focus(list_id));
                         }
                         if response.double_clicked() {
                             self.selected = Some(file.clone());
@@ -573,6 +595,64 @@ impl FileDialog {
                     ui.end_row();
                 }
             });
+        let list_had_focus = ui.memory(|memory| memory.focused() == Some(list_id));
+        let list_response = ui.interact(
+            grid.response.rect,
+            list_id,
+            egui::Sense::focusable_noninteractive(),
+        );
+        list_response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Files"));
+        ui.ctx().accesskit_node_builder(list_response.id, |node| {
+            node.set_role(egui::accesskit::Role::List);
+            node.set_description("Use the arrow keys to choose an item and Enter to open it");
+        });
+        let mut keyboard_moved = false;
+        if list_had_focus || list_response.has_focus() {
+            let current = self
+                .selected
+                .as_ref()
+                .and_then(|selected| ordered.iter().position(|(path, _)| path == selected));
+            let target = if ui.input(|input| input.key_pressed(egui::Key::ArrowDown)) {
+                Some(current.map_or(0, |index| (index + 1).min(ordered.len() - 1)))
+            } else if ui.input(|input| input.key_pressed(egui::Key::ArrowUp)) {
+                Some(current.map_or(ordered.len() - 1, |index| index.saturating_sub(1)))
+            } else if ui.input(|input| input.key_pressed(egui::Key::Home)) {
+                Some(0)
+            } else if ui.input(|input| input.key_pressed(egui::Key::End)) {
+                Some(ordered.len() - 1)
+            } else {
+                None
+            };
+            if let Some(index) = target {
+                let (path, is_directory) = &ordered[index];
+                self.selected = Some(path.clone());
+                if !is_directory && let Some(name) = path.file_name().and_then(|name| name.to_str())
+                {
+                    self.file_name = name.to_string();
+                    self.error = None;
+                }
+                keyboard_moved = true;
+            }
+            if ui.input(|input| input.key_pressed(egui::Key::Enter))
+                && let Some(path) = self.selected.clone()
+            {
+                action = if path.is_dir() {
+                    ListingAction::Navigate(path)
+                } else {
+                    ListingAction::Accept(path)
+                };
+            }
+        }
+        if keyboard_moved
+            && let Some(index) = self
+                .selected
+                .as_ref()
+                .and_then(|selected| ordered.iter().position(|(path, _)| path == selected))
+            && let Some(rect) = row_rects.get(index)
+        {
+            ui.scroll_to_rect(*rect, Some(egui::Align::Center));
+        }
         action
     }
 

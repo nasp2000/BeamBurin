@@ -4448,6 +4448,45 @@ fn the_main_dialogs_expose_named_accessibility_nodes() {
 }
 
 #[test]
+fn the_file_list_is_one_focus_stop_with_arrow_navigation() {
+    use egui_kittest::kittest::NodeT as _;
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("file_list_focus");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    std::fs::write(directory.join("one.svg"), "<svg/>").expect("cannot write the fixture");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.open_dialog(FileMode::OpenProject);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Files").focus();
+    harness.run();
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    assert_eq!(
+        harness.get_by_label("File name:").value().as_deref(),
+        Some("one.svg"),
+        "the arrow key did not select the first file"
+    );
+    harness.key_press(egui::Key::Tab);
+    harness.run();
+    let focused = harness
+        .root()
+        .children_recursive()
+        .find(egui_kittest::Node::is_focused)
+        .map(|node| {
+            let accesskit = node.accesskit_node();
+            format!("{:?}/{:?}", accesskit.role(), accesskit.label())
+        });
+    assert_eq!(
+        focused.as_deref(),
+        Some("CheckBox/Some(\"Show all files\")"),
+        "Tab should leave the list for the next control, not a file row"
+    );
+}
+
+#[test]
 fn the_main_dialogs_keep_a_logical_focus_order() {
     use egui_kittest::kittest::NodeT as _;
     use egui_kittest::kittest::Queryable as _;
