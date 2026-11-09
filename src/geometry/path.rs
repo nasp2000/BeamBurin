@@ -625,6 +625,15 @@ impl Default for Path {
 /// island inside a hole). Open paths never become holes. The returned index is
 /// the parent's position in `paths`.
 pub fn contour_parents(paths: &[Path]) -> Vec<Option<usize>> {
+    contour_parents_with_rule(paths, false)
+}
+
+/// Like [`contour_parents`], for a specific fill rule.
+///
+/// With the default nonzero rule a nested contour is a hole only when its
+/// winding is opposite to the parent's; with `even_odd` every odd nesting depth
+/// is a hole.
+pub fn contour_parents_with_rule(paths: &[Path], even_odd: bool) -> Vec<Option<usize>> {
     use crate::geometry::boolean::{point_in_polygon, polygon_area};
 
     let polygons: Vec<Vec<(f64, f64)>> = paths
@@ -639,6 +648,10 @@ pub fn contour_parents(paths: &[Path]) -> Vec<Option<usize>> {
     let interiors: Vec<Option<(f64, f64)>> = polygons
         .iter()
         .map(|polygon| interior_point(polygon))
+        .collect();
+    let areas: Vec<f64> = polygons
+        .iter()
+        .map(|polygon| polygon_area(polygon))
         .collect();
     let depths: Vec<usize> = (0..paths.len())
         .map(|index| {
@@ -677,6 +690,7 @@ pub fn contour_parents(paths: &[Path]) -> Vec<Option<usize>> {
                             .abs()
                             .total_cmp(&polygon_area(&polygons[second]).abs())
                     })
+                    .filter(|&parent| even_odd || areas[index].signum() != areas[parent].signum())
             })
         })
         .collect()

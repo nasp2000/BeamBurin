@@ -630,7 +630,7 @@ fn import_paths(
         }
         return;
     }
-    let parents = crate::geometry::path::contour_parents(&paths);
+    let parents = crate::geometry::path::contour_parents_with_rule(&paths, style.even_odd());
     let mut order: Vec<usize> = (0..paths.len()).collect();
     order.sort_by_key(|&index| parents[index].is_some());
     let mut ids: Vec<Option<String>> = vec![None; paths.len()];
@@ -665,6 +665,7 @@ struct SvgStyle {
     stroke: Option<Option<String>>,
     fill: Option<Option<String>>,
     stroke_width: Option<f64>,
+    fill_rule: Option<String>,
 }
 
 impl SvgStyle {
@@ -690,6 +691,9 @@ impl SvgStyle {
         if let Some(value) = node.attr("stroke-width") {
             self.stroke_width = parse_length(value).map(Length::numeric);
         }
+        if let Some(value) = node.attr("fill-rule") {
+            self.fill_rule = Some(value.trim().to_ascii_lowercase());
+        }
         if let Some(value) = node.attr("style") {
             for declaration in value.split(';') {
                 let Some((key, value)) = declaration.split_once(':') else {
@@ -701,10 +705,17 @@ impl SvgStyle {
                     "stroke-width" => {
                         self.stroke_width = parse_length(value).map(Length::numeric);
                     }
+                    "fill-rule" => {
+                        self.fill_rule = Some(value.trim().to_ascii_lowercase());
+                    }
                     _ => {}
                 }
             }
         }
+    }
+
+    fn even_odd(&self) -> bool {
+        self.fill_rule.as_deref() == Some("evenodd")
     }
 
     fn to_object_style(&self, transform: &Transform2) -> Style {
@@ -1262,6 +1273,36 @@ mod tests {
         assert!((min.y - 3.0).abs() < 1e-6);
         assert!((max.x - 7.0).abs() < 1e-6);
         assert!((max.y - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn same_winding_nesting_stays_solid_under_nonzero() {
+        let doc = import_svg(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><path d="M1 1 H9 V9 H1 Z M3 3 H7 V7 H3 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(doc.objects.len(), 2);
+        assert!(
+            doc.objects.iter().all(|object| object.hole_of.is_none()),
+            "same-winding contours were treated as holes"
+        );
+    }
+
+    #[test]
+    fn even_odd_marks_same_winding_nesting_as_a_hole() {
+        let doc = import_svg(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><path fill-rule="evenodd" d="M1 1 H9 V9 H1 Z M3 3 H7 V7 H3 Z"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(doc.objects.len(), 2);
+        assert_eq!(
+            doc.objects
+                .iter()
+                .filter(|object| object.hole_of.is_some())
+                .count(),
+            1,
+            "even-odd did not mark the nested contour as a hole"
+        );
     }
 
     #[test]
