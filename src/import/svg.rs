@@ -591,37 +591,58 @@ fn apply_clip(
     ids: &HashMap<String, &Node>,
     warnings: &mut Vec<String>,
 ) {
+    for (attribute, expected, label) in [
+        ("clip-path", "clipPath", "clip path"),
+        ("mask", "mask", "mask"),
+    ] {
+        let Some(value) = node.attr(attribute) else {
+            continue;
+        };
+        let id = value
+            .trim()
+            .strip_prefix("url(#")
+            .and_then(|value| value.strip_suffix(')'))
+            .unwrap_or_default();
+        if id.is_empty() {
+            warnings.push(format!("{label} '{value}' is not a local reference"));
+            continue;
+        }
+        let Some(target) = ids.get(id) else {
+            warnings.push(format!("{label} references missing #{id}"));
+            continue;
+        };
+        if target.name != expected {
+            warnings.push(format!("#{id} is not a {label}"));
+            continue;
+        }
+        let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
+        for child in &target.children {
+            contours.extend(clip_contours(child, transform));
+        }
+        let contours = weld_contours(contours);
+        if contours.is_empty() {
+            warnings.push(format!("{label} #{id} has no usable shape"));
+            continue;
+        }
+        if attribute == "mask" {
+            warnings.push(format!(
+                "mask #{id} was approximated as a clip path (white shapes only)"
+            ));
+        }
+        clip_objects(doc, start, id, label, &contours, warnings);
+    }
+}
+
+fn clip_objects(
+    doc: &mut Document,
+    start: usize,
+    id: &str,
+    label: &str,
+    contours: &[Vec<(f64, f64)>],
+    warnings: &mut Vec<String>,
+) {
     use crate::geometry::boolean::{BooleanOp, boolean_contours};
 
-    let Some(value) = node.attr("clip-path") else {
-        return;
-    };
-    let id = value
-        .trim()
-        .strip_prefix("url(#")
-        .and_then(|value| value.strip_suffix(')'))
-        .unwrap_or_default();
-    if id.is_empty() {
-        warnings.push(format!("clip path '{value}' is not a local reference"));
-        return;
-    }
-    let Some(target) = ids.get(id) else {
-        warnings.push(format!("clip path references missing #{id}"));
-        return;
-    };
-    if target.name != "clipPath" {
-        warnings.push(format!("#{id} is not a clipPath"));
-        return;
-    }
-    let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
-    for child in &target.children {
-        contours.extend(clip_contours(child, transform));
-    }
-    let contours = weld_contours(contours);
-    if contours.is_empty() {
-        warnings.push(format!("clip path #{id} has no usable shape"));
-        return;
-    }
     let objects: Vec<Object> = doc.objects.split_off(start);
     let mut replaced = Vec::new();
     let mut applied = false;
@@ -629,7 +650,7 @@ fn apply_clip(
         match &object.shape {
             Shape::Text(_) | Shape::Image(_) => {
                 warnings.push(format!(
-                    "clip path was not applied to {} '{}'",
+                    "{label} was not applied to {} '{}'",
                     object.shape.kind_name(),
                     object.name
                 ));
@@ -641,7 +662,7 @@ fn apply_clip(
         let path = object.world_path();
         if !path.closed {
             warnings.push(format!(
-                "clip path was not applied to open path '{}'",
+                "{label} was not applied to open path '{}'",
                 object.name
             ));
             replaced.push(object);
@@ -653,7 +674,7 @@ fn apply_clip(
                 .map(|point| (point.x, point.y))
                 .collect::<Vec<_>>(),
         ];
-        for clip in &contours {
+        for clip in contours {
             pieces = pieces
                 .into_iter()
                 .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
@@ -700,7 +721,7 @@ fn apply_clip(
     }
     doc.objects.extend(replaced);
     if applied {
-        warnings.push(format!("clip path #{id} was applied as straight segments"));
+        warnings.push(format!("{label} #{id} was applied as straight segments"));
     }
 }
 
@@ -2053,6 +2074,26 @@ mod tests {
         assert!(
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
+        );
+    }
+
+    #[test]
+    fn a_mask_is_approximated_as_a_clip_path() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><mask id="m"><rect x="1" y="1" width="4" height="4" fill="white"/></mask></defs><rect x="0" y="0" width="10" height="10" mask="url(#m)"/></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("approximated as a clip path")),
+            "{:?}",
+            report.warnings
         );
     }
 
