@@ -1139,8 +1139,18 @@ impl BeamBurinApp {
         for preset in &self.preferences.vector_export_presets.saved {
             ui.horizontal(|ui| {
                 ui.label(&preset.name);
+                let unit = if preset.format == "dxf" {
+                    format!(" · {}", preset.dxf_unit)
+                } else {
+                    String::new()
+                };
+                let embedded = if preset.format == "svg" && preset.embed_images {
+                    " · images embedded"
+                } else {
+                    ""
+                };
                 ui.weak(format!(
-                    "{} · {}{}{}",
+                    "{} · {}{}{}{}{}",
                     preset.format.to_uppercase(),
                     if preset.text_as_paths {
                         "text as paths"
@@ -1148,6 +1158,8 @@ impl BeamBurinApp {
                         "text as text"
                     },
                     if preset.arcs { " · arcs" } else { "" },
+                    unit,
+                    embedded,
                     if preset.margin_mm > 0.0 {
                         format!(" · {:.1} mm margin", preset.margin_mm)
                     } else {
