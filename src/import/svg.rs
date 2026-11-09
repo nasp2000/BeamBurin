@@ -469,12 +469,6 @@ fn process_node(
 
     match node.name.as_str() {
         "g" | "a" | "svg" => {
-            if node.attr("clip-path").is_some() {
-                warnings.push(
-                    "clip paths on groups are not supported; the children are imported unclipped"
-                        .to_string(),
-                );
-            }
             for child in &node.children {
                 process_node(
                     child, transform, &style, doc, layer_id, warnings, ids, depth, dpi, base_dir,
@@ -484,6 +478,12 @@ fn process_node(
         "defs" | "clipPath" | "mask" | "symbol" | "pattern" | "marker" | "metadata" | "title"
         | "desc" | "style" => {}
         "use" => {
+            if node.attr("clip-path").is_some() {
+                warnings.push(
+                    "clip paths on <use> are not supported; the reference is imported unclipped"
+                        .to_string(),
+                );
+            }
             let href = node
                 .attr("href")
                 .or_else(|| node.attr("xlink:href"))
@@ -561,7 +561,18 @@ fn process_node(
     }
     if matches!(
         node.name.as_str(),
-        "rect" | "circle" | "ellipse" | "line" | "polyline" | "polygon" | "path" | "text" | "image"
+        "g" | "a"
+            | "svg"
+            | "use"
+            | "rect"
+            | "circle"
+            | "ellipse"
+            | "line"
+            | "polyline"
+            | "polygon"
+            | "path"
+            | "text"
+            | "image"
     ) {
         apply_clip(node, transform, doc, objects_before, ids, warnings);
     }
@@ -2043,6 +2054,20 @@ mod tests {
             (expected.1.y - actual.1.y).abs() < 1e-6,
             "{expected:?} {actual:?}"
         );
+    }
+
+    #[test]
+    fn a_group_clip_applies_to_every_child() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><clipPath id="c"><rect x="1" y="1" width="4" height="4"/></clipPath></defs><g clip-path="url(#c)"><rect x="0" y="0" width="10" height="10"/><rect x="20" y="20" width="5" height="5"/></g></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 5.0).abs() < 1e-6, "{max:?}");
+        assert!((min.y - 5.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 9.0).abs() < 1e-6, "{max:?}");
     }
 
     #[test]
