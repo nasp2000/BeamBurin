@@ -618,6 +618,118 @@ impl Default for Path {
     }
 }
 
+/// Parent contour for each path in one compound shape.
+///
+/// Contours are nested by containment. A path at an odd nesting depth is a
+/// hole of the nearest enclosing contour; even depths are solid shapes (an
+/// island inside a hole). Open paths never become holes. The returned index is
+/// the parent's position in `paths`.
+pub fn contour_parents(paths: &[Path]) -> Vec<Option<usize>> {
+    use crate::geometry::boolean::{point_in_polygon, polygon_area};
+
+    let polygons: Vec<Vec<(f64, f64)>> = paths
+        .iter()
+        .map(|path| {
+            path.flatten(0.05)
+                .into_iter()
+                .map(|point| (point.x, point.y))
+                .collect()
+        })
+        .collect();
+    let interiors: Vec<Option<(f64, f64)>> = polygons
+        .iter()
+        .map(|polygon| interior_point(polygon))
+        .collect();
+    let depths: Vec<usize> = (0..paths.len())
+        .map(|index| {
+            if !paths[index].closed {
+                return 0;
+            }
+            let Some(point) = interiors[index] else {
+                return 0;
+            };
+            polygons
+                .iter()
+                .enumerate()
+                .filter(|(other, polygon)| {
+                    *other != index
+                        && polygon.len() >= 3
+                        && point_in_polygon(point.0, point.1, polygon)
+                })
+                .count()
+        })
+        .collect();
+    (0..paths.len())
+        .map(|index| {
+            if depths[index] % 2 == 0 {
+                return None;
+            }
+            interiors[index].and_then(|point| {
+                (0..paths.len())
+                    .filter(|&other| {
+                        other != index
+                            && depths[other] + 1 == depths[index]
+                            && polygons[other].len() >= 3
+                            && point_in_polygon(point.0, point.1, &polygons[other])
+                    })
+                    .min_by(|&first, &second| {
+                        polygon_area(&polygons[first])
+                            .abs()
+                            .total_cmp(&polygon_area(&polygons[second]).abs())
+                    })
+            })
+        })
+        .collect()
+}
+
+/// A point strictly inside a simple polygon.
+///
+/// Walks edge midpoints and steps a tiny distance towards the interior
+/// (determined by the winding sign), which stays inside concave contours where
+/// a vertex average can fall outside.
+fn interior_point(polygon: &[(f64, f64)]) -> Option<(f64, f64)> {
+    use crate::geometry::boolean::{point_in_polygon, polygon_area};
+
+    if polygon.len() < 3 {
+        return None;
+    }
+    let area = polygon_area(polygon);
+    if area.abs() < 1e-12 {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for &(x, y) in polygon {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    let epsilon = (max_x - min_x).max(max_y - min_y).max(1e-6) * 1e-4;
+    let side = if area > 0.0 { 1.0 } else { -1.0 };
+    for pair in polygon.windows(2) {
+        let (x0, y0) = pair[0];
+        let (x1, y1) = pair[1];
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let length = dx.hypot(dy);
+        if length < 1e-12 {
+            continue;
+        }
+        let point = (
+            f64::midpoint(x0, x1) - dy / length * side * epsilon,
+            f64::midpoint(y0, y1) + dx / length * side * epsilon,
+        );
+        if point_in_polygon(point.0, point.1, polygon) {
+            return Some(point);
+        }
+    }
+    let center = (f64::midpoint(min_x, max_x), f64::midpoint(min_y, max_y));
+    point_in_polygon(center.0, center.1, polygon).then_some(center)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

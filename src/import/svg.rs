@@ -16,7 +16,6 @@ use crate::document::Document;
 use crate::document::model::Object;
 use crate::document::shape::{Shape, Style};
 use crate::errors::{BeamError, Result};
-use crate::geometry::boolean::{point_in_polygon, polygon_area};
 use crate::geometry::{CubicBezier, Path, Point2, Transform2, path::Segment};
 use crate::objects::{ImageObject, TextObject};
 
@@ -575,63 +574,15 @@ fn import_paths(
         }
         return;
     }
-    let polygons: Vec<Vec<(f64, f64)>> = paths
-        .iter()
-        .map(|path| {
-            path.flatten(0.05)
-                .into_iter()
-                .map(|point| (point.x, point.y))
-                .collect()
-        })
-        .collect();
-    let interiors: Vec<Option<(f64, f64)>> = polygons
-        .iter()
-        .map(|polygon| interior_point(polygon))
-        .collect();
-    let depths: Vec<usize> = (0..paths.len())
-        .map(|index| {
-            if !paths[index].closed {
-                return 0;
-            }
-            let Some(point) = interiors[index] else {
-                return 0;
-            };
-            polygons
-                .iter()
-                .enumerate()
-                .filter(|(other, polygon)| {
-                    *other != index
-                        && polygon.len() >= 3
-                        && point_in_polygon(point.0, point.1, polygon)
-                })
-                .count()
-        })
-        .collect();
+    let parents = crate::geometry::path::contour_parents(&paths);
     let mut order: Vec<usize> = (0..paths.len()).collect();
-    order.sort_by_key(|&index| depths[index]);
+    order.sort_by_key(|&index| parents[index].is_some());
     let mut ids: Vec<Option<String>> = vec![None; paths.len()];
     for index in order {
-        let depth = depths[index];
-        let parent = interiors[index].and_then(|point| {
-            (0..paths.len())
-                .filter(|&other| {
-                    other != index
-                        && depths[other] + 1 == depth
-                        && polygons[other].len() >= 3
-                        && point_in_polygon(point.0, point.1, &polygons[other])
-                })
-                .min_by(|&first, &second| {
-                    polygon_area(&polygons[first])
-                        .abs()
-                        .total_cmp(&polygon_area(&polygons[second]).abs())
-                })
-        });
         let mut object = Object::new(layer_id, Shape::Path(paths[index].clone()))
             .with_transform(transform)
             .with_style(style.to_object_style(&transform));
-        if depth % 2 == 1
-            && let Some(parent_id) = parent.and_then(|parent| ids[parent].clone())
-        {
+        if let Some(parent_id) = parents[index].and_then(|parent| ids[parent].clone()) {
             object.hole_of = Some(parent_id);
             object.name = "Hole".to_string();
         }
@@ -652,50 +603,67 @@ fn add_path_object(
     doc.add_object(object);
 }
 
-/// A point strictly inside a simple polygon.
-///
-/// Walks edge midpoints and steps a tiny distance towards the interior
-/// (determined by the winding sign), which stays inside concave contours where
-/// a vertex average can fall outside.
-fn interior_point(polygon: &[(f64, f64)]) -> Option<(f64, f64)> {
-    if polygon.len() < 3 {
-        return None;
+#[derive(Debug, Clone, Default)]
+#[allow(clippy::option_option)]
+struct SvgStyle {
+    stroke: Option<Option<String>>,
+    fill: Option<Option<String>>,
+    stroke_width: Option<f64>,
+}
+
+impl SvgStyle {
+    fn from_node(node: &Node) -> Self {
+        let mut style = Self::default();
+        style.apply_attributes(node);
+        style
     }
-    let area = polygon_area(polygon);
-    if area.abs() < 1e-12 {
-        return None;
+
+    fn inherit(&self, node: &Node) -> Self {
+        let mut style = self.clone();
+        style.apply_attributes(node);
+        style
     }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for &(x, y) in polygon {
-        min_x = min_x.min(x);
-        min_y = min_y.min(y);
-        max_x = max_x.max(x);
-        max_y = max_y.max(y);
-    }
-    let epsilon = (max_x - min_x).max(max_y - min_y).max(1e-6) * 1e-4;
-    let side = if area > 0.0 { 1.0 } else { -1.0 };
-    for pair in polygon.windows(2) {
-        let (x0, y0) = pair[0];
-        let (x1, y1) = pair[1];
-        let dx = x1 - x0;
-        let dy = y1 - y0;
-        let length = dx.hypot(dy);
-        if length < 1e-12 {
-            continue;
+
+    fn apply_attributes(&mut self, node: &Node) {
+        if let Some(value) = node.attr("fill") {
+            self.fill = paint(value);
         }
-        let point = (
-            f64::midpoint(x0, x1) - dy / length * side * epsilon,
-            f64::midpoint(y0, y1) + dx / length * side * epsilon,
-        );
-        if point_in_polygon(point.0, point.1, polygon) {
-            return Some(point);
+        if let Some(value) = node.attr("stroke") {
+            self.stroke = paint(value);
+        }
+        if let Some(value) = node.attr("stroke-width") {
+            self.stroke_width = parse_length(value).map(Length::numeric);
+        }
+        if let Some(value) = node.attr("style") {
+            for declaration in value.split(';') {
+                let Some((key, value)) = declaration.split_once(':') else {
+                    continue;
+                };
+                match key.trim() {
+                    "fill" => self.fill = paint(value),
+                    "stroke" => self.stroke = paint(value),
+                    "stroke-width" => {
+                        self.stroke_width = parse_length(value).map(Length::numeric);
+                    }
+                    _ => {}
+                }
+            }
         }
     }
-    let center = (f64::midpoint(min_x, max_x), f64::midpoint(min_y, max_y));
-    point_in_polygon(center.0, center.1, polygon).then_some(center)
+
+    fn to_object_style(&self, transform: &Transform2) -> Style {
+        let scale = transform_scale(transform);
+        let stroke = self
+            .stroke
+            .clone()
+            .unwrap_or_else(|| Some("#000000".to_string()));
+        let fill = self.fill.clone().unwrap_or(None);
+        Style {
+            stroke,
+            fill,
+            stroke_width_mm: (self.stroke_width.unwrap_or(1.0) * scale).max(0.01),
+        }
+    }
 }
 
 fn import_text(
@@ -843,69 +811,6 @@ fn bezpath_to_paths(bez: &kurbo::BezPath) -> Vec<Path> {
         paths.push(current);
     }
     paths
-}
-
-#[derive(Debug, Clone, Default)]
-#[allow(clippy::option_option)]
-struct SvgStyle {
-    stroke: Option<Option<String>>,
-    fill: Option<Option<String>>,
-    stroke_width: Option<f64>,
-}
-
-impl SvgStyle {
-    fn from_node(node: &Node) -> Self {
-        let mut style = Self::default();
-        style.apply_attributes(node);
-        style
-    }
-
-    fn inherit(&self, node: &Node) -> Self {
-        let mut style = self.clone();
-        style.apply_attributes(node);
-        style
-    }
-
-    fn apply_attributes(&mut self, node: &Node) {
-        if let Some(value) = node.attr("fill") {
-            self.fill = paint(value);
-        }
-        if let Some(value) = node.attr("stroke") {
-            self.stroke = paint(value);
-        }
-        if let Some(value) = node.attr("stroke-width") {
-            self.stroke_width = parse_length(value).map(Length::numeric);
-        }
-        if let Some(value) = node.attr("style") {
-            for declaration in value.split(';') {
-                let Some((key, value)) = declaration.split_once(':') else {
-                    continue;
-                };
-                match key.trim() {
-                    "fill" => self.fill = paint(value),
-                    "stroke" => self.stroke = paint(value),
-                    "stroke-width" => {
-                        self.stroke_width = parse_length(value).map(Length::numeric);
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    fn to_object_style(&self, transform: &Transform2) -> Style {
-        let scale = transform_scale(transform);
-        let stroke = self
-            .stroke
-            .clone()
-            .unwrap_or_else(|| Some("#000000".to_string()));
-        let fill = self.fill.clone().unwrap_or(None);
-        Style {
-            stroke,
-            fill,
-            stroke_width_mm: (self.stroke_width.unwrap_or(1.0) * scale).max(0.01),
-        }
-    }
 }
 
 fn transform_scale(transform: &Transform2) -> f64 {

@@ -288,11 +288,55 @@ pub fn build_toolpaths_cancellable(
                         warnings.push(format!("image '{}' was omitted: {error}", object.name));
                     }
                 },
-                Shape::Text(_) => warnings.push(format!(
-                    "{} '{}' has no vector outline and was omitted",
-                    object.shape.kind_name(),
-                    object.name
-                )),
+                Shape::Text(text) => {
+                    let paths = match crate::objects::text_to_paths(text) {
+                        Ok(paths) if !paths.is_empty() => paths,
+                        Ok(_) => {
+                            warnings.push(format!(
+                                "text '{}' has no printable characters and was omitted",
+                                object.name
+                            ));
+                            continue;
+                        }
+                        Err(error) => {
+                            warnings.push(format!(
+                                "text '{}' could not be outlined and was omitted: {error}",
+                                object.name
+                            ));
+                            continue;
+                        }
+                    };
+                    let parents = crate::geometry::path::contour_parents(&paths);
+                    for (index, path) in paths.iter().enumerate() {
+                        let points = path.transform(&object.transform).flatten(0.2);
+                        if points.len() < 2 {
+                            continue;
+                        }
+                        let mut outlined = object.clone();
+                        outlined.shape = Shape::Path(path.clone());
+                        outlined.name = format!("{} outline {}", object.name, index + 1);
+                        let is_hole = parents[index].is_some();
+                        let holes: Vec<Vec<Point2>> = if is_hole {
+                            Vec::new()
+                        } else {
+                            (0..paths.len())
+                                .filter(|&other| parents[other] == Some(index))
+                                .map(|other| paths[other].transform(&object.transform).flatten(0.2))
+                                .filter(|hole| hole.len() >= 3)
+                                .collect()
+                        };
+                        push_path_toolpaths(
+                            &mut toolpaths,
+                            &outlined,
+                            &resolved,
+                            &points,
+                            is_hole,
+                            &holes,
+                            &mut warnings,
+                            cancel,
+                        )?;
+                    }
+                }
                 _ => {
                     let points = object.world_path().flatten(0.2);
                     if points.len() < 2 {
@@ -315,43 +359,16 @@ pub fn build_toolpaths_cancellable(
                             })
                             .collect()
                     };
-                    if !is_hole
-                        && matches!(
-                            resolved.op_type,
-                            OperationType::Fill
-                                | OperationType::FillWithOutline
-                                | OperationType::FillWithOffset
-                        )
-                    {
-                        push_fill_toolpath(
-                            &mut toolpaths,
-                            object,
-                            &resolved,
-                            &points,
-                            &holes,
-                            &mut warnings,
-                            cancel,
-                        )?;
-                    } else {
-                        let mut toolpath = Toolpath::new(
-                            object.name.clone(),
-                            resolved.speed,
-                            resolved.power,
-                            resolved.passes,
-                        );
-                        let points = kerfed(&points, resolved.kerf_mm);
-                        append_contour(
-                            &mut toolpath,
-                            &points,
-                            ContourOptions::from_resolved(&resolved),
-                        );
-                        let mut toolpath = toolpath
-                            .with_operation(object.operation_id.as_deref())
-                            .with_air_assist(resolved.air_assist)
-                            .with_constant_power(resolved.constant_power);
-                        toolpath.operation_name.clone_from(&resolved.operation_name);
-                        toolpaths.push(toolpath);
-                    }
+                    push_path_toolpaths(
+                        &mut toolpaths,
+                        object,
+                        &resolved,
+                        &points,
+                        is_hole,
+                        &holes,
+                        &mut warnings,
+                        cancel,
+                    )?;
                 }
             }
         }
@@ -373,6 +390,48 @@ pub fn build_toolpaths_cancellable(
         }
     }
     Ok((toolpaths, warnings))
+}
+
+/// Push the fill or outline toolpaths for one path contour.
+#[allow(clippy::too_many_arguments)]
+fn push_path_toolpaths(
+    toolpaths: &mut Vec<Toolpath>,
+    object: &Object,
+    resolved: &Resolved,
+    points: &[Point2],
+    is_hole: bool,
+    holes: &[Vec<Point2>],
+    warnings: &mut Vec<String>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<()> {
+    if !is_hole
+        && matches!(
+            resolved.op_type,
+            OperationType::Fill | OperationType::FillWithOutline | OperationType::FillWithOffset
+        )
+    {
+        push_fill_toolpath(toolpaths, object, resolved, points, holes, warnings, cancel)?;
+    } else {
+        let mut toolpath = Toolpath::new(
+            object.name.clone(),
+            resolved.speed,
+            resolved.power,
+            resolved.passes,
+        );
+        let points = kerfed(points, resolved.kerf_mm);
+        append_contour(
+            &mut toolpath,
+            &points,
+            ContourOptions::from_resolved(resolved),
+        );
+        let mut toolpath = toolpath
+            .with_operation(object.operation_id.as_deref())
+            .with_air_assist(resolved.air_assist)
+            .with_constant_power(resolved.constant_power);
+        toolpath.operation_name.clone_from(&resolved.operation_name);
+        toolpaths.push(toolpath);
+    }
+    Ok(())
 }
 
 /// Clip every cut move to the material area.
@@ -2164,7 +2223,7 @@ mod tests {
     }
 
     #[test]
-    fn text_is_reported_as_omitted() {
+    fn text_is_outlined_for_the_job() {
         let mut document = Document::default();
         let layer_id = document.layers[0].id.clone();
         document.add_object(Object::new(
@@ -2179,8 +2238,21 @@ mod tests {
             }),
         ));
         let (toolpaths, warnings) = build_toolpaths(&document);
-        assert_eq!(toolpaths.len(), 0);
-        assert_eq!(warnings.len(), 1);
+        assert!(!toolpaths.is_empty(), "the text produced no toolpaths");
+        assert!(
+            toolpaths
+                .iter()
+                .all(|toolpath| toolpath.name.contains("outline")),
+            "{:?}",
+            toolpaths
+                .iter()
+                .map(|toolpath| &toolpath.name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            warnings.iter().all(|warning| !warning.contains("omitted")),
+            "{warnings:?}"
+        );
     }
 
     fn image_document(path: &std::path::Path) -> Document {

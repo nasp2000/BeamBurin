@@ -400,6 +400,7 @@ pub fn render_rgba_cancellable(
     Ok((canvas.pixels, width, height, warnings))
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_object(
     canvas: &mut Canvas,
     object: &Object,
@@ -421,10 +422,53 @@ fn draw_object(
         .and_then(crate::color::parse_hex_color);
 
     match &object.shape {
-        Shape::Text(_) => warnings.push(format!(
-            "text '{}' has no outline and was omitted from the PNG",
-            object.name
-        )),
+        Shape::Text(text) => {
+            let paths = match crate::objects::text_to_paths(text) {
+                Ok(paths) if !paths.is_empty() => paths,
+                Ok(_) => {
+                    warnings.push(format!(
+                        "text '{}' has no printable characters and was omitted from the PNG",
+                        object.name
+                    ));
+                    return;
+                }
+                Err(error) => {
+                    warnings.push(format!(
+                        "text '{}' could not be outlined and was omitted from the PNG: {error}",
+                        object.name
+                    ));
+                    return;
+                }
+            };
+            let parents = crate::geometry::path::contour_parents(&paths);
+            let text_fill = fill.unwrap_or((stroke[0], stroke[1], stroke[2]));
+            for (index, path) in paths.iter().enumerate() {
+                let world = path.transform(&object.transform);
+                let points = world.flatten(0.1);
+                if points.len() < 2 {
+                    continue;
+                }
+                if parents[index].is_none() {
+                    let holes: Vec<Vec<Point2>> = (0..paths.len())
+                        .filter(|&other| parents[other] == Some(index))
+                        .map(|other| paths[other].transform(&object.transform).flatten(0.1))
+                        .filter(|hole| hole.len() >= 3)
+                        .collect();
+                    canvas.fill_polygon_with_holes(
+                        &points,
+                        &holes,
+                        [text_fill.0, text_fill.1, text_fill.2, 255],
+                    );
+                }
+                if object.style.stroke.is_some() {
+                    canvas.stroke_polyline(
+                        &points,
+                        object.style.stroke_width_mm * canvas.stroke_scale(),
+                        [stroke[0], stroke[1], stroke[2], 255],
+                    );
+                }
+            }
+        }
         Shape::Image(image) => {
             let path = Path::new(&image.path);
             match image::open(path) {
@@ -984,7 +1028,7 @@ mod tests {
     }
 
     #[test]
-    fn text_is_reported() {
+    fn text_is_outlined_in_the_png() {
         let mut document = Document::default();
         let layer_id = document.layers[0].id.clone();
         document.add_object(Object::new(
@@ -992,17 +1036,19 @@ mod tests {
             Shape::Text(crate::objects::TextObject {
                 content: "hi".to_string(),
                 font: "sans".to_string(),
-                size: 4.0,
-                x: 0.0,
-                y: 0.0,
+                size: 8.0,
+                x: 10.0,
+                y: 20.0,
                 ..crate::objects::TextObject::default()
             }),
         ));
-        let (_, _, _, warnings) =
-            render_rgba(&Document::default(), &PngOptions::default()).unwrap();
+        let (pixels, _, _, warnings) = render_rgba(&document, &PngOptions::default()).unwrap();
         assert_eq!(warnings.len(), 0);
-        let (_, _, _, warnings) = render_rgba(&document, &PngOptions::default()).unwrap();
-        assert_eq!(warnings.len(), 1);
+        let ink = pixels
+            .chunks_exact(4)
+            .filter(|pixel| pixel[0] < 250 || pixel[1] < 250 || pixel[2] < 250)
+            .count();
+        assert!(ink > 0, "the text left no pixels in the PNG");
     }
 
     #[test]
