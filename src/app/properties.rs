@@ -729,6 +729,25 @@ impl BeamBurinApp {
             {
                 self.status = "Path split".to_string();
             }
+            let endpoint_selected = self.editor.node_path().is_some_and(|path| {
+                !path.closed
+                    && self.editor.node_selection.len() == 1
+                    && (self.editor.node_selection[0] == 0
+                        || self.editor.node_selection[0] == path.segments.len())
+            });
+            if ui
+                .add_enabled(endpoint_selected, egui::Button::new("Extend path"))
+                .on_hover_text("Click the canvas to add segments from the endpoint")
+                .clicked()
+            {
+                match self.editor.start_path_extension() {
+                    Ok(()) => {
+                        self.status =
+                            "Extend path: click to add segments, Esc to finish".to_string();
+                    }
+                    Err(error) => self.status = error,
+                }
+            }
         });
         ui.weak("Double-click a segment to insert a node.");
     }

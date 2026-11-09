@@ -108,10 +108,15 @@ impl BeamBurinApp {
                 self.pen_nodes.clear();
                 self.pen_drag_start = None;
             }
-            if self.editor.is_editing_nodes() {
-                self.editor.end_node_edit();
+            if self.editor.extend_path {
+                self.editor.cancel_path_extension();
+                self.status = "Path extension finished".to_string();
+            } else {
+                if self.editor.is_editing_nodes() {
+                    self.editor.end_node_edit();
+                }
+                self.editor.selection.clear();
             }
-            self.editor.selection.clear();
         }
         if pressed.contains(&Command::ToolSelect) {
             self.editor.tool = Tool::Select;

@@ -198,6 +198,10 @@ pub struct EditorState {
     pub node_object: Option<String>,
     /// Indices of the selected nodes in that path.
     pub node_selection: Vec<usize>,
+    /// Wait for canvas clicks that add segments to the edited path.
+    pub extend_path: bool,
+    /// Append at the last endpoint instead of the first.
+    pub extend_at_end: bool,
 }
 
 impl EditorState {
@@ -236,6 +240,8 @@ impl EditorState {
             transform_center: TransformCenter::Selection,
             node_object: None,
             node_selection: Vec::new(),
+            extend_path: false,
+            extend_at_end: false,
         }
     }
 

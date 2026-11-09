@@ -166,7 +166,12 @@ impl BeamBurinApp {
                     response.request_focus();
                     if let Some(pos) = pointer {
                         let point = self.doc_point(rect, pos);
-                        if self.editor.is_editing_nodes() {
+                        if self.editor.extend_path {
+                            if self.editor.extend_path_to(point) {
+                                self.status =
+                                    "Path extended; click to continue, Esc to finish".to_string();
+                            }
+                        } else if self.editor.is_editing_nodes() {
                             self.begin_node_interaction(point, shift);
                             if primary_released {
                                 self.drag = None;

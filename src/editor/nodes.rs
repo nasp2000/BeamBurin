@@ -6,7 +6,7 @@
 
 use crate::document::Object;
 use crate::document::shape::Shape;
-use crate::geometry::{Path, Point2, Transform2};
+use crate::geometry::{Path, Point2, Transform2, path::Segment};
 
 use super::state::EditorState;
 
@@ -44,6 +44,80 @@ impl EditorState {
     pub fn end_node_edit(&mut self) {
         self.node_object = None;
         self.node_selection.clear();
+        self.extend_path = false;
+    }
+
+    /// Wait for clicks that extend an open path from the selected endpoint.
+    pub fn start_path_extension(&mut self) -> std::result::Result<(), String> {
+        let path = self
+            .node_path()
+            .ok_or_else(|| "No path is being edited".to_string())?;
+        if path.closed {
+            return Err("Only an open path can be extended".to_string());
+        }
+        if self.node_selection.len() != 1 {
+            return Err("Select the first or last node".to_string());
+        }
+        let index = self.node_selection[0];
+        let last = path.segments.len();
+        if index != 0 && index != last {
+            return Err("Select the first or last node".to_string());
+        }
+        self.extend_path = true;
+        self.extend_at_end = index == last;
+        Ok(())
+    }
+
+    pub fn cancel_path_extension(&mut self) {
+        self.extend_path = false;
+    }
+
+    /// Append a straight segment to the endpoint being extended.
+    pub fn extend_path_to(&mut self, point: Point2) -> bool {
+        if !self.extend_path {
+            return false;
+        }
+        let Some(path) = self.node_path().cloned() else {
+            self.extend_path = false;
+            return false;
+        };
+        if path.closed || path.segments.is_empty() {
+            self.extend_path = false;
+            return false;
+        }
+        let endpoint = if self.extend_at_end {
+            path.segments.last().map(Segment::end)
+        } else {
+            path.segments.first().map(Segment::start)
+        };
+        let Some(endpoint) = endpoint else {
+            return false;
+        };
+        if endpoint.distance(point) < 0.01 {
+            return false;
+        }
+        self.record_node_edit();
+        let at_end = self.extend_at_end;
+        if let Some(path) = self.node_path_mut() {
+            if at_end {
+                path.push(Segment::Line {
+                    from: endpoint,
+                    to: point,
+                });
+            } else {
+                path.segments.insert(
+                    0,
+                    Segment::Line {
+                        from: point,
+                        to: endpoint,
+                    },
+                );
+            }
+        }
+        let count = self.node_path().map_or(0, |path| path.segments.len());
+        self.node_selection.clear();
+        self.node_selection.push(if at_end { count } else { 0 });
+        true
     }
 
     pub fn is_editing_nodes(&self) -> bool {
@@ -695,6 +769,38 @@ mod tests {
                 .start_point(),
             Some(Point2::new(5.0, 5.0))
         );
+    }
+
+    #[test]
+    fn extending_an_open_path_adds_segments_from_endpoints() {
+        let mut editor = editor();
+        let path = open_polyline(&mut editor);
+        editor.begin_node_edit(&path).unwrap();
+        editor.node_selection = vec![2];
+        assert!(editor.start_path_extension().is_ok());
+        assert!(editor.extend_path_to(Point2::new(10.0, 20.0)));
+        let path = editor.node_path().unwrap();
+        assert_eq!(path.segments.len(), 3);
+        assert_eq!(path.segments.last().unwrap().end(), Point2::new(10.0, 20.0));
+        assert!(editor.extend_path_to(Point2::new(20.0, 20.0)));
+        assert_eq!(editor.node_path().unwrap().segments.len(), 4);
+        editor.cancel_path_extension();
+        editor.node_selection = vec![0];
+        assert!(editor.start_path_extension().is_ok());
+        assert!(editor.extend_path_to(Point2::new(-5.0, 0.0)));
+        assert_eq!(
+            editor
+                .node_path()
+                .unwrap()
+                .segments
+                .first()
+                .unwrap()
+                .start(),
+            Point2::new(-5.0, 0.0)
+        );
+        editor.cancel_path_extension();
+        editor.node_selection = vec![1];
+        assert!(editor.start_path_extension().is_err());
     }
 
     #[test]
