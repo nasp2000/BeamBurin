@@ -4,9 +4,6 @@ use crate::geometry::Point2;
 /// One straight movement in the simulated job.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaybackSegment {
-    /// Start in millimetres; `f32` keeps a large timeline compact. Playback is
-    /// a visual timeline, not the source of the exported coordinates.
-    pub from: [f32; 2],
     pub to: [f32; 2],
     pub kind: MoveKind,
     /// Length in millimetres.
@@ -20,10 +17,6 @@ pub struct PlaybackSegment {
 }
 
 impl PlaybackSegment {
-    pub fn from_point(&self) -> Point2 {
-        Point2::new(f64::from(self.from[0]), f64::from(self.from[1]))
-    }
-
     pub fn to_point(&self) -> Point2 {
         Point2::new(f64::from(self.to[0]), f64::from(self.to[1]))
     }
@@ -42,6 +35,10 @@ pub struct PlaybackPosition {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Playback {
     pub segments: Vec<PlaybackSegment>,
+    /// Start of each discontinuous run, keyed by its first segment. Most
+    /// segments start where the previous one ended, so only toolpath and pass
+    /// boundaries need an entry.
+    starts: Vec<(usize, [f32; 2])>,
     pub total_length: f64,
     pub duration_seconds: f64,
 }
@@ -74,6 +71,7 @@ impl Playback {
         let passes = toolpath.passes.max(1);
         for pass in 1..=passes {
             let mut previous: Option<Point2> = None;
+            let mut first_segment = true;
             for movement in &toolpath.moves {
                 let to = Point2::new(movement.x, movement.y);
                 if let Some(from) = previous {
@@ -87,8 +85,12 @@ impl Playback {
                         if speed > 0.0 {
                             self.duration_seconds += length / speed * 60.0;
                         }
+                        if first_segment {
+                            self.starts
+                                .push((self.segments.len(), [from.x as f32, from.y as f32]));
+                            first_segment = false;
+                        }
                         self.segments.push(PlaybackSegment {
-                            from: [from.x as f32, from.y as f32],
                             to: [to.x as f32, to.y as f32],
                             kind: movement.kind,
                             length: length as f32,
@@ -107,6 +109,26 @@ impl Playback {
         self.segments.is_empty()
     }
 
+    /// Start of the segment at `index`.
+    ///
+    /// The start is stored only at a toolpath or pass boundary; otherwise it is
+    /// the end of the previous segment.
+    pub fn from_point(&self, index: usize) -> Option<Point2> {
+        if self.segments.is_empty() {
+            return None;
+        }
+        let position = self.starts.partition_point(|(start, _)| *start <= index);
+        if let Some((start, point)) = self.starts.get(position.checked_sub(1)?)
+            && *start == index
+        {
+            return Some(Point2::new(f64::from(point[0]), f64::from(point[1])));
+        }
+        if index == 0 {
+            return None;
+        }
+        self.segments.get(index - 1).map(PlaybackSegment::to_point)
+    }
+
     /// Laser state after travelling `length` millimetres of the job.
     pub fn position_at(&self, length: f64) -> Option<PlaybackPosition> {
         let length = length.clamp(0.0, self.total_length);
@@ -119,7 +141,7 @@ impl Playback {
                 } else {
                     0.0
                 };
-                let from = segment.from_point();
+                let from = self.from_point(index)?;
                 let to = segment.to_point();
                 return Some(PlaybackPosition {
                     point: Point2::new(
@@ -190,6 +212,17 @@ mod tests {
         assert_eq!(playback.segments[1].kind, MoveKind::Travel);
         assert!((playback.segments[1].power).abs() < 1e-9);
         assert!((playback.total_length - 30.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_new_toolpath_keeps_its_own_start_point() {
+        let mut second = Toolpath::new("b", 600.0, 250.0, 1);
+        second.push(MoveKind::Travel, 50.0, 50.0);
+        second.push(MoveKind::Cut, 60.0, 50.0);
+        let playback = Playback::from_toolpaths(&[toolpath(1), second], 3000.0);
+        assert_eq!(playback.from_point(0), Some(Point2::new(0.0, 0.0)));
+        assert_eq!(playback.from_point(3), Some(Point2::new(50.0, 50.0)));
+        assert_eq!(playback.from_point(2), Some(Point2::new(10.0, 10.0)));
     }
 
     #[test]

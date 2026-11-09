@@ -348,17 +348,19 @@ fn paint_playback(
     let cut_color = Color32::from_rgb(235, 90, 40);
     let travel_color = Color32::from_rgb(120, 170, 220);
     let mut travelled = 0.0;
-    for segment in &playback.segments {
+    for (index, segment) in playback.segments.iter().enumerate() {
         if travelled >= progress_mm {
             break;
         }
+        let Some(from) = playback.from_point(index) else {
+            continue;
+        };
         let remaining = progress_mm - travelled;
         let ratio = if segment.length > 0.0 {
             (remaining / f64::from(segment.length)).clamp(0.0, 1.0)
         } else {
             1.0
         };
-        let from = segment.from_point();
         let to_point = segment.to_point();
         let to = Point2::new(
             from.x + (to_point.x - from.x) * ratio,
