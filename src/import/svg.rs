@@ -533,15 +533,15 @@ fn process_node(
                     }
                 }
             } else if let Some((file, id)) = href.split_once('#') {
-                if node.attr("clip-path").is_some() || node.attr("mask").is_some() {
-                    warnings.push(
-                        "clip paths and masks on external <use> are not supported".to_string(),
-                    );
-                }
+                let clip_transform = transform.compose(&Transform2::translate(
+                    node.number("x").unwrap_or(0.0),
+                    node.number("y").unwrap_or(0.0),
+                ));
                 expand_external_use(
                     node, file, id, transform, &style, doc, layer_id, warnings, depth, dpi,
                     base_dir,
                 );
+                apply_clip(node, clip_transform, doc, objects_before, ids, warnings);
             } else {
                 warnings.push(format!(
                     "<use> to the external reference '{href}' has no #id"
@@ -2356,6 +2356,32 @@ mod tests {
         // SVG y is flipped in a 20 mm document: local 7..11 becomes 9..13.
         assert!((min.y - 9.0).abs() < 1e-6, "{min:?}");
         assert!((max.y - 13.0).abs() < 1e-6, "{max:?}");
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn an_external_use_keeps_its_clip() {
+        let directory =
+            std::env::temp_dir().join(format!("bw_svg_ext_clip_{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("external.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><rect id="r" width="4" height="4"/></defs></svg>"#,
+        )
+        .unwrap();
+        let main = directory.join("main.svg");
+        std::fs::write(
+            &main,
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs><use href="external.svg#r" x="2" y="2" clip-path="url(#c)"/></svg>"#,
+        )
+        .unwrap();
+        let report = import_svg_file_report(&main, &|| false).unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 2.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 6.0).abs() < 1e-6, "{max:?}");
+        assert!((min.y - 4.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 8.0).abs() < 1e-6, "{max:?}");
         let _ = std::fs::remove_dir_all(&directory);
     }
 
