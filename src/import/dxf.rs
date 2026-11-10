@@ -489,6 +489,7 @@ impl Context<'_> {
             .add_object(Object::new(layer_id, Shape::Text(text)).with_transform(transform));
     }
 
+    #[allow(clippy::too_many_lines)]
     fn hatch(&mut self, record: &Record, parent: Transform2, inherited_layer: Option<&str>) {
         let layer_id = self.layer_for(record, inherited_layer);
         let (loops, unsupported) = hatch_loops(&record.fields);
@@ -539,7 +540,79 @@ impl Context<'_> {
             paths.push(Path::from_points(&tuples, true));
             polygons.push(tuples);
         }
-        let parents = crate::geometry::path::contour_parents_with_rule(&paths, true);
+        let depths: Vec<usize> = (0..polygons.len())
+            .map(|index| {
+                (0..polygons.len())
+                    .filter(|&other| {
+                        other != index
+                            && crate::geometry::boolean::polygon_area(&polygons[index]).abs()
+                                < crate::geometry::boolean::polygon_area(&polygons[other]).abs()
+                            && polygon_contains(&polygons[other], &polygons[index])
+                    })
+                    .count()
+            })
+            .collect();
+        let parents: Vec<Option<usize>> = (0..polygons.len())
+            .map(|index| {
+                if depths[index] % 2 == 0 {
+                    return None;
+                }
+                (0..polygons.len())
+                    .filter(|&other| {
+                        other != index
+                            && depths[other] % 2 == 0
+                            && polygon_contains(&polygons[other], &polygons[index])
+                    })
+                    .min_by(|&left, &right| {
+                        crate::geometry::boolean::polygon_area(&polygons[left])
+                            .abs()
+                            .total_cmp(
+                                &crate::geometry::boolean::polygon_area(&polygons[right]).abs(),
+                            )
+                    })
+            })
+            .collect();
+        let nested = depths.iter().any(|depth| depth % 2 == 1);
+        let partial = (0..polygons.len()).any(|first| {
+            (first + 1..polygons.len()).any(|second| {
+                crate::import::svg::contours_partially_overlap(&polygons[first], &polygons[second])
+            })
+        });
+        if nested && partial {
+            warning_once(
+                self.warnings,
+                "partially overlapping HATCH loops with holes were imported separately",
+            );
+        } else if partial {
+            let normalized: Vec<Vec<(f64, f64)>> = polygons
+                .iter()
+                .map(|polygon| {
+                    let mut polygon = polygon.clone();
+                    if crate::geometry::boolean::polygon_area(&polygon) < 0.0 {
+                        polygon.reverse();
+                    }
+                    polygon
+                })
+                .collect();
+            let trapezoids = crate::import::svg::scanline_fill(&normalized, false);
+            if !trapezoids.is_empty() {
+                warning_once(
+                    self.warnings,
+                    "partially overlapping HATCH loops were resolved as straight scanline fills",
+                );
+                for contour in trapezoids {
+                    let path = Path::from_points(&contour, true);
+                    let mut object =
+                        Object::new(layer_id.clone(), Shape::Path(path)).with_transform(parent);
+                    object.name = "Hatch fill".to_string();
+                    if let Some(operation_id) = &operation_id {
+                        object.operation_id = Some(operation_id.clone());
+                    }
+                    self.document.add_object(object);
+                }
+                return;
+            }
+        }
         let mut order: Vec<usize> = (0..paths.len()).collect();
         order.sort_by(|&left, &right| {
             crate::geometry::boolean::polygon_area(&polygons[right])
@@ -547,7 +620,6 @@ impl Context<'_> {
                 .total_cmp(&crate::geometry::boolean::polygon_area(&polygons[left]).abs())
         });
         let mut ids: Vec<Option<String>> = vec![None; paths.len()];
-        let mut nested = false;
         for index in order {
             let mut object = Object::new(layer_id.clone(), Shape::Path(paths[index].clone()))
                 .with_transform(parent);
@@ -555,7 +627,6 @@ impl Context<'_> {
                 if let Some(parent_id) = ids[parent_index].clone() {
                     object.hole_of = Some(parent_id);
                     object.name = "Hatch hole".to_string();
-                    nested = true;
                 }
             } else {
                 object.name = "Hatch fill".to_string();
@@ -936,6 +1007,17 @@ fn clean_mtext(raw: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// Whether every part of `inner` lies inside `outer`.
+fn polygon_contains(outer: &[(f64, f64)], inner: &[(f64, f64)]) -> bool {
+    let overlap = crate::import::svg::intersect_polygons(inner, outer);
+    let covered: f64 = overlap
+        .iter()
+        .map(|contour| crate::geometry::boolean::polygon_area(contour).abs())
+        .sum();
+    let area = crate::geometry::boolean::polygon_area(inner).abs();
+    area > 0.0 && covered >= area * 0.999
 }
 
 /// Extract the boundary loops of a `HATCH`.
@@ -1505,6 +1587,51 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.contains("nested HATCH loops")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn partially_overlapping_hatch_loops_use_a_scanline_union() {
+        let body = format!(
+            "0\nHATCH\n91\n2\n{}{}70\n0\n75\n0\n76\n0\n52\n1\n45\n1\n46\n0\n",
+            hatch_square(0.0, 0.0, 20.0, 20.0),
+            hatch_square(10.0, 0.0, 30.0, 20.0),
+        );
+        let report = import_dxf_report(&dxf(&body)).unwrap();
+        assert!(!report.document.objects.is_empty(), "{:?}", report.warnings);
+        let area: f64 = report
+            .document
+            .objects
+            .iter()
+            .map(|object| {
+                let points: Vec<(f64, f64)> = object
+                    .world_path()
+                    .flatten(0.1)
+                    .into_iter()
+                    .map(|point| (point.x, point.y))
+                    .collect();
+                crate::geometry::boolean::polygon_area(&points).abs()
+            })
+            .sum();
+        assert!(
+            (area - 600.0).abs() < 1e-6,
+            "area={area} {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .all(|object| object.operation_id.is_some())
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("straight scanline fills")),
             "{:?}",
             report.warnings
         );

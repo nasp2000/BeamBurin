@@ -1302,7 +1302,10 @@ fn clip_image_object(
 }
 
 /// Intersect two contours after matching their winding direction.
-fn intersect_polygons(piece: &[(f64, f64)], clip: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> {
+pub(crate) fn intersect_polygons(
+    piece: &[(f64, f64)],
+    clip: &[(f64, f64)],
+) -> Vec<Vec<(f64, f64)>> {
     let mut oriented = clip.to_vec();
     if crate::geometry::boolean::polygon_area(piece).signum()
         != crate::geometry::boolean::polygon_area(&oriented).signum()
@@ -1365,7 +1368,7 @@ fn intersect_polygons(piece: &[(f64, f64)], clip: &[(f64, f64)]) -> Vec<Vec<(f64
 /// trapezoids are exact for polygonal input. The result uses straight
 /// segments; it is the fallback for three or more partially overlapping
 /// contours whose winding or fill rule cannot be welded pairwise.
-fn scanline_fill(polygons: &[Vec<(f64, f64)>], even_odd: bool) -> Vec<Vec<(f64, f64)>> {
+pub(crate) fn scanline_fill(polygons: &[Vec<(f64, f64)>], even_odd: bool) -> Vec<Vec<(f64, f64)>> {
     struct Crossing {
         x: f64,
         direction: i32,
@@ -1705,7 +1708,7 @@ fn use_view_box_transform(target: &Node, use_node: &Node) -> Transform2 {
 }
 
 /// Whether two closed contours overlap with neither containing the other.
-fn contours_partially_overlap(first: &[(f64, f64)], second: &[(f64, f64)]) -> bool {
+pub(crate) fn contours_partially_overlap(first: &[(f64, f64)], second: &[(f64, f64)]) -> bool {
     use crate::geometry::boolean::polygon_area;
 
     let overlap = intersect_polygons(first, second);
