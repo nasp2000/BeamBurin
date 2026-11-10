@@ -1,6 +1,13 @@
 use crate::gcode::toolpath::{MoveKind, Toolpath};
 use crate::geometry::Point2;
 
+/// Upper bound on the preview timeline. Beyond this the preview merges
+/// adjacent moves so a raster job does not keep one segment per move.
+#[cfg(not(test))]
+const MAX_SEGMENTS: usize = 200_000;
+#[cfg(test)]
+const MAX_SEGMENTS: usize = 1_000;
+
 /// One straight movement in the simulated job.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaybackSegment {
@@ -98,11 +105,55 @@ impl Playback {
                             power: power as f32,
                             pass: pass as u16,
                         });
+                        if self.segments.len() >= MAX_SEGMENTS {
+                            self.decimate();
+                        }
                     }
                 }
                 previous = Some(to);
             }
         }
+    }
+
+    /// Merge adjacent segments until the timeline is back under the cap.
+    ///
+    /// The merged segment keeps the end of the second move, the summed length,
+    /// the second move's settings and the original total length and duration.
+    /// Toolpath and pass starts are never merged, so `from_point` still sees
+    /// every discontinuous jump.
+    fn decimate(&mut self) {
+        let mut is_start = vec![false; self.segments.len()];
+        let mut start_point = vec![[0.0f32; 2]; self.segments.len()];
+        for (index, point) in &self.starts {
+            if let Some(slot) = is_start.get_mut(*index) {
+                *slot = true;
+                start_point[*index] = *point;
+            }
+        }
+        let mut segments = Vec::with_capacity(self.segments.len() / 2 + 1);
+        let mut starts = Vec::new();
+        let mut index = 0;
+        while index < self.segments.len() {
+            let mut segment = self.segments[index].clone();
+            if is_start[index] {
+                starts.push((segments.len(), start_point[index]));
+            }
+            if index + 1 < self.segments.len() && !is_start[index + 1] {
+                let next = &self.segments[index + 1];
+                segment.to = next.to;
+                segment.kind = next.kind;
+                segment.length += next.length;
+                segment.speed = next.speed;
+                segment.power = next.power;
+                segment.pass = next.pass;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            segments.push(segment);
+        }
+        self.segments = segments;
+        self.starts = starts;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -266,6 +317,62 @@ mod tests {
         // 10 mm of cutting takes 1 s, the 10 mm rapid takes 0.2 s.
         assert!((playback.length_at_seconds(1.1) - 15.0).abs() < 1e-9);
         assert!((playback.length_at_seconds(999.0) - playback.total_length).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_large_timeline_is_bounded_and_keeps_the_totals() {
+        let mut path = Toolpath::new("big", 600.0, 250.0, 1);
+        path.push(MoveKind::Travel, 0.0, 0.0);
+        for index in 1..=2500 {
+            path.push(MoveKind::Cut, f64::from(index) * 0.01, 0.0);
+        }
+        let playback = Playback::from_toolpaths(&[path], 3000.0);
+        assert!(
+            playback.segments.len() <= MAX_SEGMENTS,
+            "timeline kept {} segments",
+            playback.segments.len()
+        );
+        assert!(
+            (playback.total_length - 25.0).abs() < 1e-6,
+            "{}",
+            playback.total_length
+        );
+        let end = playback.position_at(playback.total_length).unwrap();
+        assert!((end.point.x - 25.0).abs() < 1e-3, "{:?}", end.point);
+        assert_eq!(playback.from_point(0), Some(Point2::new(0.0, 0.0)));
+    }
+
+    #[test]
+    fn decimation_keeps_toolpath_starts() {
+        let mut first = Toolpath::new("a", 600.0, 250.0, 1);
+        first.push(MoveKind::Travel, 0.0, 0.0);
+        for index in 1..=1500 {
+            first.push(MoveKind::Cut, f64::from(index) * 0.01, 0.0);
+        }
+        let mut second = Toolpath::new("b", 600.0, 250.0, 1);
+        second.push(MoveKind::Travel, 50.0, 50.0);
+        second.push(MoveKind::Cut, 60.0, 50.0);
+        let playback = Playback::from_toolpaths(&[first, second], 3000.0);
+        assert!(playback.segments.len() <= MAX_SEGMENTS);
+        let (start, _) = playback
+            .starts
+            .iter()
+            .find(|(_, point)| (point[0] - 50.0).abs() < 1e-6 && (point[1] - 50.0).abs() < 1e-6)
+            .expect("the second toolpath start was lost");
+        assert_eq!(playback.from_point(*start), Some(Point2::new(50.0, 50.0)));
+        assert!((playback.segments[*start].length - 10.0).abs() < 1e-6);
+        assert_ne!(
+            playback.segments[start - 1].to,
+            [50.0, 50.0],
+            "the jump was merged into the new toolpath"
+        );
+    }
+
+    #[test]
+    fn a_small_timeline_is_not_decimated() {
+        let playback = Playback::from_toolpaths(&[toolpath(1)], 3000.0);
+        assert_eq!(playback.segments.len(), 3);
+        assert!(playback.segments.len() < MAX_SEGMENTS);
     }
 
     #[test]
