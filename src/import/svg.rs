@@ -2366,8 +2366,8 @@ fn transform_scale(transform: &Transform2) -> f64 {
 #[allow(clippy::option_option)]
 /// Replace `url(#id)` paints with one representative colour.
 ///
-/// Gradients use the colour at offset 0.5 and patterns the first fill found
-/// inside them. The approximation is reported once; a missing reference is
+/// Gradients use the colour at offset 0.5 and patterns the first line stroke
+/// or fill found inside them. The approximation is reported once; a missing reference is
 /// reported by id. Without this pass the shapes would silently lose their
 /// paint.
 fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
@@ -2389,7 +2389,7 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     rewrite_paints(root, &colors, &mut approximate, &mut missing);
     if approximate {
         warnings.push(
-            "gradients (midpoint colour) and patterns (first fill) are approximated; the source is not reproduced"
+            "gradients (midpoint colour) and patterns (line colour or first fill) are approximated; the source is not reproduced"
                 .to_string(),
         );
     }
@@ -2493,17 +2493,34 @@ fn pattern_color(node: &Node, depth: usize) -> Option<String> {
     if depth > 8 {
         return None;
     }
-    for child in &node.children {
-        if let Some(value) = child.attr("fill") {
-            if let Some(Some(color)) = paint(value) {
-                return Some(color);
-            }
-        }
-        if let Some(color) = pattern_color(child, depth + 1) {
-            return Some(color);
-        }
+    let mut fills = Vec::new();
+    let mut line_strokes = Vec::new();
+    collect_pattern_paints(node, depth, &mut fills, &mut line_strokes);
+    line_strokes
+        .into_iter()
+        .next()
+        .or_else(|| fills.into_iter().next())
+}
+
+fn collect_pattern_paints(
+    node: &Node,
+    depth: usize,
+    fills: &mut Vec<String>,
+    line_strokes: &mut Vec<String>,
+) {
+    if depth > 8 {
+        return;
     }
-    None
+    for child in &node.children {
+        let fill = child.attr("fill").and_then(paint).flatten();
+        let stroke = child.attr("stroke").and_then(paint).flatten();
+        if let Some(fill) = fill {
+            fills.push(fill);
+        } else if let Some(stroke) = stroke {
+            line_strokes.push(stroke);
+        }
+        collect_pattern_paints(child, depth + 1, fills, line_strokes);
+    }
 }
 
 fn rewrite_paints(
@@ -3610,6 +3627,24 @@ mod tests {
         assert_eq!(
             report.document.objects[0].style.fill.as_deref(),
             Some("#00ff00")
+        );
+    }
+
+    #[test]
+    fn a_pattern_prefers_its_line_colour() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                    <rect width="2" height="2" fill="#ffffff"/>
+                    <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#ff0000")
         );
     }
 
