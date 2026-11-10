@@ -500,24 +500,6 @@ fn process_node(
     let style = parent_style.inherit(node);
     let objects_before = doc.objects.len();
 
-    if matches!(
-        node.name.as_str(),
-        "g" | "a"
-            | "svg"
-            | "use"
-            | "rect"
-            | "circle"
-            | "ellipse"
-            | "line"
-            | "polyline"
-            | "polygon"
-            | "path"
-            | "text"
-            | "image"
-    ) {
-        warn_filter(node, ids, warnings);
-    }
-
     match node.name.as_str() {
         "g" | "a" | "svg" => {
             for child in &node.children {
@@ -580,6 +562,7 @@ fn process_node(
                                 base_dir,
                             ),
                         }
+                        apply_filter(node, transform, doc, objects_before, ids, warnings);
                         apply_clip(
                             node,
                             clip_transform,
@@ -600,6 +583,7 @@ fn process_node(
                     node, file, id, transform, &style, doc, layer_id, warnings, depth, dpi,
                     base_dir,
                 );
+                apply_filter(node, clip_transform, doc, objects_before, ids, warnings);
                 apply_clip(
                     node,
                     clip_transform,
@@ -640,7 +624,162 @@ fn process_node(
             | "text"
             | "image"
     ) {
+        apply_filter(node, transform, doc, objects_before, ids, warnings);
         apply_clip(node, transform, doc, objects_before, ids, &[], warnings);
+    }
+}
+
+/// Apply the subset of SVG filters that a vector document can represent.
+///
+/// A single `feOffset` becomes a translation and a single
+/// `feColorMatrix type="saturate"` is applied to solid fills and strokes.
+/// Everything else falls back to the reported-and-unfiltered behaviour.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn apply_filter(
+    node: &Node,
+    transform: Transform2,
+    doc: &mut Document,
+    start: usize,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+) {
+    let Some(value) = node.attr("filter") else {
+        return;
+    };
+    if value.trim().eq_ignore_ascii_case("none") {
+        return;
+    }
+    let id = value
+        .trim()
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or_default();
+    if id.is_empty() {
+        warn_filter(node, ids, warnings);
+        return;
+    }
+    let Some(target) = ids.get(id) else {
+        warn_filter(node, ids, warnings);
+        return;
+    };
+    if target.name != "filter" || start >= doc.objects.len() {
+        warn_filter(node, ids, warnings);
+        return;
+    }
+    let primitives: Vec<&Node> = target
+        .children
+        .iter()
+        .filter(|child| child.name.starts_with("fe"))
+        .collect();
+    if primitives.len() == 1 {
+        let primitive = primitives[0];
+        if primitive.name == "feOffset" {
+            let source = primitive.attr("in").unwrap_or("SourceGraphic");
+            if !source.eq_ignore_ascii_case("SourceGraphic")
+                && !source.eq_ignore_ascii_case("SourceAlpha")
+            {
+                warn_filter(node, ids, warnings);
+                return;
+            }
+            let Some(dx) = filter_length(primitive, "dx") else {
+                warn_filter(node, ids, warnings);
+                return;
+            };
+            let Some(dy) = filter_length(primitive, "dy") else {
+                warn_filter(node, ids, warnings);
+                return;
+            };
+            let (dx, dy) = (
+                transform.a * dx + transform.c * dy,
+                transform.b * dx + transform.d * dy,
+            );
+            for object in &mut doc.objects[start..] {
+                object.translate(dx, dy);
+            }
+            warnings.push(format!(
+                "filter #{id} (feOffset) was applied as a translation"
+            ));
+            return;
+        }
+        if primitive.name == "feColorMatrix"
+            && primitive
+                .attr("type")
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("saturate"))
+        {
+            let source = primitive.attr("in").unwrap_or("SourceGraphic");
+            if !source.eq_ignore_ascii_case("SourceGraphic") {
+                warn_filter(node, ids, warnings);
+                return;
+            }
+            let amount = primitive.number("values").unwrap_or(1.0);
+            if doc.objects[start..]
+                .iter()
+                .any(|object| matches!(object.shape, Shape::Image(_)))
+            {
+                warn_filter(node, ids, warnings);
+                return;
+            }
+            for object in &mut doc.objects[start..] {
+                saturate_object(object, amount);
+            }
+            warnings.push(format!(
+                "filter #{id} (feColorMatrix saturate) was applied to the colours"
+            ));
+            return;
+        }
+    }
+    warn_filter(node, ids, warnings);
+}
+
+/// Parse a numeric filter length, treating a missing value as zero.
+fn filter_length(node: &Node, name: &str) -> Option<f64> {
+    match node.attr(name) {
+        None => Some(0.0),
+        Some(value) => value.trim().parse::<f64>().ok(),
+    }
+}
+
+/// Apply the SVG `saturate` colour matrix to an object's solid colours.
+fn saturate_object(object: &mut Object, amount: f64) {
+    let amount = amount.clamp(0.0, 1.0);
+    let convert = |value: &str| -> Option<String> {
+        let (red, green, blue) = crate::color::parse_hex_color(value)?;
+        let red = f64::from(red);
+        let green = f64::from(green);
+        let blue = f64::from(blue);
+        let output = |a: f64, b: f64, c: f64| {
+            (a * red + b * green + c * blue).round().clamp(0.0, 255.0) as u8
+        };
+        Some(crate::color::to_hex(
+            output(
+                0.213 + 0.787 * amount,
+                0.715 - 0.715 * amount,
+                0.072 - 0.072 * amount,
+            ),
+            output(
+                0.213 - 0.213 * amount,
+                0.715 + 0.285 * amount,
+                0.072 - 0.072 * amount,
+            ),
+            output(
+                0.213 - 0.213 * amount,
+                0.715 - 0.715 * amount,
+                0.072 + 0.928 * amount,
+            ),
+        ))
+    };
+    if let Some(fill) = object.style.fill.as_deref().and_then(convert) {
+        object.style.fill = Some(fill);
+    }
+    if let Some(stroke) = object.style.stroke.as_deref().and_then(convert) {
+        object.style.stroke = Some(stroke);
+    }
+    if let Some(color) = object.color.as_deref().and_then(convert) {
+        object.color = Some(color);
     }
 }
 
@@ -3003,6 +3142,60 @@ mod tests {
             "{:?}",
             report.warnings
         );
+    }
+
+    #[test]
+    fn an_offset_filter_translates_the_shape() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><filter id="f"><feOffset dx="2" dy="1"/></filter></defs><rect x="1" y="1" width="4" height="4" filter="url(#f)"/></svg>"#,
+        )
+        .unwrap();
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 3.0).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 7.0).abs() < 1e-6, "{max:?}");
+        assert!((min.y - 4.0).abs() < 1e-6, "{min:?}");
+        assert!((max.y - 8.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("applied as a translation")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_saturate_filter_desaturates_the_fill() {
+        let report = import_svg_report(
+            r##"<svg width="10mm" height="10mm"><defs><filter id="f"><feColorMatrix type="saturate" values="0"/></filter></defs><rect width="5" height="5" fill="#ff0000" filter="url(#f)"/></svg>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#363636")
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("saturate")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_group_offset_filter_moves_every_child() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><defs><filter id="f"><feOffset dx="1" dy="0"/></filter></defs><g filter="url(#f)"><rect x="0" y="0" width="2" height="2"/><rect x="5" y="0" width="2" height="2"/></g></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 2);
+        let (min, _) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 1.0).abs() < 1e-6, "{min:?}");
+        let (min, _) = report.document.objects[1].bounds().unwrap();
+        assert!((min.x - 6.0).abs() < 1e-6, "{min:?}");
     }
 
     #[test]
