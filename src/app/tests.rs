@@ -4361,6 +4361,44 @@ fn the_export_presets_window_saves_image_and_vector_options() {
 }
 
 #[test]
+fn the_export_presets_window_keeps_selection_framing() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    app.export_dxf_selection = true;
+    app.export_vector_drawing = false;
+    app.vector_export_preset_format = "dxf".to_string();
+    app.vector_export_preset_name = "Selected".to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_label("Save vector options")
+        .click_accesskit();
+    harness.run();
+    let preset = harness
+        .state()
+        .preferences
+        .vector_export_presets
+        .find("Selected")
+        .expect("the selection preset disappeared")
+        .clone();
+    assert_eq!(preset.area, "selection");
+    let state = harness.state_mut();
+    state.export_dxf_selection = false;
+    state.export_vector_drawing = true;
+    state.apply_vector_export_preset(&preset);
+    assert!(
+        state.export_dxf_selection,
+        "the selection framing was not applied"
+    );
+    assert!(
+        !state.export_vector_drawing,
+        "selection and drawing framing overlapped"
+    );
+}
+
+#[test]
 fn the_main_dialogs_expose_named_accessibility_nodes() {
     use egui_kittest::kittest::Queryable as _;
 

@@ -570,7 +570,7 @@ impl VectorExportPreset {
         if !matches!(self.dxf_unit.as_str(), "mm" | "in") {
             return Err(format!("unknown DXF unit: {}", self.dxf_unit));
         }
-        if !matches!(self.area.as_str(), "page" | "drawing") {
+        if !matches!(self.area.as_str(), "page" | "drawing" | "selection") {
             return Err(format!("unknown vector area: {}", self.area));
         }
         Ok(())
@@ -1200,6 +1200,8 @@ mod tests {
         assert!(presets.upsert(bad.clone()).is_err());
         bad.dxf_unit = "in".to_string();
         bad.area = "selection".to_string();
+        assert!(presets.upsert(bad.clone()).is_ok());
+        bad.area = "other".to_string();
         assert!(presets.upsert(bad.clone()).is_err());
         bad.area = "page".to_string();
         assert!(presets.upsert(bad).is_ok());
