@@ -658,6 +658,10 @@ fn apply_gradient(
     let Some(gradient) = ids.get(id) else {
         return;
     };
+    if gradient.name == "radialGradient" {
+        apply_radial_gradient(doc, start, gradient, id, ids, warnings, layer_id);
+        return;
+    }
     if gradient.name != "linearGradient" {
         return;
     }
@@ -785,6 +789,164 @@ fn apply_gradient(
         clip_objects(doc, band_start, id, "gradient", &[contour], warnings);
         warnings.push(format!("gradient #{id} was expanded into {BANDS} band(s)"));
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_radial_gradient(
+    doc: &mut Document,
+    start: usize,
+    gradient: &Node,
+    id: &str,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+    layer_id: &str,
+) {
+    const BANDS: usize = 16;
+    let stops = gradient_stops(gradient, ids, 0);
+    if stops.len() < 2 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    if doc.objects.len() != start + 1 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let (path, object_transform, local_bounds) = {
+        let shape = &doc.objects[start];
+        (shape.world_path(), shape.transform, shape.shape.bounds())
+    };
+    if !path.closed {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let Some((local_min, local_max)) = local_bounds else {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    };
+    let object_bounding = gradient
+        .attr("gradientUnits")
+        .is_none_or(|units| units.eq_ignore_ascii_case("objectBoundingBox"));
+    let base = if object_bounding {
+        let local_width = local_max.x - local_min.x;
+        let local_height = local_max.y - local_min.y;
+        if local_width <= 0.0 || local_height <= 0.0 {
+            fallback_gradient(doc, start, gradient, id, ids, warnings);
+            return;
+        }
+        object_transform
+            .compose(&Transform2::translate(local_min.x, local_min.y))
+            .compose(&Transform2::scale(local_width, local_height))
+    } else {
+        object_transform
+    };
+    let cx = gradient_length(gradient, "cx", object_bounding).unwrap_or(0.5);
+    let cy = gradient_length(gradient, "cy", object_bounding).unwrap_or(0.5);
+    let radius = gradient_length(gradient, "r", object_bounding).unwrap_or(0.5);
+    let fx = gradient_length(gradient, "fx", object_bounding).unwrap_or(cx);
+    let fy = gradient_length(gradient, "fy", object_bounding).unwrap_or(cy);
+    if (fx - cx).abs() > 1e-9 || (fy - cy).abs() > 1e-9 || radius <= 0.0 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let gradient_transform = gradient
+        .attr("gradientTransform")
+        .map(parse_transform)
+        .unwrap_or_default();
+    let map = |point: Point2| base.apply(gradient_transform.apply(point));
+    let circle = |fraction: f64| -> Vec<(f64, f64)> {
+        (0..48)
+            .map(|index| {
+                #[allow(clippy::cast_precision_loss)]
+                let angle = std::f64::consts::TAU * f64::from(index) / 48.0;
+                let point = Point2::new(
+                    cx + radius * fraction * angle.cos(),
+                    cy + radius * fraction * angle.sin(),
+                );
+                let point = map(point);
+                (point.x, point.y)
+            })
+            .collect()
+    };
+    let shape_contour: Vec<(f64, f64)> = path
+        .flatten(0.1)
+        .into_iter()
+        .map(|point| (point.x, point.y))
+        .collect();
+    let outer = circle(1.0);
+    if !shape_contains(&shape_contour, &outer) {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let Some(background_color) = color_at(&stops, 1.0) else {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    };
+    let difference = crate::geometry::boolean::boolean_contours(
+        crate::geometry::boolean::BooleanOp::Difference,
+        &shape_contour,
+        &outer,
+    );
+    if !difference.is_empty() {
+        let paths: Vec<Path> = difference
+            .iter()
+            .map(|contour| Path::from_points(contour, true))
+            .collect();
+        let parents = crate::geometry::path::contour_parents_with_rule(&paths, true);
+        let mut order: Vec<usize> = (0..paths.len()).collect();
+        order.sort_by_key(|&index| parents[index].is_some());
+        let mut object_ids: Vec<Option<String>> = vec![None; paths.len()];
+        for index in order {
+            let mut object = Object::new(layer_id, Shape::Path(paths[index].clone()));
+            object.style.fill = Some(background_color.clone());
+            object.style.stroke = None;
+            object.style.stroke_width_mm = 0.0;
+            if let Some(parent_id) = parents[index].and_then(|parent| object_ids[parent].clone()) {
+                object.hole_of = Some(parent_id);
+            }
+            object_ids[index] = Some(doc.add_object(object).id.clone());
+        }
+    }
+    for band in 0..BANDS {
+        #[allow(clippy::cast_precision_loss)]
+        let inner_fraction = band as f64 / BANDS as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let outer_fraction = (band + 1) as f64 / BANDS as f64;
+        let Some(color) = color_at(&stops, f64::midpoint(inner_fraction, outer_fraction)) else {
+            continue;
+        };
+        let outer_points = circle(outer_fraction);
+        let mut outer_object = Object::new(
+            layer_id,
+            Shape::Path(Path::from_points(&outer_points, true)),
+        );
+        outer_object.style.fill = Some(color.clone());
+        outer_object.style.stroke = None;
+        outer_object.style.stroke_width_mm = 0.0;
+        let outer_id = doc.add_object(outer_object).id.clone();
+        if band > 0 {
+            let inner_points = circle(inner_fraction);
+            let mut hole = Object::new(
+                layer_id,
+                Shape::Path(Path::from_points(&inner_points, true)),
+            );
+            hole.style.fill = Some(color);
+            hole.style.stroke = None;
+            hole.style.stroke_width_mm = 0.0;
+            hole.hole_of = Some(outer_id);
+            doc.add_object(hole);
+        }
+    }
+    warnings.push(format!("gradient #{id} was expanded into {BANDS} band(s)"));
+}
+
+fn shape_contains(outer: &[(f64, f64)], inner: &[(f64, f64)]) -> bool {
+    let overlap = intersect_polygons(inner, outer);
+    let covered: f64 = overlap
+        .iter()
+        .map(|contour| crate::geometry::boolean::polygon_area(contour).abs())
+        .sum();
+    let area = crate::geometry::boolean::polygon_area(inner).abs();
+    area > 0.0 && covered >= area * 0.999
 }
 
 fn gradient_length(node: &Node, name: &str, fraction: bool) -> Option<f64> {
@@ -2780,11 +2942,10 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     let mut gradient_ids: HashSet<String> = HashSet::new();
     for (id, node) in &by_id {
         let color = match node.name.as_str() {
-            "linearGradient" => {
+            "linearGradient" | "radialGradient" => {
                 gradient_ids.insert(id.clone());
                 gradient_color(node, &by_id, 0)
             }
-            "radialGradient" => gradient_color(node, &by_id, 0),
             "pattern" => {
                 pattern_ids.insert(id.clone());
                 pattern_color(node, 0)
@@ -4082,10 +4243,53 @@ mod tests {
     }
 
     #[test]
+    fn a_radial_gradient_is_expanded_into_bands() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><radialGradient id="g" gradientUnits="userSpaceOnUse" cx="5" cy="5" r="4">
+                    <stop offset="0" stop-color="#ff0000"/>
+                    <stop offset="1" stop-color="#0000ff"/>
+                </radialGradient></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 2, "{:?}", report.warnings);
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .any(|object| object.hole_of.is_some()),
+            "the rings have no holes"
+        );
+        let fills: std::collections::HashSet<_> = report
+            .document
+            .objects
+            .iter()
+            .filter_map(|object| object.style.fill.clone())
+            .collect();
+        assert!(fills.len() > 1, "the radial gradient kept one colour");
+        for object in &report.document.objects {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
     fn a_radial_gradient_uses_its_midpoint() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><radialGradient id="g">
+                <defs><radialGradient id="g" r="2">
                     <stop offset="0" stop-color="#ff0000"/>
                     <stop offset="1" stop-color="#0000ff"/>
                 </radialGradient></defs>
@@ -4111,7 +4315,7 @@ mod tests {
     fn a_three_stop_radial_gradient_uses_the_middle_stop() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><radialGradient id="g">
+                <defs><radialGradient id="g" r="2">
                     <stop offset="0%" stop-color="#ff0000"/>
                     <stop offset="50%" stop-color="#00ff00"/>
                     <stop offset="100%" stop-color="#0000ff"/>
