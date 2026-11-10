@@ -627,7 +627,6 @@ fn process_node(
         apply_filter(node, transform, doc, objects_before, ids, warnings);
         apply_pattern(
             node,
-            transform,
             doc,
             objects_before,
             ids,
@@ -646,7 +645,6 @@ fn process_node(
 #[allow(clippy::too_many_arguments)]
 fn apply_pattern(
     node: &Node,
-    transform: Transform2,
     doc: &mut Document,
     start: usize,
     ids: &HashMap<String, &Node>,
@@ -698,93 +696,86 @@ fn apply_pattern(
         );
         return;
     }
-    let (path, bounds) = {
+    let (path, object_transform, local_bounds) = {
         let shape = &doc.objects[start];
-        (shape.world_path(), shape.bounds())
+        (shape.world_path(), shape.transform, shape.shape.bounds())
     };
     if !path.closed {
         fallback_pattern(doc, start, pattern, id, "has no closed outline", warnings);
         return;
     }
-    let Some((minimum, maximum)) = bounds else {
+    let Some((local_min, local_max)) = local_bounds else {
         fallback_pattern(doc, start, pattern, id, "has no bounds", warnings);
         return;
     };
-    let (base_transform, local_min_x, local_min_y, local_max_x, local_max_y) = if object_bounding {
-        let width_world = maximum.x - minimum.x;
-        let height_world = maximum.y - minimum.y;
-        if width_world <= 0.0 || height_world <= 0.0 {
+    let (base_transform, target_min, target_max) = if object_bounding {
+        let local_width = local_max.x - local_min.x;
+        let local_height = local_max.y - local_min.y;
+        if local_width <= 0.0 || local_height <= 0.0 {
             fallback_pattern(doc, start, pattern, id, "has empty bounds", warnings);
             return;
         }
         (
-            Transform2::translate(minimum.x, minimum.y)
-                .compose(&Transform2::scale(width_world, height_world)),
-            0.0,
-            0.0,
-            1.0,
-            1.0,
+            object_transform
+                .compose(&Transform2::translate(local_min.x, local_min.y))
+                .compose(&Transform2::scale(local_width, local_height)),
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 1.0),
         )
     } else {
-        let Some(inverse) = transform.invert() else {
-            fallback_pattern(
-                doc,
-                start,
-                pattern,
-                id,
-                "has no inverse transform",
-                warnings,
-            );
-            return;
-        };
-        let corners = [
-            inverse.apply(Point2::new(minimum.x, minimum.y)),
-            inverse.apply(Point2::new(maximum.x, minimum.y)),
-            inverse.apply(Point2::new(minimum.x, maximum.y)),
-            inverse.apply(Point2::new(maximum.x, maximum.y)),
-        ];
-        let mut local_min_x = f64::INFINITY;
-        let mut local_min_y = f64::INFINITY;
-        let mut local_max_x = f64::NEG_INFINITY;
-        let mut local_max_y = f64::NEG_INFINITY;
-        for point in corners {
-            local_min_x = local_min_x.min(point.x);
-            local_min_y = local_min_y.min(point.y);
-            local_max_x = local_max_x.max(point.x);
-            local_max_y = local_max_y.max(point.y);
-        }
-        (
-            transform,
-            local_min_x,
-            local_min_y,
-            local_max_x,
-            local_max_y,
-        )
+        (object_transform, local_min, local_max)
     };
-    let x = pattern_length(pattern, "x", object_bounding).unwrap_or(0.0);
-    let y = pattern_length(pattern, "y", object_bounding).unwrap_or(0.0);
-    let start_x = x + ((local_min_x - x) / width).floor() * width;
-    let start_y = y + ((local_min_y - y) / height).floor() * height;
     let pattern_transform = pattern
         .attr("patternTransform")
         .map(parse_transform)
         .unwrap_or_default();
+    let Some(pattern_inverse) = pattern_transform.invert() else {
+        fallback_pattern(
+            doc,
+            start,
+            pattern,
+            id,
+            "has no inverse pattern transform",
+            warnings,
+        );
+        return;
+    };
+    let corners = [
+        target_min,
+        Point2::new(target_max.x, target_min.y),
+        Point2::new(target_min.x, target_max.y),
+        target_max,
+    ]
+    .map(|point| pattern_inverse.apply(point));
+    let mut pattern_min_x = f64::INFINITY;
+    let mut pattern_min_y = f64::INFINITY;
+    let mut pattern_max_x = f64::NEG_INFINITY;
+    let mut pattern_max_y = f64::NEG_INFINITY;
+    for point in corners {
+        pattern_min_x = pattern_min_x.min(point.x);
+        pattern_min_y = pattern_min_y.min(point.y);
+        pattern_max_x = pattern_max_x.max(point.x);
+        pattern_max_y = pattern_max_y.max(point.y);
+    }
+    let x = pattern_length(pattern, "x", object_bounding).unwrap_or(0.0);
+    let y = pattern_length(pattern, "y", object_bounding).unwrap_or(0.0);
+    let start_x = x + ((pattern_min_x - x) / width).floor() * width;
+    let start_y = y + ((pattern_min_y - y) / height).floor() * height;
     let style = SvgStyle::from_node(pattern);
     let pattern_start = doc.objects.len();
+    let tile_base = base_transform.compose(&pattern_transform);
     let mut tiles = 0usize;
     let mut overflow = false;
     let mut column = start_x;
-    'outer: while column < local_max_x + width {
+    'outer: while column < pattern_max_x + width {
         let mut row = start_y;
-        while row < local_max_y + height {
+        while row < pattern_max_y + height {
             if tiles >= 2048 {
                 overflow = true;
                 break 'outer;
             }
             tiles += 1;
-            let tile = base_transform
-                .compose(&Transform2::translate(column, row))
-                .compose(&pattern_transform);
+            let tile = tile_base.compose(&Transform2::translate(column, row));
             for child in &pattern.children {
                 process_node(
                     child,
@@ -3911,6 +3902,23 @@ mod tests {
         );
     }
 
+    fn has_diagonal_edge(object: &Object) -> bool {
+        object.world_path().segments.iter().any(|segment| {
+            if let Segment::Line { from, to } = segment {
+                let dx = to.x - from.x;
+                let dy = to.y - from.y;
+                if dx.hypot(dy) < 1e-3 {
+                    return false;
+                }
+                let angle = dy.atan2(dx).abs();
+                (angle - std::f64::consts::FRAC_PI_4).abs() < 0.2
+                    || (angle - 3.0 * std::f64::consts::FRAC_PI_4).abs() < 0.2
+            } else {
+                false
+            }
+        })
+    }
+
     #[test]
     fn a_pattern_uses_its_first_fill() {
         let report = import_svg_report(
@@ -4065,6 +4073,60 @@ mod tests {
             "{:?}",
             report.warnings
         );
+    }
+
+    #[test]
+    fn an_object_bounding_box_pattern_follows_a_rotated_shape() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="20mm" height="20mm" viewBox="0 0 20 20">
+                <defs><pattern id="p" width="0.5" height="0.5" patternUnits="objectBoundingBox">
+                    <rect width="0.25" height="0.25" fill="#00ff00"/>
+                </pattern></defs>
+                <rect x="5" y="5" width="10" height="10" transform="rotate(45 10 10)" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        let centre = Point2::new(10.0, 10.0);
+        let closest = report.document.objects[1..]
+            .iter()
+            .min_by(|left, right| {
+                let distance = |object: &Object| {
+                    let (min, max) = object.bounds().unwrap();
+                    let middle =
+                        Point2::new(f64::midpoint(min.x, max.x), f64::midpoint(min.y, max.y));
+                    middle.distance(centre)
+                };
+                distance(left).total_cmp(&distance(right))
+            })
+            .unwrap();
+        assert!(
+            has_diagonal_edge(closest),
+            "the centre tile kept the world-aligned bbox"
+        );
+    }
+
+    #[test]
+    fn a_pattern_transform_rotates_the_tiles() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <path d="M0 1 L2 1" fill="none" stroke="#ff0000"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        assert!(
+            report.document.objects[1..].iter().any(has_diagonal_edge),
+            "the pattern transform was not applied to the tile lattice"
+        );
+        for object in &report.document.objects[1..] {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
     }
 
     #[test]
