@@ -2575,15 +2575,6 @@ fn import_paths(
             }
         }
     }
-    if paths.len() > 2 {
-        eprintln!(
-            "3+ paths={} closed={} fill={:?} even={}",
-            paths.len(),
-            paths.iter().all(|p| p.closed),
-            style.fill,
-            style.even_odd()
-        );
-    }
     if paths.len() > 2
         && paths.iter().all(|path| path.closed)
         && style
