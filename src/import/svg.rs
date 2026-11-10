@@ -606,7 +606,7 @@ fn process_node(
         "polyline" => import_poly(node, transform, &style, doc, layer_id, false, warnings),
         "polygon" => import_poly(node, transform, &style, doc, layer_id, true, warnings),
         "path" => import_path(node, transform, &style, doc, layer_id, warnings),
-        "text" => import_text(node, transform, &style, doc, layer_id),
+        "text" => import_text(node, transform, &style, doc, layer_id, warnings),
         "image" => import_image(node, transform, &style, doc, layer_id, dpi),
         other => warnings.push(format!("unsupported SVG element: <{other}>")),
     }
@@ -2203,6 +2203,7 @@ fn import_text(
     style: &SvgStyle,
     doc: &mut Document,
     layer_id: &str,
+    warnings: &mut Vec<String>,
 ) {
     let content = node.text.trim();
     if content.is_empty() {
@@ -2219,6 +2220,15 @@ fn import_text(
         .unwrap_or("sans")
         .trim()
         .to_string();
+    let bundled = font.is_empty()
+        || font.eq_ignore_ascii_case("sans")
+        || font.starts_with(crate::textfont::BUNDLED_NAME);
+    if !bundled && crate::textfont::resolve(&font).is_none() {
+        let sample: String = content.chars().take(40).collect();
+        warnings.push(format!(
+            "font '{font}' is not installed; text '{sample}' uses the bundled font"
+        ));
+    }
     let world = transform.apply(Point2::new(x, y));
     let scale = transform_scale(&transform);
     let align = match node.attr("text-anchor") {
@@ -2961,6 +2971,47 @@ mod tests {
         };
         assert_eq!(text.align, crate::objects::TextAlign::Center);
         assert!(text.letter_spacing > 0.0);
+    }
+
+    #[test]
+    fn a_missing_font_falls_back_to_the_bundled_face() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm"><text x="1" y="5" font-family="Definitely Missing" font-size="4">A</text></svg>"#,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        assert!(
+            report.warnings.iter().any(|warning| {
+                warning.contains("Definitely Missing") && warning.contains("bundled font")
+            }),
+            "{:?}",
+            report.warnings
+        );
+        let crate::document::Shape::Text(text) = &report.document.objects[0].shape else {
+            panic!("expected text");
+        };
+        assert_eq!(text.font, "Definitely Missing");
+        let paths = crate::objects::text_to_paths(text).unwrap();
+        assert!(
+            !paths.is_empty(),
+            "the bundled fallback produced no outlines"
+        );
+    }
+
+    #[test]
+    fn the_bundled_font_is_not_reported_as_missing() {
+        let report = import_svg_report(
+            r#"<svg width="10mm" height="10mm"><text x="1" y="5" font-family="sans" font-size="4">A</text></svg>"#,
+        )
+        .unwrap();
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("font '")),
+            "{:?}",
+            report.warnings
+        );
     }
 
     #[test]
