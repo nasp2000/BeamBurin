@@ -863,6 +863,7 @@ fn hatch_loops(fields: &[(i32, String)]) -> (Vec<Vec<Point2>>, bool) {
 }
 
 /// Parse one hatch edge starting at its `72` code.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn hatch_edge(fields: &[(i32, String)], start: usize) -> (usize, Option<Vec<Point2>>, bool) {
     let mut index = start;
     let mut edge_type = 0;
@@ -914,7 +915,27 @@ fn hatch_edge(fields: &[(i32, String)], start: usize) -> (usize, Option<Vec<Poin
             }
             _ => None,
         },
-        4 => return (index, None, true),
+        4 => {
+            let xs = values.get(&10).cloned().unwrap_or_default();
+            let ys = values.get(&20).cloned().unwrap_or_default();
+            let control: Vec<Point2> = xs
+                .iter()
+                .zip(&ys)
+                .map(|(x, y)| Point2::new(*x, *y))
+                .collect();
+            if control.len() < 2 {
+                return (index, None, true);
+            }
+            let degree = first(94).unwrap_or(3.0).max(1.0) as usize;
+            let degree = degree.clamp(1, control.len() - 1);
+            let knots = values.get(&40).cloned().unwrap_or_default();
+            Some(
+                sample_spline(&control, degree, &knots, 64)
+                    .into_iter()
+                    .map(|(x, y)| Point2::new(x, y))
+                    .collect(),
+            )
+        }
         _ => None,
     };
     (index, points, false)
@@ -1226,6 +1247,49 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.contains("fill")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn hatch_spline_boundary_is_sampled() {
+        let report = import_dxf_report(&dxf(
+            "0\nHATCH\n91\n1\n92\n1\n93\n1\n72\n4\n94\n3\n73\n0\n74\n0\n95\n8\n96\n4\n40\n0\n40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n40\n1\n10\n0\n20\n0\n10\n3\n20\n0\n10\n7\n20\n10\n10\n10\n20\n10\n97\n0\n",
+        ))
+        .unwrap();
+        assert_eq!(count_objects(&report.document), 1, "{:?}", report.warnings);
+        let Shape::Path(path) = &report.document.objects[0].shape else {
+            panic!("expected a path");
+        };
+        assert!(path.closed);
+        assert!(path.segments.len() >= 4, "{:?}", path.segments.len());
+        let (min, max) = path.bounding_box().unwrap();
+        assert!((min.x).abs() < 1e-6, "{min:?}");
+        assert!((max.x - 10.0).abs() < 1e-6, "{max:?}");
+        assert!((max.y - 10.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("spline boundaries were skipped")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_hatch_spline_with_one_control_point_is_skipped() {
+        let report = import_dxf_report(&dxf(
+            "0\nHATCH\n91\n1\n92\n1\n93\n1\n72\n4\n94\n3\n96\n1\n10\n0\n20\n0\n",
+        ))
+        .unwrap();
+        assert_eq!(count_objects(&report.document), 0);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("spline boundaries were skipped")),
             "{:?}",
             report.warnings
         );
