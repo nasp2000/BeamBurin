@@ -1220,6 +1220,124 @@ fn intersect_polygons(piece: &[(f64, f64)], clip: &[(f64, f64)]) -> Vec<Vec<(f64
     )
 }
 
+/// Resolve overlapping contours with a scanline fill.
+///
+/// Rows are the vertex ordinates, so every band has linear edges and the
+/// trapezoids are exact for polygonal input. The result uses straight
+/// segments; it is the fallback for three or more partially overlapping
+/// contours whose winding or fill rule cannot be welded pairwise.
+fn scanline_fill(polygons: &[Vec<(f64, f64)>], even_odd: bool) -> Vec<Vec<(f64, f64)>> {
+    struct Crossing {
+        x: f64,
+        direction: i32,
+        edge: ScanlineEdge,
+    }
+
+    fn x_on_edge(edge: ScanlineEdge, y: f64) -> f64 {
+        let (a, b) = edge;
+        if (b.1 - a.1).abs() < 1e-12 {
+            a.0
+        } else {
+            a.0 + (b.0 - a.0) * (y - a.1) / (b.1 - a.1)
+        }
+    }
+
+    let mut rows: Vec<f64> = polygons
+        .iter()
+        .flat_map(|polygon| polygon.iter().map(|(_, y)| *y))
+        .collect();
+    rows.sort_by(f64::total_cmp);
+    rows.dedup_by(|left, right| (*left - *right).abs() < 1e-9);
+
+    let mut result = Vec::new();
+    for window in rows.windows(2) {
+        let (y0, y1) = (window[0], window[1]);
+        if y1 - y0 < 1e-9 {
+            continue;
+        }
+        let middle = f64::midpoint(y0, y1);
+        let mut crossings: Vec<Crossing> = Vec::new();
+        for polygon in polygons {
+            for index in 0..polygon.len() {
+                let a = polygon[index];
+                let b = polygon[(index + 1) % polygon.len()];
+                if (a.1 <= middle && b.1 > middle) || (b.1 <= middle && a.1 > middle) {
+                    let t = (middle - a.1) / (b.1 - a.1);
+                    crossings.push(Crossing {
+                        x: a.0 + (b.0 - a.0) * t,
+                        direction: if b.1 > a.1 { 1 } else { -1 },
+                        edge: (a, b),
+                    });
+                }
+            }
+        }
+        crossings.sort_by(|left, right| left.x.total_cmp(&right.x));
+
+        let mut intervals: Vec<ScanlineInterval> = Vec::new();
+        if even_odd {
+            let mut index = 0;
+            while index + 1 < crossings.len() {
+                let left = &crossings[index];
+                let right = &crossings[index + 1];
+                if right.x - left.x > 1e-9 {
+                    intervals.push((left.edge, right.edge));
+                }
+                index += 2;
+            }
+        } else {
+            let mut winding = 0;
+            let mut open: Option<usize> = None;
+            for (index, crossing) in crossings.iter().enumerate() {
+                let before = winding;
+                winding += crossing.direction;
+                if before == 0 && winding != 0 {
+                    open = Some(index);
+                } else if before != 0 && winding == 0 {
+                    if let Some(start) = open.take()
+                        && index > start
+                        && crossing.x - crossings[start].x > 1e-9
+                    {
+                        intervals.push((crossings[start].edge, crossing.edge));
+                    }
+                }
+            }
+        }
+
+        for (left, right) in intervals {
+            let left_bottom = x_on_edge(left, y0);
+            let right_bottom = x_on_edge(right, y0);
+            let right_top = x_on_edge(right, y1);
+            let left_top = x_on_edge(left, y1);
+            let points = [
+                (left_bottom, y0),
+                (right_bottom, y0),
+                (right_top, y1),
+                (left_top, y1),
+            ];
+            let mut contour: Vec<(f64, f64)> = Vec::new();
+            for point in points {
+                if contour
+                    .last()
+                    .is_none_or(|last| (last.0 - point.0).hypot(last.1 - point.1) > 1e-9)
+                {
+                    contour.push(point);
+                }
+            }
+            if contour.len() >= 3
+                && (contour[0].0 - contour[contour.len() - 1].0)
+                    .hypot(contour[0].1 - contour[contour.len() - 1].1)
+                    < 1e-9
+            {
+                contour.pop();
+            }
+            if contour.len() >= 3 {
+                result.push(contour);
+            }
+        }
+    }
+    result
+}
+
 /// Build an open path from a polyline.
 fn open_path(points: &[Point2]) -> Path {
     let mut path = Path::new();
@@ -1388,6 +1506,10 @@ fn clip_contours(node: &Node, transform: Transform2) -> Vec<Vec<(f64, f64)>> {
 type ClipContours = Vec<Vec<(f64, f64)>>;
 /// One clip or mask resolved from an external SVG: label, id, contours.
 type ExternalClip = (String, String, ClipContours);
+/// One polygon edge used by the scanline fill.
+type ScanlineEdge = ((f64, f64), (f64, f64));
+/// Left and right edges of one scanline interval.
+type ScanlineInterval = (ScanlineEdge, ScanlineEdge);
 
 /// Map a referenced `symbol`/`svg` viewBox into the size given on `<use>`.
 ///
@@ -1445,9 +1567,9 @@ fn use_view_box_transform(target: &Node, use_node: &Node) -> Transform2 {
 
 /// Whether two closed contours overlap with neither containing the other.
 fn contours_partially_overlap(first: &[(f64, f64)], second: &[(f64, f64)]) -> bool {
-    use crate::geometry::boolean::{BooleanOp, boolean_contours, polygon_area};
+    use crate::geometry::boolean::polygon_area;
 
-    let overlap = boolean_contours(BooleanOp::Intersection, first, second);
+    let overlap = intersect_polygons(first, second);
     if overlap.is_empty() {
         return false;
     }
@@ -1743,6 +1865,15 @@ fn import_paths(
             }
         }
     }
+    if paths.len() > 2 {
+        eprintln!(
+            "3+ paths={} closed={} fill={:?} even={}",
+            paths.len(),
+            paths.iter().all(|p| p.closed),
+            style.fill,
+            style.even_odd()
+        );
+    }
     if paths.len() > 2
         && paths.iter().all(|path| path.closed)
         && style
@@ -1803,6 +1934,22 @@ fn import_paths(
             }
         }
         if partial {
+            let trapezoids = scanline_fill(&polygons, style.even_odd());
+            if !trapezoids.is_empty() {
+                warnings.push(
+                    "partially overlapping contours were resolved as straight scanline fills"
+                        .to_string(),
+                );
+                for contour in trapezoids {
+                    let path = Path::from_points(&contour, true);
+                    let mut object = Object::new(layer_id, Shape::Path(path))
+                        .with_transform(transform)
+                        .with_style(style.to_object_style(&transform));
+                    object.name = "Scanline fill".to_string();
+                    doc.add_object(object);
+                }
+                return;
+            }
             warnings.push(
                 "three or more overlapping contours are imported as separate shapes".to_string(),
             );
@@ -2473,18 +2620,86 @@ mod tests {
         );
     }
 
+    fn total_filled_area(objects: &[Object]) -> f64 {
+        objects
+            .iter()
+            .map(|object| {
+                let points: Vec<(f64, f64)> = object
+                    .world_path()
+                    .flatten(0.1)
+                    .into_iter()
+                    .map(|point| (point.x, point.y))
+                    .collect();
+                crate::geometry::boolean::polygon_area(&points).abs()
+            })
+            .sum()
+    }
+
     #[test]
-    fn three_overlapping_contours_are_reported() {
+    fn three_mixed_winding_contours_are_resolved() {
         let report = import_svg_report(
             r#"<svg width="20mm" height="20mm" viewBox="0 0 20 20"><path fill="black" d="M1 1 H9 V9 H1 Z M5 5 V13 H13 V5 Z M8 8 H16 V16 H8 Z"/></svg>"#,
         )
         .unwrap();
-        assert_eq!(report.document.objects.len(), 3);
+        assert!(!report.document.objects.is_empty(), "{:?}", report.warnings);
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .all(|object| matches!(object.shape, Shape::Path(_))),
+            "{:?}",
+            report.warnings
+        );
         assert!(
             report
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("three or more overlapping contours")),
+                .any(|warning| warning.contains("scanline")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn three_even_odd_overlaps_are_resolved_by_scanline() {
+        let report = import_svg_report(
+            r#"<svg width="120mm" height="100mm" viewBox="0 0 120 100"><path fill="black" fill-rule="evenodd" d="M10 10 H50 V50 H10 Z M30 10 H70 V50 H30 Z M50 10 H90 V50 H50 Z"/></svg>"#,
+        )
+        .unwrap();
+        let area = total_filled_area(&report.document.objects);
+        assert!(
+            (area - 1600.0).abs() < 1e-6,
+            "area={area} {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("scanline")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn three_mixed_windings_are_resolved_by_scanline() {
+        let report = import_svg_report(
+            r#"<svg width="120mm" height="100mm" viewBox="0 0 120 100"><path fill="black" d="M10 10 H50 V50 H10 Z M30 10 V50 H70 V10 Z M50 10 H90 V50 H50 Z"/></svg>"#,
+        )
+        .unwrap();
+        let area = total_filled_area(&report.document.objects);
+        assert!(
+            (area - 1600.0).abs() < 1e-6,
+            "area={area} {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("scanline")),
             "{:?}",
             report.warnings
         );
