@@ -6,7 +6,7 @@
     clippy::similar_names
 )]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path as FsPath;
 
 use quick_xml::events::Event;
@@ -625,8 +625,209 @@ fn process_node(
             | "image"
     ) {
         apply_filter(node, transform, doc, objects_before, ids, warnings);
+        apply_pattern(
+            node,
+            transform,
+            doc,
+            objects_before,
+            ids,
+            warnings,
+            depth,
+            dpi,
+            base_dir,
+            layer_id,
+        );
         apply_clip(node, transform, doc, objects_before, ids, &[], warnings);
     }
+}
+
+/// Expand a `userSpaceOnUse` pattern fill into tiled geometry clipped to the
+/// shape. Unsupported patterns fall back to the dominant representative colour.
+#[allow(clippy::too_many_arguments)]
+fn apply_pattern(
+    node: &Node,
+    transform: Transform2,
+    doc: &mut Document,
+    start: usize,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+    depth: usize,
+    dpi: f64,
+    base_dir: Option<&FsPath>,
+    layer_id: &str,
+) {
+    let Some(id) = node.attr("data-pattern-fill") else {
+        return;
+    };
+    eprintln!(
+        "APPLY PATTERN {} id={} start={} len={}",
+        node.name,
+        id,
+        start,
+        doc.objects.len()
+    );
+    let Some(pattern) = ids.get(id) else {
+        return;
+    };
+    if pattern.name != "pattern" {
+        return;
+    }
+    if depth > 4 {
+        fallback_pattern(doc, start, pattern, id, "is nested too deeply", warnings);
+        return;
+    }
+    if pattern.children.is_empty() {
+        fallback_pattern(doc, start, pattern, id, "has no children", warnings);
+        return;
+    }
+    if pattern
+        .attr("patternUnits")
+        .is_some_and(|units| units.eq_ignore_ascii_case("objectBoundingBox"))
+    {
+        fallback_pattern(
+            doc,
+            start,
+            pattern,
+            id,
+            "uses objectBoundingBox units",
+            warnings,
+        );
+        return;
+    }
+    let (Some(width), Some(height)) = (pattern.number("width"), pattern.number("height")) else {
+        fallback_pattern(doc, start, pattern, id, "has no tile size", warnings);
+        return;
+    };
+    if width <= 0.0 || height <= 0.0 {
+        fallback_pattern(doc, start, pattern, id, "has a non-positive tile", warnings);
+        return;
+    }
+    if doc.objects.len() != start + 1 {
+        fallback_pattern(
+            doc,
+            start,
+            pattern,
+            id,
+            "does not cover one shape",
+            warnings,
+        );
+        return;
+    }
+    let (path, bounds) = {
+        let shape = &doc.objects[start];
+        (shape.world_path(), shape.bounds())
+    };
+    if !path.closed {
+        fallback_pattern(doc, start, pattern, id, "has no closed outline", warnings);
+        return;
+    }
+    let Some((minimum, maximum)) = bounds else {
+        fallback_pattern(doc, start, pattern, id, "has no bounds", warnings);
+        return;
+    };
+    let Some(inverse) = transform.invert() else {
+        fallback_pattern(
+            doc,
+            start,
+            pattern,
+            id,
+            "has no inverse transform",
+            warnings,
+        );
+        return;
+    };
+    let corners = [
+        inverse.apply(Point2::new(minimum.x, minimum.y)),
+        inverse.apply(Point2::new(maximum.x, minimum.y)),
+        inverse.apply(Point2::new(minimum.x, maximum.y)),
+        inverse.apply(Point2::new(maximum.x, maximum.y)),
+    ];
+    let mut local_min_x = f64::INFINITY;
+    let mut local_min_y = f64::INFINITY;
+    let mut local_max_x = f64::NEG_INFINITY;
+    let mut local_max_y = f64::NEG_INFINITY;
+    for point in corners {
+        local_min_x = local_min_x.min(point.x);
+        local_min_y = local_min_y.min(point.y);
+        local_max_x = local_max_x.max(point.x);
+        local_max_y = local_max_y.max(point.y);
+    }
+    let x = pattern.number("x").unwrap_or(0.0);
+    let y = pattern.number("y").unwrap_or(0.0);
+    let start_x = x + ((local_min_x - x) / width).floor() * width;
+    let start_y = y + ((local_min_y - y) / height).floor() * height;
+    let pattern_transform = pattern
+        .attr("patternTransform")
+        .map(parse_transform)
+        .unwrap_or_default();
+    let style = SvgStyle::from_node(pattern);
+    let pattern_start = doc.objects.len();
+    let mut tiles = 0usize;
+    let mut overflow = false;
+    let mut column = start_x;
+    'outer: while column < local_max_x + width {
+        let mut row = start_y;
+        while row < local_max_y + height {
+            if tiles >= 2048 {
+                overflow = true;
+                break 'outer;
+            }
+            tiles += 1;
+            let tile = transform
+                .compose(&Transform2::translate(column, row))
+                .compose(&pattern_transform);
+            for child in &pattern.children {
+                process_node(
+                    child,
+                    tile,
+                    &style,
+                    doc,
+                    layer_id,
+                    warnings,
+                    ids,
+                    depth + 1,
+                    dpi,
+                    base_dir,
+                );
+            }
+            row += height;
+        }
+        column += width;
+    }
+    if overflow {
+        doc.objects.truncate(pattern_start);
+        fallback_pattern(doc, start, pattern, id, "has too many tiles", warnings);
+        return;
+    }
+    if doc.objects.len() > pattern_start {
+        let contour: Vec<(f64, f64)> = path
+            .flatten(0.1)
+            .into_iter()
+            .map(|point| (point.x, point.y))
+            .collect();
+        clip_objects(doc, pattern_start, id, "pattern", &[contour], warnings);
+        warnings.push(format!("pattern #{id} was expanded into {tiles} tile(s)"));
+    }
+}
+
+fn fallback_pattern(
+    doc: &mut Document,
+    start: usize,
+    pattern: &Node,
+    id: &str,
+    reason: &str,
+    warnings: &mut Vec<String>,
+) {
+    let Some(color) = pattern_color(pattern, 0) else {
+        warnings.push(format!("pattern #{id} {reason}"));
+        return;
+    };
+    if let Some(object) = doc.objects.get_mut(start) {
+        object.style.fill = Some(color);
+    }
+    warnings.push(format!(
+        "pattern #{id} {reason}; approximated by one colour"
+    ));
 }
 
 /// Apply the subset of SVG filters that a vector document can represent.
@@ -2374,10 +2575,14 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     let mut by_id: HashMap<String, &Node> = HashMap::new();
     collect_ids(root, &mut by_id);
     let mut colors: HashMap<String, String> = HashMap::new();
+    let mut pattern_ids: HashSet<String> = HashSet::new();
     for (id, node) in &by_id {
         let color = match node.name.as_str() {
             "linearGradient" | "radialGradient" => gradient_color(node, &by_id, 0),
-            "pattern" => pattern_color(node, 0),
+            "pattern" => {
+                pattern_ids.insert(id.clone());
+                pattern_color(node, 0)
+            }
             _ => None,
         };
         if let Some(color) = color {
@@ -2386,10 +2591,10 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     }
     let mut approximate = false;
     let mut missing: Vec<String> = Vec::new();
-    rewrite_paints(root, &colors, &mut approximate, &mut missing);
+    rewrite_paints(root, &colors, &pattern_ids, &mut approximate, &mut missing);
     if approximate {
         warnings.push(
-            "gradients (midpoint colour) and patterns (dominant paint) are approximated; the source is not reproduced"
+            "gradients (midpoint colour) and patterns (expanded or dominant paint) are approximated; the source is not reproduced"
                 .to_string(),
         );
     }
@@ -2575,16 +2780,28 @@ fn average_colors(colors: &[&String]) -> Option<String> {
     ))
 }
 
+fn is_pattern_shape(node: &Node) -> bool {
+    matches!(
+        node.name.as_str(),
+        "rect" | "circle" | "ellipse" | "polygon" | "polyline" | "path"
+    )
+}
+
 fn rewrite_paints(
     node: &mut Node,
     colors: &HashMap<String, String>,
+    pattern_ids: &HashSet<String>,
     approximate: &mut bool,
     missing: &mut Vec<String>,
 ) {
     for attribute in ["fill", "stroke"] {
         if let Some(value) = node.attrs.get(attribute).cloned() {
-            if let Some((_, resolved)) = resolve_paint_url(&value, colors) {
-                node.attrs.insert(attribute.to_string(), resolved);
+            if let Some((id, resolved)) = resolve_paint_url(&value, colors) {
+                if attribute == "fill" && is_pattern_shape(node) && pattern_ids.contains(&id) {
+                    node.attrs.insert("data-pattern-fill".to_string(), id);
+                } else {
+                    node.attrs.insert(attribute.to_string(), resolved);
+                }
                 *approximate = true;
             } else if let Some(id) = paint_url_id(&value) {
                 if !missing.contains(&id) {
@@ -2616,7 +2833,7 @@ fn rewrite_paints(
         }
     }
     for child in &mut node.children {
-        rewrite_paints(child, colors, approximate, missing);
+        rewrite_paints(child, colors, pattern_ids, approximate, missing);
     }
 }
 
@@ -3686,7 +3903,7 @@ mod tests {
     fn a_pattern_prefers_its_line_colour() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
                     <rect width="2" height="2" fill="#ffffff"/>
                     <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
                 </pattern></defs>
@@ -3704,7 +3921,7 @@ mod tests {
     fn a_pattern_uses_its_most_frequent_paint() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
                     <rect width="2" height="2" fill="#ffffff"/>
                     <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
                     <path d="M0 2 L2 0" fill="none" stroke="#ff0000"/>
@@ -3724,7 +3941,7 @@ mod tests {
     fn a_pattern_averages_tied_fills() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
                     <rect width="1" height="1" fill="#00ff00"/>
                     <rect width="1" height="1" fill="#0000ff"/>
                 </pattern></defs>
@@ -3735,6 +3952,91 @@ mod tests {
         assert_eq!(
             report.document.objects[0].style.fill.as_deref(),
             Some("#007f7f")
+        );
+    }
+
+    #[test]
+    fn a_user_space_pattern_is_expanded_into_tiles() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                    <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        assert!(
+            report.document.objects[0].style.fill.is_none(),
+            "the pattern fill must not also be a solid fill"
+        );
+        for object in &report.document.objects[1..] {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_filled_pattern_tile_is_clipped_to_the_shape() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                    <rect width="1" height="1" fill="#00ff00"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        for object in &report.document.objects[1..] {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn an_object_bounding_box_pattern_falls_back_to_a_colour() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
+                    <rect width="1" height="1" fill="#00ff00"/>
+                    <rect width="1" height="1" fill="#0000ff"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#007f7f")
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("objectBoundingBox")),
+            "{:?}",
+            report.warnings
         );
     }
 
