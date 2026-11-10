@@ -651,7 +651,6 @@ fn apply_gradient(
     warnings: &mut Vec<String>,
     layer_id: &str,
 ) {
-    const BANDS: usize = 16;
     let Some(id) = node.attr("data-gradient-fill") else {
         return;
     };
@@ -752,12 +751,15 @@ fn apply_gradient(
         fallback_gradient(doc, start, gradient, id, ids, warnings);
         return;
     }
+    let physical_length = base.apply(first).distance(base.apply(second));
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let bands = (physical_length.ceil() as usize).clamp(16, 64);
     let band_start = doc.objects.len();
-    for band in 0..BANDS {
+    for band in 0..bands {
         #[allow(clippy::cast_precision_loss)]
-        let t0 = min_t + span * band as f64 / BANDS as f64;
+        let t0 = min_t + span * band as f64 / bands as f64;
         #[allow(clippy::cast_precision_loss)]
-        let t1 = min_t + span * (band + 1) as f64 / BANDS as f64;
+        let t1 = min_t + span * (band + 1) as f64 / bands as f64;
         let parameter = (f64::midpoint(t0, t1) / length).clamp(0.0, 1.0);
         let Some(color) = color_at(&stops, parameter) else {
             continue;
@@ -787,7 +789,7 @@ fn apply_gradient(
             .map(|point| (point.x, point.y))
             .collect();
         clip_objects(doc, band_start, id, "gradient", &[contour], warnings);
-        warnings.push(format!("gradient #{id} was expanded into {BANDS} band(s)"));
+        warnings.push(format!("gradient #{id} was expanded into {bands} band(s)"));
     }
 }
 
@@ -801,7 +803,6 @@ fn apply_radial_gradient(
     warnings: &mut Vec<String>,
     layer_id: &str,
 ) {
-    const BANDS: usize = 16;
     let stops = gradient_stops(gradient, ids, 0);
     if stops.len() < 2 {
         fallback_gradient(doc, start, gradient, id, ids, warnings);
@@ -853,6 +854,9 @@ fn apply_radial_gradient(
         .map(parse_transform)
         .unwrap_or_default();
     let map = |point: Point2| base.apply(gradient_transform.apply(point));
+    let physical_radius = map(Point2::new(cx, cy)).distance(map(Point2::new(cx + radius, cy)));
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let bands = (physical_radius.ceil() as usize).clamp(16, 64);
     let circle = |fraction: f64| -> Vec<(f64, f64)> {
         (0..48)
             .map(|index| {
@@ -906,11 +910,11 @@ fn apply_radial_gradient(
             object_ids[index] = Some(doc.add_object(object).id.clone());
         }
     }
-    for band in 0..BANDS {
+    for band in 0..bands {
         #[allow(clippy::cast_precision_loss)]
-        let inner_fraction = band as f64 / BANDS as f64;
+        let inner_fraction = band as f64 / bands as f64;
         #[allow(clippy::cast_precision_loss)]
-        let outer_fraction = (band + 1) as f64 / BANDS as f64;
+        let outer_fraction = (band + 1) as f64 / bands as f64;
         let Some(color) = color_at(&stops, f64::midpoint(inner_fraction, outer_fraction)) else {
             continue;
         };
@@ -936,7 +940,7 @@ fn apply_radial_gradient(
             doc.add_object(hole);
         }
     }
-    warnings.push(format!("gradient #{id} was expanded into {BANDS} band(s)"));
+    warnings.push(format!("gradient #{id} was expanded into {bands} band(s)"));
 }
 
 fn shape_contains(outer: &[(f64, f64)], inner: &[(f64, f64)]) -> bool {
@@ -4239,6 +4243,50 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.contains("missing #missing"))
+        );
+    }
+
+    #[test]
+    fn a_large_linear_gradient_uses_more_bands() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="20mm" viewBox="0 0 200 20">
+                <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="200" y2="0">
+                    <stop offset="0" stop-color="#ff0000"/>
+                    <stop offset="1" stop-color="#0000ff"/>
+                </linearGradient></defs>
+                <rect x="0" y="0" width="200" height="20" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("64 band(s)")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_small_linear_gradient_keeps_sixteen_bands() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="10" y2="0">
+                    <stop offset="0" stop-color="#ff0000"/>
+                    <stop offset="1" stop-color="#0000ff"/>
+                </linearGradient></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("16 band(s)")),
+            "{:?}",
+            report.warnings
         );
     }
 
