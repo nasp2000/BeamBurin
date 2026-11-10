@@ -526,6 +526,8 @@ impl Context<'_> {
         if unsupported {
             warning_once(self.warnings, "HATCH spline boundaries were skipped");
         }
+        let mut paths = Vec::new();
+        let mut polygons: Vec<Vec<(f64, f64)>> = Vec::new();
         for mut points in loops {
             if points.len() < 3 {
                 continue;
@@ -534,15 +536,40 @@ impl Context<'_> {
                 points.push(points[0]);
             }
             let tuples: Vec<(f64, f64)> = points.iter().map(|point| (point.x, point.y)).collect();
-            let mut object = Object::new(
-                layer_id.clone(),
-                Shape::Path(Path::from_points(&tuples, true)),
-            )
-            .with_transform(parent);
+            paths.push(Path::from_points(&tuples, true));
+            polygons.push(tuples);
+        }
+        let parents = crate::geometry::path::contour_parents_with_rule(&paths, true);
+        let mut order: Vec<usize> = (0..paths.len()).collect();
+        order.sort_by(|&left, &right| {
+            crate::geometry::boolean::polygon_area(&polygons[right])
+                .abs()
+                .total_cmp(&crate::geometry::boolean::polygon_area(&polygons[left]).abs())
+        });
+        let mut ids: Vec<Option<String>> = vec![None; paths.len()];
+        let mut nested = false;
+        for index in order {
+            let mut object = Object::new(layer_id.clone(), Shape::Path(paths[index].clone()))
+                .with_transform(parent);
+            if let Some(parent_index) = parents[index] {
+                if let Some(parent_id) = ids[parent_index].clone() {
+                    object.hole_of = Some(parent_id);
+                    object.name = "Hatch hole".to_string();
+                    nested = true;
+                }
+            } else {
+                object.name = "Hatch fill".to_string();
+            }
             if let Some(operation_id) = &operation_id {
                 object.operation_id = Some(operation_id.clone());
             }
-            self.document.add_object(object);
+            ids[index] = Some(self.document.add_object(object).id.clone());
+        }
+        if nested {
+            warning_once(
+                self.warnings,
+                "nested HATCH loops were resolved by containment as straight segments",
+            );
         }
     }
 
@@ -1103,6 +1130,12 @@ mod tests {
         document.objects.len()
     }
 
+    fn hatch_square(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+        format!(
+            "92\n1\n93\n4\n72\n1\n10\n{x0}\n20\n{y0}\n11\n{x1}\n21\n{y0}\n72\n1\n10\n{x1}\n20\n{y0}\n11\n{x1}\n21\n{y1}\n72\n1\n10\n{x1}\n20\n{y1}\n11\n{x0}\n21\n{y1}\n72\n1\n10\n{x0}\n20\n{y1}\n11\n{x0}\n21\n{y0}\n"
+        )
+    }
+
     #[test]
     fn empty_is_empty_document() {
         let document = import_dxf("").unwrap();
@@ -1383,6 +1416,95 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.contains("fill")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn hatch_nested_loops_form_one_hole() {
+        let body = format!(
+            "0\nHATCH\n91\n2\n{}{}70\n0\n75\n0\n76\n0\n52\n1\n45\n1\n46\n0\n",
+            hatch_square(0.0, 0.0, 20.0, 20.0),
+            hatch_square(5.0, 5.0, 15.0, 15.0),
+        );
+        let report = import_dxf_report(&dxf(&body)).unwrap();
+        assert_eq!(count_objects(&report.document), 2, "{:?}", report.warnings);
+        let holes: Vec<_> = report
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.hole_of.is_some())
+            .collect();
+        assert_eq!(holes.len(), 1);
+        let outer = report
+            .document
+            .objects
+            .iter()
+            .find(|object| object.hole_of.is_none())
+            .unwrap();
+        assert_eq!(holes[0].hole_of.as_deref(), Some(outer.id.as_str()));
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .all(|object| object.operation_id.is_some())
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("nested HATCH loops")
+                    && warning.contains("straight segments")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn hatch_three_nested_loops_alternate_solid_and_hole() {
+        let body = format!(
+            "0\nHATCH\n91\n3\n{}{}{}70\n0\n75\n0\n76\n0\n52\n1\n45\n1\n46\n0\n",
+            hatch_square(0.0, 0.0, 30.0, 30.0),
+            hatch_square(5.0, 5.0, 25.0, 25.0),
+            hatch_square(10.0, 10.0, 20.0, 20.0),
+        );
+        let report = import_dxf_report(&dxf(&body)).unwrap();
+        assert_eq!(count_objects(&report.document), 3, "{:?}", report.warnings);
+        let holes: Vec<_> = report
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.hole_of.is_some())
+            .collect();
+        assert_eq!(holes.len(), 1, "only the middle loop is a hole");
+        assert!(
+            report
+                .document
+                .objects
+                .iter()
+                .all(|object| object.operation_id.is_some())
+        );
+        let mut inner = &report.document.objects[0];
+        for object in &report.document.objects {
+            let (min, max) = object.bounds().unwrap();
+            let (inner_min, inner_max) = inner.bounds().unwrap();
+            if (max.x - min.x) * (max.y - min.y)
+                < (inner_max.x - inner_min.x) * (inner_max.y - inner_min.y)
+            {
+                inner = object;
+            }
+        }
+        assert!(
+            inner.hole_of.is_none(),
+            "the innermost loop must be a solid island"
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("nested HATCH loops")),
             "{:?}",
             report.warnings
         );
