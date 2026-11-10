@@ -1121,6 +1121,22 @@ mod tests {
     }
 
     #[test]
+    fn preset_framing_survives_a_json_round_trip() {
+        let mut image = sample_image("Selected image");
+        image.selection = true;
+        let json = serde_json::to_string(&image).unwrap();
+        let image: ImageExportPreset = serde_json::from_str(&json).unwrap();
+        assert!(image.selection);
+        assert!(!image.drawing);
+
+        let mut vector = sample_vector("Selected vector");
+        vector.area = "selection".to_string();
+        let json = serde_json::to_string(&vector).unwrap();
+        let vector: VectorExportPreset = serde_json::from_str(&json).unwrap();
+        assert_eq!(vector.area, "selection");
+    }
+
+    #[test]
     fn image_presets_are_saved_replaced_and_removed() {
         let mut presets = ImageExportPresetPrefs::default();
         presets.upsert(sample_image("Photo")).unwrap();
@@ -1154,6 +1170,10 @@ mod tests {
         bad.width_px = 0;
         assert!(presets.upsert(bad.clone()).is_err());
         bad.width_px = 2480;
+        bad.drawing = true;
+        bad.selection = true;
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.selection = false;
         assert!(presets.upsert(bad).is_ok());
 
         let mut duplicate = ImageExportPresetPrefs {
