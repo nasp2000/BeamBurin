@@ -14,6 +14,8 @@ fn root() -> PathBuf {
 struct Entry {
     name: String,
     path: PathBuf,
+    hash: String,
+    url: String,
 }
 
 fn entries() -> Vec<Entry> {
@@ -29,11 +31,13 @@ fn entries() -> Vec<Entry> {
             }
             let mut fields = line.split('\t');
             let name = fields.next()?.to_owned();
-            let _hash = fields.next()?;
-            let _url = fields.next()?;
+            let hash = fields.next()?.to_owned();
+            let url = fields.next()?.to_owned();
             Some(Entry {
                 path: directory.join(&name),
                 name,
+                hash,
+                url,
             })
         })
         .collect()
@@ -94,6 +98,49 @@ fn assert_importable(entry: &Entry) {
         assert!(
             !outcome.document.objects.is_empty(),
             "{} imported no objects",
+            entry.name
+        );
+    }
+}
+
+#[test]
+fn the_corpus_manifest_is_well_formed() {
+    let entries = entries();
+    assert!(
+        entries.len() >= 15,
+        "the external corpus shrank to {} file(s)",
+        entries.len()
+    );
+    let mut names = std::collections::HashSet::new();
+    let mut hashes = std::collections::HashSet::new();
+    for entry in &entries {
+        assert!(
+            names.insert(entry.name.clone()),
+            "duplicate corpus name: {}",
+            entry.name
+        );
+        assert_eq!(
+            entry.hash.len(),
+            64,
+            "{}: the hash is not a SHA-256 digest",
+            entry.name
+        );
+        assert!(
+            entry
+                .hash
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()),
+            "{}: the hash contains non-hexadecimal characters",
+            entry.name
+        );
+        assert!(
+            entry.url.starts_with("https://"),
+            "{}: the source URL is not HTTPS",
+            entry.name
+        );
+        assert!(
+            hashes.insert(entry.hash.clone()),
+            "duplicate corpus hash: {}",
             entry.name
         );
     }
