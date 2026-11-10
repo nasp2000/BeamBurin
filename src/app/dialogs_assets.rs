@@ -557,6 +557,7 @@ impl BeamBurinApp {
         self.export_image_width_px = preset.width_px;
         self.export_image_height_px = preset.height_px;
         self.export_image_keep_aspect = preset.keep_aspect;
+        self.export_image_drawing = preset.drawing;
     }
 
     /// Region a vector export writes, including the selection margin.
@@ -622,6 +623,11 @@ impl BeamBurinApp {
         preset: &crate::config::preferences::VectorExportPreset,
     ) {
         self.export_vector_margin_mm = preset.margin_mm;
+        self.export_vector_drawing = preset.area == "drawing";
+        if self.export_vector_drawing {
+            self.export_vector_selection = false;
+            self.export_dxf_selection = false;
+        }
         match preset.format.as_str() {
             "svg" => {
                 self.export_svg_text_paths = preset.text_as_paths;
@@ -1147,7 +1153,7 @@ impl BeamBurinApp {
             ui.horizontal(|ui| {
                 ui.label(&preset.name);
                 ui.weak(format!(
-                    "{:.0} dpi · {:.1} mm margin · {} x {} px{}{}",
+                    "{:.0} dpi · {:.1} mm margin · {} x {} px{}{}{}",
                     preset.dpi,
                     preset.margin_mm,
                     preset.width_px,
@@ -1165,6 +1171,11 @@ impl BeamBurinApp {
                         }
                     } else {
                         ""
+                    },
+                    if preset.drawing {
+                        " · drawing"
+                    } else {
+                        " · page"
                     }
                 ));
                 if ui.button("Apply").clicked() {
@@ -1189,6 +1200,7 @@ impl BeamBurinApp {
                 width_px: self.export_image_width_px,
                 height_px: self.export_image_height_px,
                 keep_aspect: self.export_image_keep_aspect,
+                drawing: self.export_image_drawing,
             };
             match self.preferences.image_export_presets.upsert(preset) {
                 Ok(()) => {
@@ -1271,7 +1283,7 @@ impl BeamBurinApp {
                     ""
                 };
                 ui.weak(format!(
-                    "{} · {}{}{}{}{}",
+                    "{} · {}{}{}{}{}{}",
                     preset.format.to_uppercase(),
                     if preset.text_as_paths {
                         "text as paths"
@@ -1285,6 +1297,11 @@ impl BeamBurinApp {
                         format!(" · {:.1} mm margin", preset.margin_mm)
                     } else {
                         String::new()
+                    },
+                    if preset.area == "drawing" {
+                        " · drawing"
+                    } else {
+                        " · page"
                     }
                 ));
                 if ui.button("Apply").clicked() {
@@ -1313,6 +1330,11 @@ impl BeamBurinApp {
                 margin_mm: self.export_vector_margin_mm,
                 dxf_unit: self.export_dxf_unit.id().to_string(),
                 embed_images,
+                area: if self.export_vector_drawing {
+                    "drawing".to_string()
+                } else {
+                    "page".to_string()
+                },
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {

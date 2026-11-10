@@ -470,6 +470,7 @@ impl ExportPresetPrefs {
 }
 
 /// A saved set of image (PNG) export options.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageExportPreset {
     pub name: String,
@@ -484,6 +485,9 @@ pub struct ImageExportPreset {
     /// Keep the aspect ratio when a custom pixel size is used.
     #[serde(default = "default_true")]
     pub keep_aspect: bool,
+    /// Frame the drawing bounds instead of the whole page.
+    #[serde(default)]
+    pub drawing: bool,
 }
 
 impl ImageExportPreset {
@@ -518,6 +522,7 @@ impl ImageExportPreset {
 ///
 /// The format selects which dialog receives the preset; the layer selection and
 /// the area stay with the document, because they change per export.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VectorExportPreset {
     pub name: String,
@@ -535,6 +540,13 @@ pub struct VectorExportPreset {
     /// Embed raster images as data URIs (SVG only).
     #[serde(default)]
     pub embed_images: bool,
+    /// Frame the drawing bounds (`drawing`) or the whole page (`page`).
+    #[serde(default = "default_vector_area")]
+    pub area: String,
+}
+
+fn default_vector_area() -> String {
+    "page".to_string()
 }
 
 fn default_dxf_unit() -> String {
@@ -557,6 +569,9 @@ impl VectorExportPreset {
         }
         if !matches!(self.dxf_unit.as_str(), "mm" | "in") {
             return Err(format!("unknown DXF unit: {}", self.dxf_unit));
+        }
+        if !matches!(self.area.as_str(), "page" | "drawing") {
+            return Err(format!("unknown vector area: {}", self.area));
         }
         Ok(())
     }
@@ -1085,6 +1100,7 @@ mod tests {
             width_px: 2480,
             height_px: 3508,
             keep_aspect: true,
+            drawing: false,
         }
     }
 
@@ -1093,6 +1109,7 @@ mod tests {
         let json = r#"{"name":"Old","dpi":300,"transparent":false,"margin_mm":0,"offset_x_mm":0,"offset_y_mm":0,"custom_size":true,"width_px":100,"height_px":100}"#;
         let preset: ImageExportPreset = serde_json::from_str(json).unwrap();
         assert!(preset.keep_aspect);
+        assert!(!preset.drawing);
     }
 
     #[test]
@@ -1148,6 +1165,7 @@ mod tests {
             margin_mm: 0.0,
             dxf_unit: "mm".to_string(),
             embed_images: false,
+            area: "page".to_string(),
         }
     }
 
@@ -1181,6 +1199,9 @@ mod tests {
         bad.dxf_unit = "furlong".to_string();
         assert!(presets.upsert(bad.clone()).is_err());
         bad.dxf_unit = "in".to_string();
+        bad.area = "selection".to_string();
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.area = "page".to_string();
         assert!(presets.upsert(bad).is_ok());
 
         let mut duplicate = VectorExportPresetPrefs {
@@ -1196,6 +1217,7 @@ mod tests {
         let json = r#"{"name":"Old","format":"svg","text_as_paths":false,"arcs":false}"#;
         let preset: VectorExportPreset = serde_json::from_str(json).unwrap();
         assert!(preset.margin_mm.abs() < f64::EPSILON);
+        assert_eq!(preset.area, "page");
     }
 
     #[test]

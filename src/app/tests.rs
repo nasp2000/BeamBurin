@@ -4256,11 +4256,13 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.export_image_margin_mm = 4.0;
     app.export_image_custom_size = true;
     app.export_image_keep_aspect = false;
+    app.export_image_drawing = true;
     app.image_export_preset_name = "Photo".to_string();
     app.export_dxf_text_paths = true;
     app.export_dxf_arcs = true;
     app.export_dxf_unit = crate::export::DxfUnit::Inches;
     app.export_vector_margin_mm = 6.0;
+    app.export_vector_drawing = true;
     app.vector_export_preset_name = "DXF arcs".to_string();
     app.vector_export_preset_format = "dxf".to_string();
     let mut harness = ui_harness(app);
@@ -4297,6 +4299,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!((image.dpi - 300.0).abs() < f64::EPSILON);
     assert!((image.margin_mm - 4.0).abs() < f64::EPSILON);
     assert!(!image.keep_aspect, "the aspect link was not saved");
+    assert!(image.drawing, "the image framing was not saved");
     let vector = preferences
         .vector_export_presets
         .find("DXF arcs")
@@ -4306,6 +4309,7 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!(vector.arcs);
     assert!((vector.margin_mm - 6.0).abs() < f64::EPSILON);
     assert_eq!(vector.dxf_unit, "in");
+    assert_eq!(vector.area, "drawing", "the vector framing was not saved");
     let svg = preferences
         .vector_export_presets
         .find("SVG embedded")
@@ -4318,6 +4322,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     let state = harness.state_mut();
     state.export_image_dpi = 96.0;
     state.export_image_keep_aspect = true;
+    state.export_image_drawing = false;
+    state.export_vector_drawing = false;
     state.export_dxf_arcs = false;
     state.export_dxf_unit = crate::export::DxfUnit::Millimetres;
     state.export_vector_margin_mm = 0.0;
@@ -4333,6 +4339,14 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!(
         !state.export_image_keep_aspect,
         "the preset aspect link was not applied"
+    );
+    assert!(
+        state.export_image_drawing,
+        "the image framing was not applied"
+    );
+    assert!(
+        state.export_vector_drawing,
+        "the vector framing was not applied"
     );
     assert!(state.export_dxf_arcs, "the vector preset was not applied");
     assert_eq!(
