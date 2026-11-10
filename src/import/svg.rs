@@ -2366,8 +2366,8 @@ fn transform_scale(transform: &Transform2) -> f64 {
 #[allow(clippy::option_option)]
 /// Replace `url(#id)` paints with one representative colour.
 ///
-/// Gradients use the colour at offset 0.5 and patterns the first line stroke
-/// or fill found inside them. The approximation is reported once; a missing reference is
+/// Gradients use the colour at offset 0.5 and patterns their most frequent
+/// line stroke or fill (equal counts are averaged). The approximation is reported once; a missing reference is
 /// reported by id. Without this pass the shapes would silently lose their
 /// paint.
 fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
@@ -2389,7 +2389,7 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     rewrite_paints(root, &colors, &mut approximate, &mut missing);
     if approximate {
         warnings.push(
-            "gradients (midpoint colour) and patterns (line colour or first fill) are approximated; the source is not reproduced"
+            "gradients (midpoint colour) and patterns (dominant paint) are approximated; the source is not reproduced"
                 .to_string(),
         );
     }
@@ -2493,34 +2493,86 @@ fn pattern_color(node: &Node, depth: usize) -> Option<String> {
     if depth > 8 {
         return None;
     }
-    let mut fills = Vec::new();
-    let mut line_strokes = Vec::new();
-    collect_pattern_paints(node, depth, &mut fills, &mut line_strokes);
-    line_strokes
-        .into_iter()
-        .next()
-        .or_else(|| fills.into_iter().next())
+    let mut paints: HashMap<String, (usize, bool)> = HashMap::new();
+    collect_pattern_paints(node, depth, &mut paints);
+    let maximum = paints.values().map(|(count, _)| *count).max()?;
+    let lines: Vec<&String> = paints
+        .iter()
+        .filter(|(_, (count, line))| *count == maximum && *line)
+        .map(|(color, _)| color)
+        .collect();
+    if !lines.is_empty() {
+        return average_colors(&lines);
+    }
+    let fills: Vec<&String> = paints
+        .iter()
+        .filter(|(_, (count, _))| *count == maximum)
+        .map(|(color, _)| color)
+        .collect();
+    average_colors(&fills)
 }
 
-fn collect_pattern_paints(
-    node: &Node,
-    depth: usize,
-    fills: &mut Vec<String>,
-    line_strokes: &mut Vec<String>,
-) {
+fn collect_pattern_paints(node: &Node, depth: usize, paints: &mut HashMap<String, (usize, bool)>) {
     if depth > 8 {
         return;
     }
     for child in &node.children {
-        let fill = child.attr("fill").and_then(paint).flatten();
-        let stroke = child.attr("stroke").and_then(paint).flatten();
-        if let Some(fill) = fill {
-            fills.push(fill);
-        } else if let Some(stroke) = stroke {
-            line_strokes.push(stroke);
+        let fill = paint_declaration(child, "fill");
+        let stroke = paint_declaration(child, "stroke");
+        match (fill, stroke) {
+            (Some(Some(fill)), _) => {
+                let entry = paints.entry(fill).or_insert((0, false));
+                entry.0 += 1;
+            }
+            (_, Some(Some(stroke))) => {
+                let entry = paints.entry(stroke).or_insert((0, false));
+                entry.0 += 1;
+                entry.1 = true;
+            }
+            _ => {}
         }
-        collect_pattern_paints(child, depth + 1, fills, line_strokes);
+        collect_pattern_paints(child, depth + 1, paints);
     }
+}
+
+#[allow(clippy::option_option)]
+fn paint_declaration(node: &Node, name: &str) -> Option<Option<String>> {
+    if let Some(value) = node.attr(name) {
+        return paint(value);
+    }
+    let style = node.attr("style")?;
+    for declaration in style.split(';') {
+        let Some((key, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        if key.trim() == name {
+            return paint(value);
+        }
+    }
+    None
+}
+
+fn average_colors(colors: &[&String]) -> Option<String> {
+    let first = colors.first()?;
+    let mut sums = (0u64, 0u64, 0u64);
+    let mut count = 0u64;
+    for color in colors {
+        if let Some((red, green, blue)) = crate::color::parse_hex_color(color) {
+            sums.0 += u64::from(red);
+            sums.1 += u64::from(green);
+            sums.2 += u64::from(blue);
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Some((*first).clone());
+    }
+    let channel = |value: u64| u8::try_from(value / count).unwrap_or(255);
+    Some(crate::color::to_hex(
+        channel(sums.0),
+        channel(sums.1),
+        channel(sums.2),
+    ))
 }
 
 fn rewrite_paints(
@@ -3645,6 +3697,44 @@ mod tests {
         assert_eq!(
             report.document.objects[0].style.fill.as_deref(),
             Some("#ff0000")
+        );
+    }
+
+    #[test]
+    fn a_pattern_uses_its_most_frequent_paint() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                    <rect width="2" height="2" fill="#ffffff"/>
+                    <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
+                    <path d="M0 2 L2 0" fill="none" stroke="#ff0000"/>
+                    <path d="M0 1 L2 1" fill="none" stroke="#0000ff"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#ff0000")
+        );
+    }
+
+    #[test]
+    fn a_pattern_averages_tied_fills() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
+                <defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">
+                    <rect width="1" height="1" fill="#00ff00"/>
+                    <rect width="1" height="1" fill="#0000ff"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#007f7f")
         );
     }
 
