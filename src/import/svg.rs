@@ -1597,11 +1597,6 @@ fn clip_objects(
                 .collect();
         }
         if pieces.is_empty() {
-            eprintln!(
-                "CLIP EMPTY object={} bounds={:?} contours={contours:?}",
-                object.name,
-                object.bounds()
-            );
             // `boolean_contours` can return nothing when the subject is fully
             // inside the clip; keep it then, and drop it when fully outside.
             let flat = path.flatten(0.1);
