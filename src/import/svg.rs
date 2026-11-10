@@ -2366,9 +2366,10 @@ fn transform_scale(transform: &Transform2) -> f64 {
 #[allow(clippy::option_option)]
 /// Replace `url(#id)` paints with one representative colour.
 ///
-/// Gradients use their first stop and patterns the first fill found inside
-/// them. The approximation is reported once; a missing reference is reported by
-/// id. Without this pass the shapes would silently lose their paint.
+/// Gradients use the colour at offset 0.5 and patterns the first fill found
+/// inside them. The approximation is reported once; a missing reference is
+/// reported by id. Without this pass the shapes would silently lose their
+/// paint.
 fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     let mut by_id: HashMap<String, &Node> = HashMap::new();
     collect_ids(root, &mut by_id);
@@ -2388,7 +2389,7 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     rewrite_paints(root, &colors, &mut approximate, &mut missing);
     if approximate {
         warnings.push(
-            "gradients and patterns are approximated by one colour; the source is not reproduced"
+            "gradients (midpoint colour) and patterns (first fill) are approximated; the source is not reproduced"
                 .to_string(),
         );
     }
@@ -2397,18 +2398,77 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     }
 }
 
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 fn gradient_color(node: &Node, by_id: &HashMap<String, &Node>, depth: usize) -> Option<String> {
     if depth > 8 {
         return None;
     }
-    if let Some(stop) = node.children.iter().find(|child| child.name == "stop") {
-        if let Some(color) = stop_color(stop) {
-            return Some(color);
+    let mut stops: Vec<(f64, String)> = node
+        .children
+        .iter()
+        .filter(|child| child.name == "stop")
+        .filter_map(|stop| {
+            let offset = gradient_offset(stop);
+            let color = stop_color(stop)?;
+            let color = crate::color::normalize_hex_color(&color)?;
+            Some((offset, color))
+        })
+        .collect();
+    if stops.is_empty() {
+        let href = node.attr("href").or_else(|| node.attr("xlink:href"))?;
+        let id = href.trim().strip_prefix('#')?;
+        return gradient_color(by_id.get(id)?, by_id, depth + 1);
+    }
+    stops.sort_by(|left, right| left.0.total_cmp(&right.0));
+    if stops.len() == 1 {
+        return Some(stops[0].1.clone());
+    }
+    let target = 0.5;
+    let mut left = &stops[0];
+    let mut right = &stops[stops.len() - 1];
+    if target > stops[0].0 && target < stops[stops.len() - 1].0 {
+        for pair in stops.windows(2) {
+            if target >= pair[0].0 && target <= pair[1].0 {
+                left = &pair[0];
+                right = &pair[1];
+                break;
+            }
         }
     }
-    let href = node.attr("href").or_else(|| node.attr("xlink:href"))?;
-    let id = href.trim().strip_prefix('#')?;
-    gradient_color(by_id.get(id)?, by_id, depth + 1)
+    let (red_a, green_a, blue_a) = crate::color::parse_hex_color(&left.1)?;
+    let (red_b, green_b, blue_b) = crate::color::parse_hex_color(&right.1)?;
+    let blend = if (right.0 - left.0).abs() < 1e-12 {
+        0.0
+    } else {
+        ((target - left.0) / (right.0 - left.0)).clamp(0.0, 1.0)
+    };
+    let mix = |start: u8, end: u8| {
+        (f64::from(start) + (f64::from(end) - f64::from(start)) * blend)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    Some(crate::color::to_hex(
+        mix(red_a, red_b),
+        mix(green_a, green_b),
+        mix(blue_a, blue_b),
+    ))
+}
+
+fn gradient_offset(stop: &Node) -> f64 {
+    let Some(value) = stop.attr("offset") else {
+        return 0.0;
+    };
+    let value = value.trim();
+    let number = if let Some(percent) = value.strip_suffix('%') {
+        percent.trim().parse::<f64>().map(|value| value / 100.0)
+    } else {
+        value.parse::<f64>()
+    };
+    number.unwrap_or(0.0).clamp(0.0, 1.0)
 }
 
 fn stop_color(stop: &Node) -> Option<String> {
@@ -3494,7 +3554,7 @@ mod tests {
     }
 
     #[test]
-    fn a_linear_gradient_uses_its_first_stop() {
+    fn a_linear_gradient_uses_its_midpoint() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
                 <defs><linearGradient id="g">
@@ -3507,7 +3567,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             report.document.objects[0].style.fill.as_deref(),
-            Some("#ff0000")
+            Some("#800080")
         );
         assert!(
             report
@@ -3516,6 +3576,25 @@ mod tests {
                 .any(|warning| warning.contains("approximated")),
             "{:?}",
             report.warnings
+        );
+    }
+
+    #[test]
+    fn a_three_stop_gradient_uses_the_middle_stop() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
+                <defs><linearGradient id="g">
+                    <stop offset="0%" stop-color="#ff0000"/>
+                    <stop offset="50%" stop-color="#00ff00"/>
+                    <stop offset="100%" stop-color="#0000ff"/>
+                </linearGradient></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            report.document.objects[0].style.fill.as_deref(),
+            Some("#00ff00")
         );
     }
 
