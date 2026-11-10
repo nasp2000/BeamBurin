@@ -4256,7 +4256,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.export_image_margin_mm = 4.0;
     app.export_image_custom_size = true;
     app.export_image_keep_aspect = false;
-    app.export_image_drawing = true;
+    app.export_image_drawing = false;
+    app.export_image_selection = true;
     app.image_export_preset_name = "Photo".to_string();
     app.export_dxf_text_paths = true;
     app.export_dxf_arcs = true;
@@ -4299,7 +4300,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!((image.dpi - 300.0).abs() < f64::EPSILON);
     assert!((image.margin_mm - 4.0).abs() < f64::EPSILON);
     assert!(!image.keep_aspect, "the aspect link was not saved");
-    assert!(image.drawing, "the image framing was not saved");
+    assert!(!image.drawing, "the image framing was not saved");
+    assert!(image.selection, "the image selection framing was not saved");
     let vector = preferences
         .vector_export_presets
         .find("DXF arcs")
@@ -4322,7 +4324,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     let state = harness.state_mut();
     state.export_image_dpi = 96.0;
     state.export_image_keep_aspect = true;
-    state.export_image_drawing = false;
+    state.export_image_drawing = true;
+    state.export_image_selection = false;
     state.export_vector_drawing = false;
     state.export_dxf_arcs = false;
     state.export_dxf_unit = crate::export::DxfUnit::Millimetres;
@@ -4341,8 +4344,12 @@ fn the_export_presets_window_saves_image_and_vector_options() {
         "the preset aspect link was not applied"
     );
     assert!(
-        state.export_image_drawing,
-        "the image framing was not applied"
+        !state.export_image_drawing,
+        "the image drawing framing was not cleared"
+    );
+    assert!(
+        state.export_image_selection,
+        "the image selection framing was not applied"
     );
     assert!(
         state.export_vector_drawing,

@@ -488,6 +488,9 @@ pub struct ImageExportPreset {
     /// Frame the drawing bounds instead of the whole page.
     #[serde(default)]
     pub drawing: bool,
+    /// Frame the current selection instead of the page or drawing.
+    #[serde(default)]
+    pub selection: bool,
 }
 
 impl ImageExportPreset {
@@ -513,6 +516,9 @@ impl ImageExportPreset {
         }
         if !(1..=100_000).contains(&self.width_px) || !(1..=100_000).contains(&self.height_px) {
             return Err("image size must be between 1 and 100000 pixels".to_string());
+        }
+        if self.drawing && self.selection {
+            return Err("image framing must be page, drawing or selection".to_string());
         }
         Ok(())
     }
@@ -1101,6 +1107,7 @@ mod tests {
             height_px: 3508,
             keep_aspect: true,
             drawing: false,
+            selection: false,
         }
     }
 
@@ -1110,6 +1117,7 @@ mod tests {
         let preset: ImageExportPreset = serde_json::from_str(json).unwrap();
         assert!(preset.keep_aspect);
         assert!(!preset.drawing);
+        assert!(!preset.selection);
     }
 
     #[test]

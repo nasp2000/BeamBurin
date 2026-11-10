@@ -558,6 +558,7 @@ impl BeamBurinApp {
         self.export_image_height_px = preset.height_px;
         self.export_image_keep_aspect = preset.keep_aspect;
         self.export_image_drawing = preset.drawing;
+        self.export_image_selection = preset.selection && !preset.drawing;
     }
 
     /// Region a vector export writes, including the selection margin.
@@ -1207,6 +1208,7 @@ impl BeamBurinApp {
                 height_px: self.export_image_height_px,
                 keep_aspect: self.export_image_keep_aspect,
                 drawing: self.export_image_drawing,
+                selection: self.export_image_selection,
             };
             match self.preferences.image_export_presets.upsert(preset) {
                 Ok(()) => {
