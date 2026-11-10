@@ -4396,6 +4396,38 @@ fn the_export_presets_window_keeps_selection_framing() {
         !state.export_vector_drawing,
         "selection and drawing framing overlapped"
     );
+    {
+        let state = harness.state_mut();
+        state.vector_export_preset_format = "svg".to_string();
+        state.vector_export_preset_name = "Selected SVG".to_string();
+        state.export_svg_selection = true;
+        state.export_vector_drawing = false;
+    }
+    harness.run();
+    harness
+        .get_by_label("Save vector options")
+        .click_accesskit();
+    harness.run();
+    let svg = harness
+        .state()
+        .preferences
+        .vector_export_presets
+        .find("Selected SVG")
+        .expect("the SVG selection preset disappeared")
+        .clone();
+    assert_eq!(svg.area, "selection");
+    let state = harness.state_mut();
+    state.export_svg_selection = false;
+    state.export_dxf_selection = true;
+    state.apply_vector_export_preset(&svg);
+    assert!(
+        state.export_svg_selection,
+        "the SVG selection framing was not applied"
+    );
+    assert!(
+        !state.export_dxf_selection,
+        "the DXF selection framing leaked into SVG"
+    );
 }
 
 #[test]

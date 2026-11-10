@@ -625,8 +625,15 @@ impl BeamBurinApp {
         self.export_vector_margin_mm = preset.margin_mm;
         self.export_vector_drawing = preset.area == "drawing";
         let selection = preset.area == "selection";
-        self.export_vector_selection = selection;
-        self.export_dxf_selection = selection;
+        self.export_svg_selection = selection && preset.format == "svg";
+        self.export_dxf_selection = selection && preset.format == "dxf";
+        self.export_vector_selection =
+            selection && !matches!(preset.format.as_str(), "svg" | "dxf");
+        if self.export_vector_drawing {
+            self.export_svg_selection = false;
+            self.export_dxf_selection = false;
+            self.export_vector_selection = false;
+        }
         match preset.format.as_str() {
             "svg" => {
                 self.export_svg_text_paths = preset.text_as_paths;
@@ -1321,10 +1328,10 @@ impl BeamBurinApp {
                 "dxf" => (self.export_dxf_text_paths, self.export_dxf_arcs),
                 _ => (self.export_vector_text_paths, false),
             };
-            let selection = if format == "dxf" {
-                self.export_dxf_selection
-            } else {
-                self.export_vector_selection
+            let selection = match format.as_str() {
+                "svg" => self.export_svg_selection,
+                "dxf" => self.export_dxf_selection,
+                _ => self.export_vector_selection,
             };
             let area = if self.export_vector_drawing {
                 "drawing".to_string()
