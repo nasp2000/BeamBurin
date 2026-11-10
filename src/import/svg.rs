@@ -659,13 +659,6 @@ fn apply_pattern(
     let Some(id) = node.attr("data-pattern-fill") else {
         return;
     };
-    eprintln!(
-        "APPLY PATTERN {} id={} start={} len={}",
-        node.name,
-        id,
-        start,
-        doc.objects.len()
-    );
     let Some(pattern) = ids.get(id) else {
         return;
     };
@@ -680,21 +673,13 @@ fn apply_pattern(
         fallback_pattern(doc, start, pattern, id, "has no children", warnings);
         return;
     }
-    if pattern
+    let object_bounding = pattern
         .attr("patternUnits")
-        .is_some_and(|units| units.eq_ignore_ascii_case("objectBoundingBox"))
-    {
-        fallback_pattern(
-            doc,
-            start,
-            pattern,
-            id,
-            "uses objectBoundingBox units",
-            warnings,
-        );
-        return;
-    }
-    let (Some(width), Some(height)) = (pattern.number("width"), pattern.number("height")) else {
+        .is_none_or(|units| units.eq_ignore_ascii_case("objectBoundingBox"));
+    let (Some(width), Some(height)) = (
+        pattern_length(pattern, "width", object_bounding),
+        pattern_length(pattern, "height", object_bounding),
+    ) else {
         fallback_pattern(doc, start, pattern, id, "has no tile size", warnings);
         return;
     };
@@ -725,35 +710,59 @@ fn apply_pattern(
         fallback_pattern(doc, start, pattern, id, "has no bounds", warnings);
         return;
     };
-    let Some(inverse) = transform.invert() else {
-        fallback_pattern(
-            doc,
-            start,
-            pattern,
-            id,
-            "has no inverse transform",
-            warnings,
-        );
-        return;
+    let (base_transform, local_min_x, local_min_y, local_max_x, local_max_y) = if object_bounding {
+        let width_world = maximum.x - minimum.x;
+        let height_world = maximum.y - minimum.y;
+        if width_world <= 0.0 || height_world <= 0.0 {
+            fallback_pattern(doc, start, pattern, id, "has empty bounds", warnings);
+            return;
+        }
+        (
+            Transform2::translate(minimum.x, minimum.y)
+                .compose(&Transform2::scale(width_world, height_world)),
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+        )
+    } else {
+        let Some(inverse) = transform.invert() else {
+            fallback_pattern(
+                doc,
+                start,
+                pattern,
+                id,
+                "has no inverse transform",
+                warnings,
+            );
+            return;
+        };
+        let corners = [
+            inverse.apply(Point2::new(minimum.x, minimum.y)),
+            inverse.apply(Point2::new(maximum.x, minimum.y)),
+            inverse.apply(Point2::new(minimum.x, maximum.y)),
+            inverse.apply(Point2::new(maximum.x, maximum.y)),
+        ];
+        let mut local_min_x = f64::INFINITY;
+        let mut local_min_y = f64::INFINITY;
+        let mut local_max_x = f64::NEG_INFINITY;
+        let mut local_max_y = f64::NEG_INFINITY;
+        for point in corners {
+            local_min_x = local_min_x.min(point.x);
+            local_min_y = local_min_y.min(point.y);
+            local_max_x = local_max_x.max(point.x);
+            local_max_y = local_max_y.max(point.y);
+        }
+        (
+            transform,
+            local_min_x,
+            local_min_y,
+            local_max_x,
+            local_max_y,
+        )
     };
-    let corners = [
-        inverse.apply(Point2::new(minimum.x, minimum.y)),
-        inverse.apply(Point2::new(maximum.x, minimum.y)),
-        inverse.apply(Point2::new(minimum.x, maximum.y)),
-        inverse.apply(Point2::new(maximum.x, maximum.y)),
-    ];
-    let mut local_min_x = f64::INFINITY;
-    let mut local_min_y = f64::INFINITY;
-    let mut local_max_x = f64::NEG_INFINITY;
-    let mut local_max_y = f64::NEG_INFINITY;
-    for point in corners {
-        local_min_x = local_min_x.min(point.x);
-        local_min_y = local_min_y.min(point.y);
-        local_max_x = local_max_x.max(point.x);
-        local_max_y = local_max_y.max(point.y);
-    }
-    let x = pattern.number("x").unwrap_or(0.0);
-    let y = pattern.number("y").unwrap_or(0.0);
+    let x = pattern_length(pattern, "x", object_bounding).unwrap_or(0.0);
+    let y = pattern_length(pattern, "y", object_bounding).unwrap_or(0.0);
     let start_x = x + ((local_min_x - x) / width).floor() * width;
     let start_y = y + ((local_min_y - y) / height).floor() * height;
     let pattern_transform = pattern
@@ -773,7 +782,7 @@ fn apply_pattern(
                 break 'outer;
             }
             tiles += 1;
-            let tile = transform
+            let tile = base_transform
                 .compose(&Transform2::translate(column, row))
                 .compose(&pattern_transform);
             for child in &pattern.children {
@@ -807,6 +816,24 @@ fn apply_pattern(
             .collect();
         clip_objects(doc, pattern_start, id, "pattern", &[contour], warnings);
         warnings.push(format!("pattern #{id} was expanded into {tiles} tile(s)"));
+    }
+}
+
+fn pattern_length(node: &Node, name: &str, fraction: bool) -> Option<f64> {
+    let value = node.attr(name)?;
+    let value = value.trim();
+    if fraction {
+        if let Some(percent) = value.strip_suffix('%') {
+            percent
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .map(|value| value / 100.0)
+        } else {
+            value.parse::<f64>().ok()
+        }
+    } else {
+        node.number(name)
     }
 }
 
@@ -3903,7 +3930,7 @@ mod tests {
     fn a_pattern_prefers_its_line_colour() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
+                <defs><pattern id="p" patternUnits="objectBoundingBox">
                     <rect width="2" height="2" fill="#ffffff"/>
                     <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
                 </pattern></defs>
@@ -3921,7 +3948,7 @@ mod tests {
     fn a_pattern_uses_its_most_frequent_paint() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
+                <defs><pattern id="p" patternUnits="objectBoundingBox">
                     <rect width="2" height="2" fill="#ffffff"/>
                     <path d="M0 0 L2 2" fill="none" stroke="#ff0000"/>
                     <path d="M0 2 L2 0" fill="none" stroke="#ff0000"/>
@@ -3941,7 +3968,7 @@ mod tests {
     fn a_pattern_averages_tied_fills() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
+                <defs><pattern id="p" patternUnits="objectBoundingBox">
                     <rect width="1" height="1" fill="#00ff00"/>
                     <rect width="1" height="1" fill="#0000ff"/>
                 </pattern></defs>
@@ -4014,10 +4041,37 @@ mod tests {
     }
 
     #[test]
-    fn an_object_bounding_box_pattern_falls_back_to_a_colour() {
+    fn an_object_bounding_box_pattern_is_expanded_into_tiles() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
-                <defs><pattern id="p" width="2" height="2" patternUnits="objectBoundingBox">
+                <defs><pattern id="p" width="0.5" height="0.5" patternUnits="objectBoundingBox">
+                    <rect width="0.25" height="0.25" fill="#00ff00"/>
+                </pattern></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#p)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        for object in &report.document.objects[1..] {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_pattern_without_a_tile_size_falls_back_to_a_colour() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><pattern id="p" patternUnits="objectBoundingBox">
                     <rect width="1" height="1" fill="#00ff00"/>
                     <rect width="1" height="1" fill="#0000ff"/>
                 </pattern></defs>
@@ -4034,7 +4088,7 @@ mod tests {
             report
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("objectBoundingBox")),
+                .any(|warning| warning.contains("tile size")),
             "{:?}",
             report.warnings
         );
