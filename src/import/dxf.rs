@@ -359,19 +359,13 @@ impl Context<'_> {
                     .filter(|(code, _)| *code == 40)
                     .filter_map(|(_, value)| value.trim().parse().ok())
                     .collect();
-                if record.fields.iter().any(|(code, value)| {
-                    *code == 41
-                        && value
-                            .trim()
-                            .parse::<f64>()
-                            .is_ok_and(|weight| (weight - 1.0).abs() > 1e-9)
-                }) {
-                    warning_once(
-                        self.warnings,
-                        "SPLINE control-point weights are ignored; the curve is not rational",
-                    );
-                }
-                let points = sample_spline(&control, degree, &knots, 64);
+                let weights: Vec<f64> = record
+                    .fields
+                    .iter()
+                    .filter(|(code, _)| *code == 41)
+                    .filter_map(|(_, value)| value.trim().parse().ok())
+                    .collect();
+                let points = sample_spline_weighted(&control, &weights, degree, &knots, 64);
                 Object::new(layer_id, Shape::Path(Path::from_points(&points, false)))
                     .with_transform(parent)
             }
@@ -680,21 +674,87 @@ fn sample_spline(
     knots: &[f64],
     steps: usize,
 ) -> Vec<(f64, f64)> {
+    sample_spline_weighted(control, &[], degree, knots, steps)
+}
+
+/// Sample a (possibly rational) B-spline through `control`.
+///
+/// A weight vector with any value other than one switches to homogeneous
+/// de Boor evaluation; missing weights default to one.
+#[allow(clippy::cast_precision_loss)]
+fn sample_spline_weighted(
+    control: &[Point2],
+    weights: &[f64],
+    degree: usize,
+    knots: &[f64],
+    steps: usize,
+) -> Vec<(f64, f64)> {
     let count = control.len();
     let degree = degree.clamp(1, count - 1);
     let knots = normalized_knots(count, degree, knots);
-    #[allow(clippy::cast_precision_loss)]
+    let rational = weights.iter().any(|weight| (weight - 1.0).abs() > 1e-9);
     let start = knots[degree];
     let end = knots[count];
     let mut points = Vec::with_capacity(steps + 1);
     for step in 0..=steps {
-        #[allow(clippy::cast_precision_loss)]
         let u = start + (end - start) * step as f64 / steps as f64;
-        points.push(de_boor(control, degree, &knots, u.min(end - 1e-12)));
+        let u = u.min(end - 1e-12);
+        points.push(if rational {
+            de_boor_rational(control, weights, degree, &knots, u)
+        } else {
+            de_boor(control, degree, &knots, u)
+        });
     }
     points[0] = (control[0].x, control[0].y);
     points[steps] = (control[count - 1].x, control[count - 1].y);
     points
+}
+
+/// One point on a rational B-spline, evaluated with homogeneous de Boor.
+fn de_boor_rational(
+    control: &[Point2],
+    weights: &[f64],
+    degree: usize,
+    knots: &[f64],
+    u: f64,
+) -> (f64, f64) {
+    let count = control.len();
+    let mut span = degree;
+    while span < count - 1 && u >= knots[span + 1] {
+        span += 1;
+    }
+    let mut points: Vec<(f64, f64, f64)> = (0..=degree)
+        .map(|offset| {
+            let index = span - degree + offset;
+            let weight = weights.get(index).copied().unwrap_or(1.0);
+            (control[index].x * weight, control[index].y * weight, weight)
+        })
+        .collect();
+    for level in 1..=degree {
+        for index in (level..=degree).rev() {
+            let left = knots[span + index - degree];
+            let right = knots[span + 1 + index - level];
+            let denominator = right - left;
+            let alpha = if denominator.abs() < 1e-12 {
+                0.0
+            } else {
+                (u - left) / denominator
+            };
+            let next = points[index];
+            let previous = points[index - 1];
+            points[index] = (
+                (1.0 - alpha) * previous.0 + alpha * next.0,
+                (1.0 - alpha) * previous.1 + alpha * next.1,
+                (1.0 - alpha) * previous.2 + alpha * next.2,
+            );
+        }
+    }
+    let (x, y, weight) = points[degree];
+    if weight.abs() < 1e-12 {
+        (x, y)
+    } else {
+        (x / weight, y / weight)
+    }
 }
 
 /// A valid, non-decreasing knot vector, clamped at both ends.
@@ -929,8 +989,9 @@ fn hatch_edge(fields: &[(i32, String)], start: usize) -> (usize, Option<Vec<Poin
             let degree = first(94).unwrap_or(3.0).max(1.0) as usize;
             let degree = degree.clamp(1, control.len() - 1);
             let knots = values.get(&40).cloned().unwrap_or_default();
+            let weights = values.get(&42).cloned().unwrap_or_default();
             Some(
-                sample_spline(&control, degree, &knots, 64)
+                sample_spline_weighted(&control, &weights, degree, &knots, 64)
                     .into_iter()
                     .map(|(x, y)| Point2::new(x, y))
                     .collect(),
@@ -1127,18 +1188,56 @@ mod tests {
     }
 
     #[test]
-    fn spline_weights_are_reported_as_ignored() {
-        let report = import_dxf_report(&dxf(
-            "0\nSPLINE\n71\n3\n10\n0\n20\n0\n10\n10\n20\n0\n10\n10\n20\n10\n10\n0\n20\n10\n41\n2\n",
+    fn spline_weights_use_a_rational_curve() {
+        let plain = import_dxf_report(&dxf(
+            "0\nSPLINE\n71\n3\n10\n0\n20\n0\n10\n10\n20\n0\n10\n10\n20\n10\n10\n0\n20\n10\n",
         ))
         .unwrap();
+        let weighted = import_dxf_report(&dxf(
+            "0\nSPLINE\n71\n3\n10\n0\n20\n0\n10\n10\n20\n0\n10\n10\n20\n10\n10\n0\n20\n10\n41\n4\n",
+        ))
+        .unwrap();
+        assert_eq!(count_objects(&weighted.document), 1);
         assert!(
-            report
+            !weighted
                 .warnings
                 .iter()
                 .any(|warning| warning.contains("weights")),
             "{:?}",
-            report.warnings
+            weighted.warnings
+        );
+        let Shape::Path(plain) = &plain.document.objects[0].shape else {
+            panic!("expected a path");
+        };
+        let Shape::Path(weighted) = &weighted.document.objects[0].shape else {
+            panic!("expected a path");
+        };
+        let plain_points = plain.to_points();
+        let weighted_points = weighted.to_points();
+        assert!(
+            plain_points
+                .iter()
+                .zip(&weighted_points)
+                .any(|(a, b)| (a.0 - b.0).abs() > 1e-3 || (a.1 - b.1).abs() > 1e-3),
+            "the rational weight did not change the curve"
+        );
+    }
+
+    #[test]
+    fn rational_sampling_moves_the_curve() {
+        let control = [
+            Point2::new(0.0, 0.0),
+            Point2::new(5.0, 10.0),
+            Point2::new(10.0, 10.0),
+        ];
+        let plain = sample_spline(&control, 2, &[], 8);
+        let weighted = sample_spline_weighted(&control, &[1.0, 4.0, 1.0], 2, &[], 8);
+        assert!(
+            plain
+                .iter()
+                .zip(&weighted)
+                .any(|(a, b)| (a.0 - b.0).abs() > 1e-3 || (a.1 - b.1).abs() > 1e-3),
+            "the rational weight did not change the sampled curve"
         );
     }
 
@@ -1268,6 +1367,23 @@ mod tests {
         assert!((min.x).abs() < 1e-6, "{min:?}");
         assert!((max.x - 10.0).abs() < 1e-6, "{max:?}");
         assert!((max.y - 10.0).abs() < 1e-6, "{max:?}");
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("spline boundaries were skipped")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn hatch_spline_weights_are_applied() {
+        let report = import_dxf_report(&dxf(
+            "0\nHATCH\n91\n1\n92\n1\n93\n1\n72\n4\n94\n3\n73\n0\n74\n0\n95\n8\n96\n4\n40\n0\n40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n40\n1\n10\n0\n20\n0\n10\n3\n20\n0\n10\n7\n20\n10\n10\n10\n20\n10\n42\n4\n97\n0\n",
+        ))
+        .unwrap();
+        assert_eq!(count_objects(&report.document), 1, "{:?}", report.warnings);
         assert!(
             !report
                 .warnings
