@@ -636,8 +636,191 @@ fn process_node(
             base_dir,
             layer_id,
         );
+        apply_gradient(node, doc, objects_before, ids, warnings, layer_id);
         apply_clip(node, transform, doc, objects_before, ids, &[], warnings);
     }
+}
+
+/// Expand a linear gradient fill into solid colour bands clipped to the shape.
+#[allow(clippy::too_many_arguments)]
+fn apply_gradient(
+    node: &Node,
+    doc: &mut Document,
+    start: usize,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+    layer_id: &str,
+) {
+    const BANDS: usize = 16;
+    let Some(id) = node.attr("data-gradient-fill") else {
+        return;
+    };
+    let Some(gradient) = ids.get(id) else {
+        return;
+    };
+    if gradient.name != "linearGradient" {
+        return;
+    }
+    let stops = gradient_stops(gradient, ids, 0);
+    if stops.len() < 2 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    if doc.objects.len() != start + 1 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let (path, object_transform, local_bounds) = {
+        let shape = &doc.objects[start];
+        (shape.world_path(), shape.transform, shape.shape.bounds())
+    };
+    if !path.closed {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let Some((local_min, local_max)) = local_bounds else {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    };
+    let object_bounding = gradient
+        .attr("gradientUnits")
+        .is_none_or(|units| units.eq_ignore_ascii_case("objectBoundingBox"));
+    let (base, target_min, target_max) = if object_bounding {
+        let local_width = local_max.x - local_min.x;
+        let local_height = local_max.y - local_min.y;
+        if local_width <= 0.0 || local_height <= 0.0 {
+            fallback_gradient(doc, start, gradient, id, ids, warnings);
+            return;
+        }
+        (
+            object_transform
+                .compose(&Transform2::translate(local_min.x, local_min.y))
+                .compose(&Transform2::scale(local_width, local_height)),
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 1.0),
+        )
+    } else {
+        (object_transform, local_min, local_max)
+    };
+    let x1 = gradient_length(gradient, "x1", object_bounding).unwrap_or(0.0);
+    let y1 = gradient_length(gradient, "y1", object_bounding).unwrap_or(0.0);
+    let x2 = gradient_length(gradient, "x2", object_bounding).unwrap_or(1.0);
+    let y2 = gradient_length(gradient, "y2", object_bounding).unwrap_or(0.0);
+    let gradient_transform = gradient
+        .attr("gradientTransform")
+        .map(parse_transform)
+        .unwrap_or_default();
+    let first = gradient_transform.apply(Point2::new(x1, y1));
+    let second = gradient_transform.apply(Point2::new(x2, y2));
+    let dx = second.x - first.x;
+    let dy = second.y - first.y;
+    let length = dx.hypot(dy);
+    if length <= 1e-9 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let unit_x = dx / length;
+    let unit_y = dy / length;
+    let side_x = -unit_y;
+    let side_y = unit_x;
+    let corners = [
+        target_min,
+        Point2::new(target_max.x, target_min.y),
+        Point2::new(target_min.x, target_max.y),
+        target_max,
+    ];
+    let mut min_t = f64::INFINITY;
+    let mut max_t = f64::NEG_INFINITY;
+    let mut min_s = f64::INFINITY;
+    let mut max_s = f64::NEG_INFINITY;
+    for corner in corners {
+        let relative_x = corner.x - first.x;
+        let relative_y = corner.y - first.y;
+        let along = relative_x * unit_x + relative_y * unit_y;
+        let across = relative_x * side_x + relative_y * side_y;
+        min_t = min_t.min(along);
+        max_t = max_t.max(along);
+        min_s = min_s.min(across);
+        max_s = max_s.max(across);
+    }
+    let span = max_t - min_t;
+    if span <= 1e-9 {
+        fallback_gradient(doc, start, gradient, id, ids, warnings);
+        return;
+    }
+    let band_start = doc.objects.len();
+    for band in 0..BANDS {
+        #[allow(clippy::cast_precision_loss)]
+        let t0 = min_t + span * band as f64 / BANDS as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let t1 = min_t + span * (band + 1) as f64 / BANDS as f64;
+        let parameter = (f64::midpoint(t0, t1) / length).clamp(0.0, 1.0);
+        let Some(color) = color_at(&stops, parameter) else {
+            continue;
+        };
+        let points = [(t0, min_s), (t1, min_s), (t1, max_s), (t0, max_s)];
+        let world: Vec<(f64, f64)> = points
+            .iter()
+            .map(|(along, across)| {
+                let point = Point2::new(
+                    first.x + unit_x * along + side_x * across,
+                    first.y + unit_y * along + side_y * across,
+                );
+                let point = base.apply(point);
+                (point.x, point.y)
+            })
+            .collect();
+        let mut object = Object::new(layer_id, Shape::Path(Path::from_points(&world, true)));
+        object.style.fill = Some(color);
+        object.style.stroke = None;
+        object.style.stroke_width_mm = 0.0;
+        doc.add_object(object);
+    }
+    if doc.objects.len() > band_start {
+        let contour: Vec<(f64, f64)> = path
+            .flatten(0.1)
+            .into_iter()
+            .map(|point| (point.x, point.y))
+            .collect();
+        clip_objects(doc, band_start, id, "gradient", &[contour], warnings);
+        warnings.push(format!("gradient #{id} was expanded into {BANDS} band(s)"));
+    }
+}
+
+fn gradient_length(node: &Node, name: &str, fraction: bool) -> Option<f64> {
+    let value = node.attr(name)?;
+    let value = value.trim();
+    if fraction {
+        if let Some(percent) = value.strip_suffix('%') {
+            percent
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .map(|value| value / 100.0)
+        } else {
+            value.parse::<f64>().ok()
+        }
+    } else {
+        node.number(name)
+    }
+}
+
+fn fallback_gradient(
+    doc: &mut Document,
+    start: usize,
+    gradient: &Node,
+    id: &str,
+    ids: &HashMap<String, &Node>,
+    warnings: &mut Vec<String>,
+) {
+    let Some(color) = gradient_color(gradient, ids, 0) else {
+        warnings.push(format!("gradient #{id} has no usable stops"));
+        return;
+    };
+    if let Some(object) = doc.objects.get_mut(start) {
+        object.style.fill = Some(color);
+    }
+    warnings.push(format!("gradient #{id} was approximated by one colour"));
 }
 
 /// Expand a `userSpaceOnUse` pattern fill into tiled geometry clipped to the
@@ -2594,9 +2777,14 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     collect_ids(root, &mut by_id);
     let mut colors: HashMap<String, String> = HashMap::new();
     let mut pattern_ids: HashSet<String> = HashSet::new();
+    let mut gradient_ids: HashSet<String> = HashSet::new();
     for (id, node) in &by_id {
         let color = match node.name.as_str() {
-            "linearGradient" | "radialGradient" => gradient_color(node, &by_id, 0),
+            "linearGradient" => {
+                gradient_ids.insert(id.clone());
+                gradient_color(node, &by_id, 0)
+            }
+            "radialGradient" => gradient_color(node, &by_id, 0),
             "pattern" => {
                 pattern_ids.insert(id.clone());
                 pattern_color(node, 0)
@@ -2609,10 +2797,17 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     }
     let mut approximate = false;
     let mut missing: Vec<String> = Vec::new();
-    rewrite_paints(root, &colors, &pattern_ids, &mut approximate, &mut missing);
+    rewrite_paints(
+        root,
+        &colors,
+        &pattern_ids,
+        &gradient_ids,
+        &mut approximate,
+        &mut missing,
+    );
     if approximate {
         warnings.push(
-            "gradients (midpoint colour) and patterns (expanded or dominant paint) are approximated; the source is not reproduced"
+            "gradients (bands or midpoint colour) and patterns (expanded or dominant paint) are approximated; the source is not reproduced"
                 .to_string(),
         );
     }
@@ -2621,14 +2816,9 @@ fn resolve_gradient_paints(root: &mut Node, warnings: &mut Vec<String>) {
     }
 }
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss
-)]
-fn gradient_color(node: &Node, by_id: &HashMap<String, &Node>, depth: usize) -> Option<String> {
+fn gradient_stops(node: &Node, by_id: &HashMap<String, &Node>, depth: usize) -> Vec<(f64, String)> {
     if depth > 8 {
-        return None;
+        return Vec::new();
     }
     let mut stops: Vec<(f64, String)> = node
         .children
@@ -2642,15 +2832,36 @@ fn gradient_color(node: &Node, by_id: &HashMap<String, &Node>, depth: usize) -> 
         })
         .collect();
     if stops.is_empty() {
-        let href = node.attr("href").or_else(|| node.attr("xlink:href"))?;
-        let id = href.trim().strip_prefix('#')?;
-        return gradient_color(by_id.get(id)?, by_id, depth + 1);
+        let Some(href) = node.attr("href").or_else(|| node.attr("xlink:href")) else {
+            return stops;
+        };
+        let Some(id) = href.trim().strip_prefix('#') else {
+            return stops;
+        };
+        let Some(target) = by_id.get(id) else {
+            return stops;
+        };
+        return gradient_stops(target, by_id, depth + 1);
     }
     stops.sort_by(|left, right| left.0.total_cmp(&right.0));
+    stops
+}
+
+fn gradient_color(node: &Node, by_id: &HashMap<String, &Node>, depth: usize) -> Option<String> {
+    let stops = gradient_stops(node, by_id, depth);
+    color_at(&stops, 0.5)
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn color_at(stops: &[(f64, String)], target: f64) -> Option<String> {
+    let first = stops.first()?;
     if stops.len() == 1 {
-        return Some(stops[0].1.clone());
+        return Some(first.1.clone());
     }
-    let target = 0.5;
     let mut left = &stops[0];
     let mut right = &stops[stops.len() - 1];
     if target > stops[0].0 && target < stops[stops.len() - 1].0 {
@@ -2809,6 +3020,7 @@ fn rewrite_paints(
     node: &mut Node,
     colors: &HashMap<String, String>,
     pattern_ids: &HashSet<String>,
+    gradient_ids: &HashSet<String>,
     approximate: &mut bool,
     missing: &mut Vec<String>,
 ) {
@@ -2817,6 +3029,11 @@ fn rewrite_paints(
             if let Some((id, resolved)) = resolve_paint_url(&value, colors) {
                 if attribute == "fill" && is_pattern_shape(node) && pattern_ids.contains(&id) {
                     node.attrs.insert("data-pattern-fill".to_string(), id);
+                } else if attribute == "fill"
+                    && is_pattern_shape(node)
+                    && gradient_ids.contains(&id)
+                {
+                    node.attrs.insert("data-gradient-fill".to_string(), id);
                 } else {
                     node.attrs.insert(attribute.to_string(), resolved);
                 }
@@ -2851,7 +3068,14 @@ fn rewrite_paints(
         }
     }
     for child in &mut node.children {
-        rewrite_paints(child, colors, pattern_ids, approximate, missing);
+        rewrite_paints(
+            child,
+            colors,
+            pattern_ids,
+            gradient_ids,
+            approximate,
+            missing,
+        );
     }
 }
 
@@ -3858,13 +4082,13 @@ mod tests {
     }
 
     #[test]
-    fn a_linear_gradient_uses_its_midpoint() {
+    fn a_radial_gradient_uses_its_midpoint() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><linearGradient id="g">
+                <defs><radialGradient id="g">
                     <stop offset="0" stop-color="#ff0000"/>
                     <stop offset="1" stop-color="#0000ff"/>
-                </linearGradient></defs>
+                </radialGradient></defs>
                 <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
             </svg>"##,
         )
@@ -3884,14 +4108,14 @@ mod tests {
     }
 
     #[test]
-    fn a_three_stop_gradient_uses_the_middle_stop() {
+    fn a_three_stop_radial_gradient_uses_the_middle_stop() {
         let report = import_svg_report(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm">
-                <defs><linearGradient id="g">
+                <defs><radialGradient id="g">
                     <stop offset="0%" stop-color="#ff0000"/>
                     <stop offset="50%" stop-color="#00ff00"/>
                     <stop offset="100%" stop-color="#0000ff"/>
-                </linearGradient></defs>
+                </radialGradient></defs>
                 <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
             </svg>"##,
         )
@@ -3899,6 +4123,62 @@ mod tests {
         assert_eq!(
             report.document.objects[0].style.fill.as_deref(),
             Some("#00ff00")
+        );
+    }
+
+    #[test]
+    fn a_linear_gradient_is_expanded_into_bands() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><linearGradient id="g">
+                    <stop offset="0" stop-color="#ff0000"/>
+                    <stop offset="1" stop-color="#0000ff"/>
+                </linearGradient></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        let fills: std::collections::HashSet<_> = report.document.objects[1..]
+            .iter()
+            .filter_map(|object| object.style.fill.clone())
+            .collect();
+        assert!(fills.len() > 1, "the gradient produced a single colour");
+        for object in &report.document.objects[1..] {
+            let (min, max) = object.bounds().unwrap();
+            assert!(min.x >= -1e-6 && max.x <= 10.0 + 1e-6, "{min:?} {max:?}");
+            assert!(min.y >= -1e-6 && max.y <= 10.0 + 1e-6, "{min:?} {max:?}");
+        }
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn a_user_space_linear_gradient_is_expanded_into_bands() {
+        let report = import_svg_report(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10">
+                <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="10" y2="0">
+                    <stop offset="0" stop-color="#ffffff"/>
+                    <stop offset="1" stop-color="#000000"/>
+                </linearGradient></defs>
+                <rect x="0" y="0" width="10" height="10" fill="url(#g)"/>
+            </svg>"##,
+        )
+        .unwrap();
+        assert!(report.document.objects.len() > 1, "{:?}", report.warnings);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("expanded into")),
+            "{:?}",
+            report.warnings
         );
     }
 
