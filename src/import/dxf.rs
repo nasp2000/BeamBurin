@@ -4,6 +4,7 @@ use crate::document::Document;
 use crate::document::model::{Object, Shape};
 use crate::errors::{BeamError, Result};
 use crate::geometry::{Path, Point2, Transform2, path::Segment};
+use crate::operations::{Operation, OperationType};
 
 /// Result of a DXF import, including elements that could not be converted.
 #[derive(Debug, Clone, PartialEq)]
@@ -491,12 +492,37 @@ impl Context<'_> {
     fn hatch(&mut self, record: &Record, parent: Transform2, inherited_layer: Option<&str>) {
         let layer_id = self.layer_for(record, inherited_layer);
         let (loops, unsupported) = hatch_loops(&record.fields);
-        if !loops.is_empty() {
-            warning_once(
-                self.warnings,
-                "HATCH boundaries were imported as closed outlines; the fill is not reproduced",
+        let operation_id = if loops.is_empty() {
+            None
+        } else {
+            let solid = record.integer(70).unwrap_or(0) == 1;
+            let angle = record
+                .number(76)
+                .or_else(|| record.number(53))
+                .unwrap_or(0.0);
+            let scale = record.number(52).unwrap_or(1.0).abs().max(1e-3);
+            let offset = record
+                .number(45)
+                .unwrap_or(0.0)
+                .hypot(record.number(46).unwrap_or(0.0));
+            let interval = if solid {
+                0.1
+            } else if offset > 1e-6 {
+                (offset * scale).clamp(0.05, 10.0)
+            } else {
+                scale.clamp(0.05, 10.0)
+            };
+            let mut operation = Operation::new("HATCH fill", OperationType::Fill);
+            operation.params.fill_angle_degrees = angle;
+            operation.params.line_interval_mm = interval;
+            let id = operation.id.clone();
+            self.document.operations.push(operation);
+            let message = format!(
+                "HATCH boundaries were imported as closed outlines with a fill operation ({angle:.0}°, {interval:.2} mm)"
             );
-        }
+            warning_once(self.warnings, &message);
+            Some(id)
+        };
         if unsupported {
             warning_once(self.warnings, "HATCH spline boundaries were skipped");
         }
@@ -508,11 +534,14 @@ impl Context<'_> {
                 points.push(points[0]);
             }
             let tuples: Vec<(f64, f64)> = points.iter().map(|point| (point.x, point.y)).collect();
-            let object = Object::new(
+            let mut object = Object::new(
                 layer_id.clone(),
                 Shape::Path(Path::from_points(&tuples, true)),
             )
             .with_transform(parent);
+            if let Some(operation_id) = &operation_id {
+                object.operation_id = Some(operation_id.clone());
+            }
             self.document.add_object(object);
         }
     }
@@ -1341,6 +1370,14 @@ mod tests {
             panic!("expected a path");
         };
         assert!(path.closed);
+        assert_eq!(report.document.operations.len(), 1);
+        let operation = &report.document.operations[0];
+        assert_eq!(operation.op_type, OperationType::Fill);
+        assert!(operation.params.line_interval_mm > 0.0);
+        assert_eq!(
+            report.document.objects[0].operation_id.as_deref(),
+            Some(operation.id.as_str())
+        );
         assert!(
             report
                 .warnings
@@ -1349,6 +1386,27 @@ mod tests {
             "{:?}",
             report.warnings
         );
+    }
+
+    #[test]
+    fn hatch_pattern_sets_the_fill_angle_and_interval() {
+        let report = import_dxf_report(&dxf(
+            "0\nHATCH\n91\n1\n92\n1\n93\n3\n72\n1\n10\n0\n20\n0\n11\n10\n21\n0\n72\n1\n10\n10\n20\n0\n11\n0\n21\n10\n72\n1\n10\n0\n20\n10\n11\n0\n21\n0\n70\n0\n75\n0\n76\n30\n52\n2\n45\n1\n46\n0\n",
+        ))
+        .unwrap();
+        let operation = &report.document.operations[0];
+        assert!((operation.params.fill_angle_degrees - 30.0).abs() < 1e-9);
+        assert!((operation.params.line_interval_mm - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn solid_hatch_uses_the_default_fill_interval() {
+        let report = import_dxf_report(&dxf(
+            "0\nHATCH\n91\n1\n92\n1\n93\n3\n72\n1\n10\n0\n20\n0\n11\n10\n21\n0\n72\n1\n10\n10\n20\n0\n11\n0\n21\n10\n72\n1\n10\n0\n20\n10\n11\n0\n21\n0\n70\n1\n",
+        ))
+        .unwrap();
+        let operation = &report.document.operations[0];
+        assert!((operation.params.line_interval_mm - 0.1).abs() < 1e-9);
     }
 
     #[test]
