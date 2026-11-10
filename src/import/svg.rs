@@ -348,12 +348,12 @@ fn expand_external_use(
     depth: usize,
     dpi: f64,
     base_dir: Option<&FsPath>,
-) {
+) -> Vec<ExternalClip> {
     let Some(base) = base_dir else {
         warnings.push(format!(
             "<use> to the external reference '{file}#{id}' needs a file path"
         ));
-        return;
+        return Vec::new();
     };
     let candidate = base.join(file);
     if candidate
@@ -364,13 +364,13 @@ fn expand_external_use(
         warnings.push(format!(
             "<use> to '{file}#{id}' was skipped: only .svg files are supported"
         ));
-        return;
+        return Vec::new();
     }
     let canonical = match std::fs::canonicalize(&candidate) {
         Ok(path) => path,
         Err(error) => {
             warnings.push(format!("<use> to '{file}#{id}' was skipped: {error}"));
-            return;
+            return Vec::new();
         }
     };
     let base_canonical = std::fs::canonicalize(base).unwrap_or_else(|_| base.to_path_buf());
@@ -378,33 +378,33 @@ fn expand_external_use(
         warnings.push(format!(
             "<use> to '{file}#{id}' was skipped: outside the import folder"
         ));
-        return;
+        return Vec::new();
     }
     if depth >= 8 {
         warnings.push("<use> nesting is too deep".to_string());
-        return;
+        return Vec::new();
     }
     if std::fs::metadata(&canonical).map_or(0, |metadata| metadata.len()) > MAX_SVG_BYTES {
         warnings.push(format!(
             "<use> to '{file}#{id}' was skipped: the file is too large"
         ));
-        return;
+        return Vec::new();
     }
     let Ok(source) = std::fs::read_to_string(&canonical) else {
         warnings.push(format!(
             "<use> to '{file}#{id}' was skipped: cannot read the file"
         ));
-        return;
+        return Vec::new();
     };
     let Ok(external) = parse_tree(&source) else {
         warnings.push(format!("<use> to '{file}#{id}' was skipped: invalid SVG"));
-        return;
+        return Vec::new();
     };
     let mut external_ids = HashMap::new();
     collect_ids(&external, &mut external_ids);
     let Some(target) = external_ids.get(id).copied() else {
         warnings.push(format!("<use> to '{file}#{id}' was skipped: missing #{id}"));
-        return;
+        return Vec::new();
     };
     let offset = Transform2::translate(
         node.number("x").unwrap_or(0.0),
@@ -444,6 +444,39 @@ fn expand_external_use(
             next_base,
         ),
     }
+
+    let mut resolved = Vec::new();
+    for (attribute, expected, label) in [
+        ("clip-path", "clipPath", "clip path"),
+        ("mask", "mask", "mask"),
+    ] {
+        let Some(value) = node.attr(attribute) else {
+            continue;
+        };
+        let id = value
+            .trim()
+            .strip_prefix("url(#")
+            .and_then(|value| value.strip_suffix(')'))
+            .unwrap_or_default();
+        if id.is_empty() {
+            continue;
+        }
+        let Some(target) = external_ids.get(id) else {
+            continue;
+        };
+        if target.name != expected {
+            continue;
+        }
+        let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
+        for child in &target.children {
+            contours.extend(clip_contours(child, transform));
+        }
+        let contours = weld_contours(contours);
+        if !contours.is_empty() {
+            resolved.push((label.to_string(), id.to_string(), contours));
+        }
+    }
+    resolved
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -547,7 +580,15 @@ fn process_node(
                                 base_dir,
                             ),
                         }
-                        apply_clip(node, clip_transform, doc, objects_before, ids, warnings);
+                        apply_clip(
+                            node,
+                            clip_transform,
+                            doc,
+                            objects_before,
+                            ids,
+                            &[],
+                            warnings,
+                        );
                     }
                 }
             } else if let Some((file, id)) = href.split_once('#') {
@@ -555,11 +596,19 @@ fn process_node(
                     node.number("x").unwrap_or(0.0),
                     node.number("y").unwrap_or(0.0),
                 ));
-                expand_external_use(
+                let external = expand_external_use(
                     node, file, id, transform, &style, doc, layer_id, warnings, depth, dpi,
                     base_dir,
                 );
-                apply_clip(node, clip_transform, doc, objects_before, ids, warnings);
+                apply_clip(
+                    node,
+                    clip_transform,
+                    doc,
+                    objects_before,
+                    ids,
+                    &external,
+                    warnings,
+                );
             } else {
                 warnings.push(format!(
                     "<use> to the external reference '{href}' has no #id"
@@ -591,7 +640,7 @@ fn process_node(
             | "text"
             | "image"
     ) {
-        apply_clip(node, transform, doc, objects_before, ids, warnings);
+        apply_clip(node, transform, doc, objects_before, ids, &[], warnings);
     }
 }
 
@@ -664,6 +713,7 @@ fn apply_clip(
     doc: &mut Document,
     start: usize,
     ids: &HashMap<String, &Node>,
+    external: &[ExternalClip],
     warnings: &mut Vec<String>,
 ) {
     for (attribute, expected, label) in [
@@ -682,24 +732,35 @@ fn apply_clip(
             warnings.push(format!("{label} '{value}' is not a local reference"));
             continue;
         }
-        let Some(target) = ids.get(id) else {
+        let (label, contours) = if let Some(target) = ids.get(id) {
+            if target.name != expected {
+                warnings.push(format!("#{id} is not a {label}"));
+                continue;
+            }
+            let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
+            for child in &target.children {
+                contours.extend(clip_contours(child, transform));
+            }
+            let contours = weld_contours(contours);
+            if contours.is_empty() {
+                warnings.push(format!("{label} #{id} has no usable shape"));
+                continue;
+            }
+            (label, contours)
+        } else if let Some((external_label, _, external_contours)) = external
+            .iter()
+            .find(|(_, external_id, _)| external_id == id)
+        {
+            if external_contours.is_empty() {
+                warnings.push(format!("{external_label} #{id} has no usable shape"));
+                continue;
+            }
+            (external_label.as_str(), external_contours.clone())
+        } else {
             warnings.push(format!("{label} references missing #{id}"));
             continue;
         };
-        if target.name != expected {
-            warnings.push(format!("#{id} is not a {label}"));
-            continue;
-        }
-        let mut contours: Vec<Vec<(f64, f64)>> = Vec::new();
-        for child in &target.children {
-            contours.extend(clip_contours(child, transform));
-        }
-        let contours = weld_contours(contours);
-        if contours.is_empty() {
-            warnings.push(format!("{label} #{id} has no usable shape"));
-            continue;
-        }
-        if attribute == "mask" {
+        if label == "mask" {
             warnings.push(format!(
                 "mask #{id} was approximated as a clip path (white shapes only)"
             ));
@@ -716,8 +777,6 @@ fn clip_objects(
     contours: &[Vec<(f64, f64)>],
     warnings: &mut Vec<String>,
 ) {
-    use crate::geometry::boolean::{BooleanOp, boolean_contours};
-
     let objects: Vec<Object> = doc.objects.split_off(start);
     let mut replaced = Vec::new();
     let mut applied = false;
@@ -827,10 +886,15 @@ fn clip_objects(
         for clip in contours {
             pieces = pieces
                 .into_iter()
-                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .flat_map(|piece| intersect_polygons(&piece, clip))
                 .collect();
         }
         if pieces.is_empty() {
+            eprintln!(
+                "CLIP EMPTY object={} bounds={:?} contours={contours:?}",
+                object.name,
+                object.bounds()
+            );
             // `boolean_contours` can return nothing when the subject is fully
             // inside the clip; keep it then, and drop it when fully outside.
             let flat = path.flatten(0.1);
@@ -913,8 +977,6 @@ fn clip_text_object(
     warnings: &mut Vec<String>,
     applied: &mut bool,
 ) {
-    use crate::geometry::boolean::{BooleanOp, boolean_contours};
-
     let paths = match crate::objects::text_to_paths(text) {
         Ok(paths) if !paths.is_empty() => paths,
         Ok(_) => {
@@ -952,7 +1014,7 @@ fn clip_text_object(
         for clip in contours {
             current = current
                 .into_iter()
-                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .flat_map(|piece| intersect_polygons(&piece, clip))
                 .collect();
         }
         pieces.extend(current);
@@ -1025,8 +1087,6 @@ fn clip_image_object(
     warnings: &mut Vec<String>,
     applied: &mut bool,
 ) {
-    use crate::geometry::boolean::{BooleanOp, boolean_contours};
-
     let Some(inverse) = inverse else {
         warnings.push(format!(
             "{label} #{id} was not applied to image '{name}': the transform is not invertible"
@@ -1068,7 +1128,7 @@ fn clip_image_object(
         for clip in &local {
             result = result
                 .into_iter()
-                .flat_map(|piece| boolean_contours(BooleanOp::Intersection, &piece, clip))
+                .flat_map(|piece| intersect_polygons(&piece, clip))
                 .collect();
         }
         result
@@ -1100,6 +1160,64 @@ fn clip_image_object(
     warnings.push(format!(
         "{label} #{id} was applied to image '{name}' as a vector mask"
     ));
+}
+
+/// Intersect two contours after matching their winding direction.
+fn intersect_polygons(piece: &[(f64, f64)], clip: &[(f64, f64)]) -> Vec<Vec<(f64, f64)>> {
+    let mut oriented = clip.to_vec();
+    if crate::geometry::boolean::polygon_area(piece).signum()
+        != crate::geometry::boolean::polygon_area(&oriented).signum()
+    {
+        oriented.reverse();
+    }
+    let result = crate::geometry::boolean::boolean_contours(
+        crate::geometry::boolean::BooleanOp::Intersection,
+        piece,
+        &oriented,
+    );
+    if !result.is_empty() || oriented.len() < 3 {
+        return result;
+    }
+    let clip_min_x = oriented
+        .iter()
+        .map(|(x, _)| *x)
+        .fold(f64::INFINITY, f64::min);
+    let clip_min_y = oriented
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(f64::INFINITY, f64::min);
+    let clip_max_x = oriented
+        .iter()
+        .map(|(x, _)| *x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let clip_max_y = oriented
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let piece_inside = piece.iter().all(|(x, y)| {
+        *x >= clip_min_x - 1e-9
+            && *x <= clip_max_x + 1e-9
+            && *y >= clip_min_y - 1e-9
+            && *y <= clip_max_y + 1e-9
+    });
+    if piece_inside {
+        return vec![piece.to_vec()];
+    }
+    // Shared edges and touching vertices can make the boolean walk return
+    // nothing. A sub-micrometre inset breaks the tie without moving the clip
+    // by a visible amount.
+    let count = oriented.len() as f64;
+    let cx = oriented.iter().map(|(x, _)| *x).sum::<f64>() / count;
+    let cy = oriented.iter().map(|(_, y)| *y).sum::<f64>() / count;
+    let inset: Vec<(f64, f64)> = oriented
+        .iter()
+        .map(|(x, y)| (cx + (x - cx) * 0.999_999, cy + (y - cy) * 0.999_999))
+        .collect();
+    crate::geometry::boolean::boolean_contours(
+        crate::geometry::boolean::BooleanOp::Intersection,
+        piece,
+        &inset,
+    )
 }
 
 /// Build an open path from a polyline.
@@ -1265,6 +1383,11 @@ fn clip_contours(node: &Node, transform: Transform2) -> Vec<Vec<(f64, f64)>> {
         _ => Vec::new(),
     }
 }
+
+/// Flattened clip contours in document coordinates.
+type ClipContours = Vec<Vec<(f64, f64)>>;
+/// One clip or mask resolved from an external SVG: label, id, contours.
+type ExternalClip = (String, String, ClipContours);
 
 /// Map a referenced `symbol`/`svg` viewBox into the size given on `<use>`.
 ///
@@ -2779,6 +2902,40 @@ mod tests {
         // SVG y is flipped in a 20 mm document: local 7..11 becomes 9..13.
         assert!((min.y - 9.0).abs() < 1e-6, "{min:?}");
         assert!((max.y - 13.0).abs() < 1e-6, "{max:?}");
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn an_external_use_clip_can_live_in_the_external_file() {
+        let directory =
+            std::env::temp_dir().join(format!("bw_svg_ext_file_clip_{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("external.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><rect id="r" width="4" height="4"/><clipPath id="c"><rect width="3" height="3"/></clipPath></defs></svg>"#,
+        )
+        .unwrap();
+        let main = directory.join("main.svg");
+        std::fs::write(
+            &main,
+            r#"<svg width="10mm" height="10mm" viewBox="0 0 10 10"><use href="external.svg#r" x="2" y="2" clip-path="url(#c)"/></svg>"#,
+        )
+        .unwrap();
+        let report = import_svg_file_report(&main, &|| false).unwrap();
+        assert_eq!(report.document.objects.len(), 1, "{:?}", report.warnings);
+        let (min, max) = report.document.objects[0].bounds().unwrap();
+        assert!((min.x - 2.0).abs() < 1e-3, "{min:?}");
+        assert!((max.x - 5.0).abs() < 1e-3, "{max:?}");
+        assert!((min.y - 5.0).abs() < 1e-3, "{min:?}");
+        assert!((max.y - 8.0).abs() < 1e-3, "{max:?}");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("clip path #c was applied")),
+            "{:?}",
+            report.warnings
+        );
         let _ = std::fs::remove_dir_all(&directory);
     }
 
