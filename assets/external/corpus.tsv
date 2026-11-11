@@ -86,3 +86,14 @@ text-oblique.dxf	abbbb19a0bda300d1d56d9c845ca0dabb59eb737eb19f6dc6995e17e7f21386
 hatch-in-fill.dxf	aa10576b3ae48f574c728b862575dae13bdd5acd7da0fdcff813a8d2d59b1f03	https://raw.githubusercontent.com/mozman/ezdxf/8a593d329ab44b8495e65314dc1b0f9234851f1c/examples_dxf/hatch_text_box_in_fill.dxf
 myst-guy.hpgl	fb8fa53b5eeeabf563a207c6b94649ee2b7a122bea819740d93e3e33aba029cc	https://raw.githubusercontent.com/realaxl/drawbot/ec53655c199c6eae2e9ec725bc00c7e11816504b/drawings/Myst_Falling_Guy_001.hpgl
 rca-pattern.svg	33c79ac9ced3cf1fb3a3695918a9d79075aa043d389ddd524c983c3745829361	https://upload.wikimedia.org/wikipedia/commons/a/ad/RCA_Indian_Head_Test_Pattern.svg
+Cassini.hpgl	7529696643ee4776c0371f0cd45c0ad96261e8cc272d4cff5593c4a012ebc161	https://raw.githubusercontent.com/VK2BEA/HPGL-Plotter/7a441683001aca5dc2f2ec4d83f94ddfa9846665/HPGL/Cassini.hpgl
+ocs2wcs2.dxf	11f070177bc1fc5ec8efe0bfc3ce36af987ee5ea27d0f45b38c45e666f992dd9	https://raw.githubusercontent.com/OSGeo/gdal/f57edd89518ded413fe9f3c1a152ce4bdef8cfde/autotest/ogr/data/dxf/ocs2wcs2.dxf
+Wikipedia_wordmark.svg	8bde6ea2d26b80f20ff5035dd48fe2b59009df881a8f90f28ea0df8eb8d13ec8	https://upload.wikimedia.org/wikipedia/commons/b/bb/Wikipedia_wordmark.svg
+# Rejected candidates, kept here so the same file is not evaluated twice:
+# foal_by_douglas_repetto.hpgl: the pen stays down across PA moves and the importer only draws coordinates given to PD/PU, so it imports no objects
+# bird_by_brian_whitman_and_kelly_dobson.hpgl: same pen-down PA drawing style, plus unsupported EP/PG commands, so it imports no objects
+# Controller.hpgl: same pen-down PA drawing style after IP/SC page setup, so it imports no objects
+# hatch_as_multipolygon.dxf: one HATCH entity and no outline entity the importer supports, so it imports no objects
+# bug1028735.pdf: text and images only, so it has no vector paths to import
+# blendmode.pdf: text and images only, so it has no vector paths to import
+# annotation-border-styles.pdf: text and images only, so it has no vector paths to import

@@ -17,6 +17,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
     Some(match name {
         "bricscad-insert.dxf" => 450,
         "caret-encoding.dxf" => 60,
+        "Cassini.hpgl" => 1400,
         "club-mate.hpgl" => 200,
         "columns-r2007.dxf" => 67,
         "columns-r2018.dxf" => 52,
@@ -25,6 +26,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "escher-lizard.hpgl" => 127,
         "man-of-war.hpgl" => 296,
         "mtext-inline.dxf" => 12,
+        "ocs2wcs2.dxf" => 40,
         "stacked-shx.dxf" | "stacked-text.dxf" => 439,
         "tamreview.pdf" => 270,
         "thuluth.pdf" => 51,
@@ -45,6 +47,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "wipeout-random.dxf" => 30,
         "world-map.svg" => 2338,
         "world-map.hpgl" => 480,
+        "Wikipedia_wordmark.svg" => 10,
         _ => return None,
     })
 }
