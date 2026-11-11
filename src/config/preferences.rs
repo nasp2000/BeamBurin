@@ -1146,13 +1146,10 @@ mod tests {
 
         let mut vector = sample_vector("Selected vector");
         vector.area = "selection".to_string();
-        let json = serde_json::to_string(&vector).unwrap();
-        let vector: VectorExportPreset = serde_json::from_str(&json).unwrap();
-        assert_eq!(vector.area, "selection");
-
         vector.layers = vec!["layer-a".to_string(), "layer-b".to_string()];
         let json = serde_json::to_string(&vector).unwrap();
         let vector: VectorExportPreset = serde_json::from_str(&json).unwrap();
+        assert_eq!(vector.area, "selection");
         assert_eq!(vector.layers, vec!["layer-a", "layer-b"]);
     }
 
