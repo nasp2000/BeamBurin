@@ -111,6 +111,21 @@ jobs:
         with:
           key: test-${{ matrix.target }}
 
+      - name: Use an independent Ubuntu mirror when Canonical's hosts do not resolve
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          # A Canonical DNS outage makes the Ubuntu package hosts unresolvable
+          # on hosted runners; fall back to an independent mirror for this run.
+          if ! getent hosts archive.ubuntu.com >/dev/null 2>&1 ||
+             ! getent hosts security.ubuntu.com >/dev/null 2>&1; then
+            for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+              [ -f "$file" ] || continue
+              sudo sed -i -E \
+                's#https?://[a-z0-9.-]*ubuntu\.com/ubuntu/?#https://mirrors.edge.kernel.org/ubuntu/#g' \
+                "$file"
+            done
+          fi
+
       - name: Install Linux build dependencies
         if: startsWith(matrix.os, 'ubuntu')
         run: |
@@ -155,6 +170,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      - name: Use an independent Ubuntu mirror when Canonical's hosts do not resolve
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          # A Canonical DNS outage makes the Ubuntu package hosts unresolvable
+          # on hosted runners; fall back to an independent mirror for this run.
+          if ! getent hosts archive.ubuntu.com >/dev/null 2>&1 ||
+             ! getent hosts security.ubuntu.com >/dev/null 2>&1; then
+            for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+              [ -f "$file" ] || continue
+              sudo sed -i -E \
+                's#https?://[a-z0-9.-]*ubuntu\.com/ubuntu/?#https://mirrors.edge.kernel.org/ubuntu/#g' \
+                "$file"
+            done
+          fi
 
       - name: Install Linux build dependencies
         if: startsWith(matrix.os, 'ubuntu')
