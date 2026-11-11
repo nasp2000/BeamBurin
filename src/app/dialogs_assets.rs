@@ -50,7 +50,11 @@ fn layer_picker(
                 } else {
                     format!("{name} (hidden)")
                 };
-                if ui.checkbox(&mut checked, label).changed() {
+                if ui
+                    .checkbox(&mut checked, label)
+                    .on_hover_text("Include this layer in the export")
+                    .changed()
+                {
                     if checked {
                         selected.push(id.clone());
                     } else {
@@ -87,6 +91,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.columns)
                                     .range(1..=20),
                             )
+                            .on_hover_text(crate::ui::icons::field("Columns"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -98,6 +103,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.rows)
                                     .range(1..=20),
                             )
+                            .on_hover_text(crate::ui::icons::field("Speed range (mm/min)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Rows")
                             });
@@ -110,6 +116,7 @@ impl BeamBurinApp {
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Minimum speed"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -122,6 +129,7 @@ impl BeamBurinApp {
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Power range (%)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -137,6 +145,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.power_min)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Minimum power"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -148,6 +157,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.material_test_options.power_max)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Cell width / height (mm)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -164,6 +174,7 @@ impl BeamBurinApp {
                                     .speed(0.5)
                                     .range(1.0..=500.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Cell width"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -178,6 +189,7 @@ impl BeamBurinApp {
                                 .speed(0.5)
                                 .range(1.0..=500.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Gap / margin (mm)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -194,6 +206,7 @@ impl BeamBurinApp {
                                     .speed(0.5)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Gap"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Gap")
                             });
@@ -202,6 +215,7 @@ impl BeamBurinApp {
                                     .speed(0.5)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Passes"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -216,7 +230,8 @@ impl BeamBurinApp {
                             egui::DragValue::new(&mut self.material_test_options.passes)
                                 .range(1..=100),
                         )
-                        .labelled_by(passes_label.id);
+                        .labelled_by(passes_label.id)
+                        .on_hover_text(crate::ui::icons::field("Passes"));
                         ui.end_row();
                     });
                 ui.weak(format!(
@@ -288,6 +303,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.image_test_options.columns)
                                     .range(1..=20),
                             )
+                            .on_hover_text(crate::ui::icons::field("Columns"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -299,6 +315,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.image_test_options.rows)
                                     .range(1..=20),
                             )
+                            .on_hover_text(crate::ui::icons::field("Speed range (mm/min)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(egui::WidgetType::DragValue, true, "Rows")
                             });
@@ -311,6 +328,7 @@ impl BeamBurinApp {
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Minimum speed"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -323,6 +341,7 @@ impl BeamBurinApp {
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Power range (%)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -338,6 +357,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.image_test_options.power_min)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Minimum power"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -349,6 +369,7 @@ impl BeamBurinApp {
                                 egui::DragValue::new(&mut self.image_test_options.power_max)
                                     .range(0.0..=100.0),
                             )
+                            .on_hover_text(crate::ui::icons::field("Gap (mm)"))
                             .widget_info(|| {
                                 egui::WidgetInfo::labeled(
                                     egui::WidgetType::DragValue,
@@ -364,7 +385,8 @@ impl BeamBurinApp {
                                 .speed(0.5)
                                 .range(0.0..=100.0),
                         )
-                        .labelled_by(gap_label.id);
+                        .labelled_by(gap_label.id)
+                        .on_hover_text(crate::ui::icons::field("Gap (mm)"));
                         ui.end_row();
                     });
                 ui.weak(format!(
@@ -685,11 +707,19 @@ impl BeamBurinApp {
                 ui.label("Origin");
                 ui.horizontal(|ui| {
                     let whole = !self.export_dxf_selection && !self.export_vector_drawing;
-                    if ui.radio(whole, "Whole page").clicked() {
+                    if ui
+                        .radio(whole, "Whole page")
+                        .on_hover_text(crate::ui::icons::description("Whole page"))
+                        .clicked()
+                    {
                         self.export_dxf_selection = false;
                         self.export_vector_drawing = false;
                     }
-                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                    if ui
+                        .radio(self.export_vector_drawing, "Drawing")
+                        .on_hover_text(crate::ui::icons::description("Drawing"))
+                        .clicked()
+                    {
                         self.export_dxf_selection = false;
                         self.export_vector_drawing = true;
                     }
@@ -715,8 +745,12 @@ impl BeamBurinApp {
                     (self.export_dxf_selection && has_selection) || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
                 );
-                ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths");
-                ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves");
+                ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths")
+                    .on_hover_text(crate::ui::icons::description("Text as paths"));
+                ui.checkbox(&mut self.export_dxf_arcs, "Circles and ellipses as curves")
+                    .on_hover_text(crate::ui::icons::description(
+                        "Circles and ellipses as curves",
+                    ));
                 ui.horizontal(|ui| {
                     let units_label = ui.label("Units");
                     egui::ComboBox::from_id_salt("dxf_export_unit")
@@ -730,7 +764,8 @@ impl BeamBurinApp {
                             }
                         })
                         .response
-                        .labelled_by(units_label.id);
+                        .labelled_by(units_label.id)
+                        .on_hover_text(crate::ui::icons::field("Units"));
                 });
                 ui.label("Layers");
                 layer_picker(
@@ -753,7 +788,11 @@ impl BeamBurinApp {
                     {
                         start = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text(crate::ui::icons::description("Cancel"))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
@@ -812,11 +851,11 @@ impl BeamBurinApp {
                 ui.label(if hpgl { "Origin" } else { "Area" });
                 ui.horizontal(|ui| {
                     let whole = !self.export_vector_selection && !self.export_vector_drawing;
-                    if ui.radio(whole, "Whole page").clicked() {
+                    if ui.radio(whole, "Whole page").on_hover_text(crate::ui::icons::description("Whole page")).clicked() {
                         self.export_vector_selection = false;
                         self.export_vector_drawing = false;
                     }
-                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                    if ui.radio(self.export_vector_drawing, "Drawing").on_hover_text(crate::ui::icons::description("Drawing")).clicked() {
                         self.export_vector_selection = false;
                         self.export_vector_drawing = true;
                     }
@@ -843,7 +882,7 @@ impl BeamBurinApp {
                         || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
                 );
-                ui.checkbox(&mut self.export_vector_text_paths, "Text as paths");
+                ui.checkbox(&mut self.export_vector_text_paths, "Text as paths").on_hover_text(crate::ui::icons::description("Text as paths"));
                 ui.label("Layers");
                 layer_picker(
                     ui,
@@ -867,10 +906,10 @@ impl BeamBurinApp {
                 }
                 ui.horizontal(|ui| {
                     crate::ui::help::button(ui, "export_vector");
-                    if ui.add_enabled(can_export, egui::Button::new("Export")).clicked() {
+                    if ui.add_enabled(can_export, egui::Button::new("Export")).on_hover_text(crate::ui::icons::description("Export")).clicked() {
                         start = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button("Cancel").on_hover_text(crate::ui::icons::description("Cancel")).clicked() {
                         cancel = true;
                     }
                 });
@@ -921,11 +960,19 @@ impl BeamBurinApp {
                 ui.label("Area");
                 ui.horizontal(|ui| {
                     let whole = !self.export_svg_selection && !self.export_vector_drawing;
-                    if ui.radio(whole, "Whole page").clicked() {
+                    if ui
+                        .radio(whole, "Whole page")
+                        .on_hover_text(crate::ui::icons::description("Whole page"))
+                        .clicked()
+                    {
                         self.export_svg_selection = false;
                         self.export_vector_drawing = false;
                     }
-                    if ui.radio(self.export_vector_drawing, "Drawing").clicked() {
+                    if ui
+                        .radio(self.export_vector_drawing, "Drawing")
+                        .on_hover_text(crate::ui::icons::description("Drawing"))
+                        .clicked()
+                    {
                         self.export_svg_selection = false;
                         self.export_vector_drawing = true;
                     }
@@ -975,7 +1022,11 @@ impl BeamBurinApp {
                     {
                         start = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text(crate::ui::icons::description("Cancel"))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
@@ -1056,7 +1107,8 @@ impl BeamBurinApp {
                     .hint_text("Preset name")
                     .desired_width(200.0),
             )
-            .labelled_by(name_label.id);
+            .labelled_by(name_label.id)
+            .on_hover_text(crate::ui::icons::field("G-code preset name"));
             if ui
                 .add_enabled(
                     !self.export_preset_name.trim().is_empty(),
@@ -1081,10 +1133,18 @@ impl BeamBurinApp {
                     preset.smooth_mm,
                     if preset.arcs { " · arcs" } else { "" }
                 ));
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = Some(preset.name.clone());
                 }
-                if ui.button("Delete").clicked() {
+                if ui
+                    .button("Delete")
+                    .on_hover_text(crate::ui::icons::description("Delete"))
+                    .clicked()
+                {
                     delete = Some(preset.name.clone());
                 }
             });
@@ -1141,7 +1201,8 @@ impl BeamBurinApp {
                     .hint_text("Preset name")
                     .desired_width(200.0),
             )
-            .labelled_by(name_label.id);
+            .labelled_by(name_label.id)
+            .on_hover_text(crate::ui::icons::field("G-code preset name"));
             if ui
                 .add_enabled(
                     !self.image_export_preset_name.trim().is_empty(),
@@ -1185,10 +1246,18 @@ impl BeamBurinApp {
                         " · page"
                     }
                 ));
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = Some(preset.name.clone());
                 }
-                if ui.button("Delete").clicked() {
+                if ui
+                    .button("Delete")
+                    .on_hover_text(crate::ui::icons::description("Delete"))
+                    .clicked()
+                {
                     delete = Some(preset.name.clone());
                 }
             });
@@ -1255,14 +1324,16 @@ impl BeamBurinApp {
                     }
                 })
                 .response
-                .labelled_by(format_label.id);
+                .labelled_by(format_label.id)
+                .on_hover_text(crate::ui::icons::field("Format"));
             let name_label = ui.label("Vector preset name");
             ui.add(
                 egui::TextEdit::singleline(&mut self.vector_export_preset_name)
                     .hint_text("Preset name")
                     .desired_width(200.0),
             )
-            .labelled_by(name_label.id);
+            .labelled_by(name_label.id)
+            .on_hover_text(crate::ui::icons::field("G-code preset name"));
             if ui
                 .add_enabled(
                     !self.vector_export_preset_name.trim().is_empty(),
@@ -1312,10 +1383,18 @@ impl BeamBurinApp {
                         _ => " · page",
                     }
                 ));
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = Some(preset.name.clone());
                 }
-                if ui.button("Delete").clicked() {
+                if ui
+                    .button("Delete")
+                    .on_hover_text(crate::ui::icons::description("Delete"))
+                    .clicked()
+                {
                     delete = Some(preset.name.clone());
                 }
             });
@@ -1402,7 +1481,8 @@ impl BeamBurinApp {
                                 .speed(0.5)
                                 .range(0.5..=100.0),
                         )
-                        .labelled_by(size_label.id);
+                        .labelled_by(size_label.id)
+                        .on_hover_text(crate::ui::icons::field("Size (mm)"));
                         ui.end_row();
                         let margin_label = ui.label("Margin (mm)");
                         ui.add(
@@ -1410,7 +1490,8 @@ impl BeamBurinApp {
                                 .speed(0.5)
                                 .range(0.0..=200.0),
                         )
-                        .labelled_by(margin_label.id);
+                        .labelled_by(margin_label.id)
+                        .on_hover_text(crate::ui::icons::field("Margin (mm)"));
                         ui.end_row();
                         let style_label = ui.label("Style");
                         let mut style = self.regmarks_options.style;
@@ -1422,7 +1503,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(style_label.id);
+                            .labelled_by(style_label.id)
+                            .on_hover_text(crate::ui::icons::field("Style"));
                         self.regmarks_options.style = style;
                         ui.end_row();
                     });
@@ -1525,7 +1607,8 @@ fn vector_margin_row(ui: &mut egui::Ui, enabled: bool, margin: &mut f64) {
                     .speed(0.1)
                     .suffix(" mm"),
             )
-            .labelled_by(label.id);
+            .labelled_by(label.id)
+            .on_hover_text(crate::ui::icons::field("Margin"));
             ui.weak("blank space around the selection, up to the page edge");
         });
     });

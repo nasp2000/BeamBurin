@@ -1629,6 +1629,266 @@ const TOOLTIPS: &[(&str, &str)] = &[
     ("Intersections", "Snap to outline crossings"),
     ("Object limits", "Snap to object bounds"),
     ("Appearance", "Theme and fonts"),
+    ("+ Cut", "Add a cut entry for the active layer"),
+    (
+        "+ Image profile",
+        "Save the current image settings as a profile",
+    ),
+    ("+ Layer", "Add a layer to the document"),
+    ("+ Material", "Add a material to the library"),
+    (
+        "+ Operation profile",
+        "Save the current cut settings as a profile",
+    ),
+    (
+        "+ Project profile",
+        "Save the current project setup as a profile",
+    ),
+    ("- Layer", "Remove the active layer"),
+    (
+        "1:1",
+        "Show the preview at one screen pixel per image pixel",
+    ),
+    ("2×", "Show the preview at twice its size"),
+    ("4×", "Show the preview at four times its size"),
+    (
+        "3×3 median",
+        "Remove small noise with a 3 by 3 median filter",
+    ),
+    ("Acrylic", "Use the acrylic material settings"),
+    ("Add common presets", "Add the built-in material presets"),
+    ("Add cut entry", "Create a cut entry for this layer"),
+    (
+        "Add horizontal",
+        "Add a horizontal guide at the value above",
+    ),
+    ("Add restricted area", "Add an area the job must not enter"),
+    ("Add vertical", "Add a vertical guide at the value above"),
+    ("All", "Show every item in this list"),
+    ("All machines", "List every saved machine"),
+    ("Any machine", "Do not restrict this profile to one machine"),
+    ("Apply", "Apply the changes in this dialog"),
+    ("Apply crop", "Set the image crop to the values above"),
+    (
+        "Apply to selected images",
+        "Apply these settings to every selected image",
+    ),
+    ("Arrange", "Open the Arrange menu"),
+    (
+        "Auto levels",
+        "Stretch the tone range to the black and white points",
+    ),
+    ("Bold", "Draw the text in bold"),
+    ("Burn map", "Colour the processed preview by burn power"),
+    ("Cancel", "Close without applying changes"),
+    ("Change", "Record a new shortcut for this command"),
+    ("Circular", "Repeat the copies around a circle"),
+    ("Clear", "Clear this field or filter"),
+    ("Clear colours", "Remove all colour entries"),
+    ("Clear corners", "Square every rounded corner"),
+    ("Clear crop", "Remove the image crop"),
+    (
+        "Colour must be #rrggbb",
+        "Enter a colour as a six-digit hex value",
+    ),
+    ("Comments", "Edit the notes stored with this project"),
+    (
+        "Compare with original",
+        "Show the source image beside the preview",
+    ),
+    (
+        "Confirm this file action",
+        "Open, save or export with this name",
+    ),
+    ("Copy G-code", "Copy the generated job to the clipboard"),
+    (
+        "Copy client configuration",
+        "Copy this machine's settings for another client",
+    ),
+    ("Create profile", "Save these machine settings as a profile"),
+    ("Custom", "Use your own settings instead of a preset"),
+    ("Dark", "Use the dark interface theme"),
+    ("Delete layer", "Remove this layer and its objects"),
+    ("Discard", "Close without saving the changes"),
+    ("Down", "Move the selected item down"),
+    ("Draw", "Open the Draw menu"),
+    ("Drawing", "Export the drawing rather than the whole page"),
+    ("Duplicate layer", "Copy this layer and everything on it"),
+    ("Edit", "Open the Edit menu"),
+    ("Estimate", "Estimate the cutting time for this job"),
+    ("Export", "Export the current work"),
+    (
+        "Export materials CSV...",
+        "Write the material library to a CSV file",
+    ),
+    ("Export prepared PNG", "Save the prepared image as a PNG"),
+    ("Export...", "Choose an export format"),
+    (
+        "Favourites only",
+        "Show only the profiles marked as favourites",
+    ),
+    ("File", "Open the File menu"),
+    (
+        "Fill column by column",
+        "Fill each column before moving to the next",
+    ),
+    ("Force upper case", "Write the text in capital letters"),
+    ("Full image", "Use the whole image as the mask source"),
+    ("Go", "Open the path typed above"),
+    ("Group by colour", "Group this layer's objects by colour"),
+    ("Group objects", "Group this layer's objects"),
+    ("Help", "Open the Help menu"),
+    ("Import", "Import profiles into the library"),
+    ("Import materials CSV...", "Read materials from a CSV file"),
+    ("Import...", "Choose a file to import"),
+    ("Insert", "Insert this object into the document"),
+    ("Invert", "Swap light and dark in the image"),
+    ("Invert display", "Show the processed preview inverted"),
+    ("Italic", "Draw the text in italics"),
+    ("Keep aspect", "Keep the width and height in proportion"),
+    ("Light", "Use the light interface theme"),
+    ("Line numbers", "Show line numbers in the editor"),
+    ("Linear", "Repeat the copies in a straight line"),
+    ("Link width and height", "Change width and height together"),
+    ("Mask", "Use another shape to mask the image"),
+    ("Materials CSV", "Import or export the material library"),
+    (
+        "Materials and profiles",
+        "Open the Materials and profiles menu",
+    ),
+    ("Metal", "Use the metal material settings"),
+    ("Newest first", "Sort the profiles with the newest first"),
+    ("Newsprint", "Use the newsprint image preset"),
+    ("OK", "Accept the changes and close"),
+    ("Open draft", "Open the saved draft of this project"),
+    ("Operations", "Open the Operations menu"),
+    ("Photo", "Use the photo image preset"),
+    ("Preview", "Show the planned result"),
+    (
+        "Processing order on canvas",
+        "Open the Processing order menu",
+    ),
+    (
+        "Quarter-circle entry and exit",
+        "Round the lead-in and lead-out with quarter circles",
+    ),
+    ("Refresh", "Reload this list from disk"),
+    ("Remove", "Remove the selected entry"),
+    ("Replace", "Replace the current item with the chosen file"),
+    ("Reset", "Restore the default for this setting"),
+    ("Reset All", "Restore every default in this section"),
+    ("Reset all shortcuts", "Restore every keyboard shortcut"),
+    ("Reset curve", "Clear the three tone-curve sliders"),
+    ("Reset preparation", "Restore the default image settings"),
+    ("Rotation angle", "Turn the image by this angle"),
+    ("Save profile", "Save these settings under a name"),
+    ("Save profiles", "Write the profile library to disk"),
+    ("Select objects", "Select every object on this layer"),
+    (
+        "Select same fill",
+        "Select objects sharing this fill colour",
+    ),
+    (
+        "Select same stroke",
+        "Select objects sharing this stroke colour",
+    ),
+    ("Select this colour", "Select objects using this colour"),
+    (
+        "Show all files",
+        "List every file, including unsupported types",
+    ),
+    ("Sketch", "Use the sketch image preset"),
+    ("Skip", "Leave the tour without finishing it"),
+    ("Skip for now", "Leave this for now and continue"),
+    ("Stop", "Stop the running job"),
+    ("Test grid...", "Generate a test grid for this material"),
+    ("Text as paths", "Convert the text to outlines"),
+    (
+        "Third-party licences",
+        "Read the licences of the bundled libraries",
+    ),
+    ("Transparent", "Leave the background transparent"),
+    ("Transparent pixels", "Treat transparent pixels as the mask"),
+    ("Up", "Move the selected item up"),
+    ("Use the page size", "Copy the document page size"),
+    ("Use work area", "Use the machine's work area"),
+    ("View", "Open the View menu"),
+    ("Whole page", "Export the whole page"),
+    ("Wood", "Use the wood material settings"),
+    ("Recent projects", "Reopen a recently saved project"),
+    ("Distribute", "Space the selected objects evenly"),
+    ("Transform", "Transform the selection"),
+    ("Convert", "Convert the selection to another kind"),
+    ("Paths", "Combine, split or simplify paths"),
+    ("Find", "Find duplicates and intersections"),
+    ("Boolean", "Combine shapes with a boolean operation"),
+    ("Combine", "Merge the selected shapes into one path"),
+    ("Zoom", "Change the canvas zoom"),
+    ("Display", "Choose what the canvas shows"),
+    ("Snapping", "Choose what the cursor snaps to"),
+    ("Panels", "Show or hide panels"),
+    (
+        "As G-code at origin...",
+        "Export the selection at the origin",
+    ),
+    ("As image...", "Export the selection as a raster image"),
+    (
+        "Assistant for agents...",
+        "Copy the MCP setup for an external agent",
+    ),
+    ("Barcode...", "Insert a barcode"),
+    ("Bring forward", "Move one step up in the drawing order"),
+    ("Clear corner radius", "Square the selected rectangles"),
+    ("Command palette...", "Search and run any command"),
+    ("Constraints...", "Edit the parametric constraints"),
+    ("Convert to path", "Replace the shape with editable nodes"),
+    ("Corner radius...", "Set the radius on selected rectangles"),
+    ("Export EPS...", "Export the document as EPS"),
+    ("Export HPGL...", "Export the document as HPGL"),
+    ("Export PDF...", "Export the document as PDF"),
+    ("Export image...", "Export a raster preview of the document"),
+    ("History...", "Browse and jump to undo steps"),
+    ("Horizontally", "Distribute the objects across"),
+    ("Import image...", "Place a raster image on the canvas"),
+    ("Interface presets...", "Save and apply interface layouts"),
+    ("Keyboard shortcuts", "Show and edit every shortcut"),
+    ("Licenses...", "Read the third-party licences"),
+    ("Material test...", "Generate a test grid for a material"),
+    (
+        "Move to position...",
+        "Place the selection at exact coordinates",
+    ),
+    ("Parameters...", "Edit the document parameters"),
+    (
+        "Preview external G-code...",
+        "Open a G-code file in the preview",
+    ),
+    ("Properties", "Show the Properties panel"),
+    ("Recipes...", "Save and apply cutting recipes"),
+    (
+        "Registration marks...",
+        "Add registration marks to the page",
+    ),
+    (
+        "Save project with images...",
+        "Save the project and copy its images",
+    ),
+    (
+        "Select all on layer",
+        "Select every object on the active layer",
+    ),
+    (
+        "Select contained shapes",
+        "Select shapes inside the selection",
+    ),
+    ("Select none", "Clear the selection"),
+    ("Select open shapes", "Select paths that are not closed"),
+    ("Send backward", "Move one step down in the drawing order"),
+    ("Show the tour", "Reopen the welcome tour"),
+    ("Tool", "Show the Tool panel"),
+    ("Vertically", "Distribute the objects down the page"),
+    ("Weld shapes", "Merge overlapping shapes into one"),
+    ("Workspaces...", "Save and restore panel layouts"),
 ];
 
 /// One-line description shown when hovering an entry.
@@ -1763,6 +2023,14 @@ pub fn checkbox(
     checkbox_at(ui, checked, icon, text, ICON_SIZE)
 }
 
+/// Hover text for a labelled input control.
+///
+/// Inputs carry their field name in the row label; repeating that name in the
+/// tooltip keeps every control self-explanatory when hovered directly.
+pub fn field(label: &str) -> String {
+    format!("Set or adjust {}", label.trim())
+}
+
 /// A description for a label, falling back to the label when none is known.
 pub fn description(label: &str) -> &str {
     tooltip(label).unwrap_or(label)
@@ -1845,7 +2113,7 @@ mod tests {
 
     #[test]
     fn every_tooltip_is_a_useful_one_line_description() {
-        use super::{TOOLTIPS, description, tooltip};
+        use super::{TOOLTIPS, description, field, tooltip};
         use std::collections::BTreeSet;
 
         let mut labels = BTreeSet::new();
@@ -1884,6 +2152,7 @@ mod tests {
         assert_eq!(tooltip("Not a label"), None);
         assert_eq!(description("New"), "Start an empty project");
         assert_eq!(description("Not a label"), "Not a label");
+        assert_eq!(field("Speed"), "Set or adjust Speed");
     }
 
     #[test]

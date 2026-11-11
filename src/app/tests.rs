@@ -4986,6 +4986,23 @@ fn every_visible_pointer_target_meets_the_target_size_rule() {
 }
 
 #[test]
+fn the_context_help_icon_explains_the_panel_on_hover() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let topic = crate::ui::help::topic("properties");
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness
+        .get_by_label(&format!("Help for {}", topic.title))
+        .hover();
+    harness.run();
+    assert!(
+        harness.query_by_label(topic.text).is_some(),
+        "hovering the help icon did not show the panel text"
+    );
+}
+
+#[test]
 fn the_main_windows_offer_context_help() {
     use egui_kittest::kittest::Queryable as _;
 

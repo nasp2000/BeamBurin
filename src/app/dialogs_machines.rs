@@ -22,7 +22,7 @@ impl BeamBurinApp {
             ui.horizontal(|ui| {
                 let name_label = ui.label("Name");
                 ui.text_edit_singleline(&mut self.machine_editor.name)
-                    .labelled_by(name_label.id);
+                    .labelled_by(name_label.id).on_hover_text(crate::ui::icons::field("Name"));
             });
             ui.horizontal(|ui| {
                 let width_label = ui.label("Work width");
@@ -32,7 +32,7 @@ impl BeamBurinApp {
                         .range(10.0..=100_000.0)
                         .suffix(" mm"),
                 )
-                .labelled_by(width_label.id);
+                .labelled_by(width_label.id).on_hover_text(crate::ui::icons::field("Work width"));
                 let height_label = ui.label("Height");
                 ui.add(
                     egui::DragValue::new(&mut self.machine_editor.work_height_mm)
@@ -40,7 +40,7 @@ impl BeamBurinApp {
                         .range(10.0..=100_000.0)
                         .suffix(" mm"),
                 )
-                .labelled_by(height_label.id);
+                .labelled_by(height_label.id).on_hover_text(crate::ui::icons::field("Height"));
             });
             ui.horizontal(|ui| {
                 let firmware_label = ui.label("Firmware");
@@ -57,7 +57,7 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(firmware_label.id);
+                    .labelled_by(firmware_label.id).on_hover_text(crate::ui::icons::field("Firmware"));
                 self.machine_editor.firmware = firmware;
             });
             ui.weak("The firmware is a label for the intended G-code dialect; nothing is connected or configured.");
@@ -65,10 +65,10 @@ impl BeamBurinApp {
                 ui.colored_label(Color32::from_rgb(200, 60, 60), error);
             }
             ui.horizontal(|ui| {
-                if ui.button("Create profile").clicked() {
+                if ui.button("Create profile").on_hover_text(crate::ui::icons::description("Create profile")).clicked() {
                     create = true;
                 }
-                if ui.button("Skip for now").clicked() {
+                if ui.button("Skip for now").on_hover_text(crate::ui::icons::description("Skip for now")).clicked() {
                     skip = true;
                 }
             });
@@ -106,13 +106,13 @@ impl BeamBurinApp {
                 "Work areas used to prepare projects. No connection or controller settings are stored.",
             );
             ui.horizontal(|ui| {
-                if ui.button("Import...").clicked() {
+                if ui.button("Import...").on_hover_text(crate::ui::icons::description("Import...")).clicked() {
                     self.open_dialog(FileMode::ImportMachines);
                 }
-                if ui.button("Export...").clicked() {
+                if ui.button("Export...").on_hover_text(crate::ui::icons::description("Export...")).clicked() {
                     self.open_dialog(FileMode::ExportMachines);
                 }
-                if ui.button("Add common presets").clicked() {
+                if ui.button("Add common presets").on_hover_text(crate::ui::icons::description("Add common presets")).clicked() {
                     let added = self.machines.add_common_presets();
                     let _ = self.machines.save(&self.machines_path);
                     self.status = format!("Added {added} machine preset(s)");
@@ -156,7 +156,7 @@ impl BeamBurinApp {
                     ui.horizontal(|ui| {
                         let name_label = ui.label("Name");
                         ui.text_edit_singleline(&mut self.machine_editor.name)
-                            .labelled_by(name_label.id);
+                            .labelled_by(name_label.id).on_hover_text(crate::ui::icons::field("Name"));
                     });
                     ui.horizontal(|ui| {
                         let width_label = ui.label("Work width");
@@ -166,7 +166,7 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
-                        .labelled_by(width_label.id);
+                        .labelled_by(width_label.id).on_hover_text(crate::ui::icons::field("Work width"));
                     });
                     ui.horizontal(|ui| {
                         let height_label = ui.label("Work height");
@@ -176,7 +176,7 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
-                        .labelled_by(height_label.id);
+                        .labelled_by(height_label.id).on_hover_text(crate::ui::icons::field("Height"));
                     });
                     ui.horizontal(|ui| {
                         let firmware_label = ui.label("Firmware");
@@ -193,7 +193,7 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(firmware_label.id);
+                            .labelled_by(firmware_label.id).on_hover_text(crate::ui::icons::field("Firmware"));
                         self.machine_editor.firmware = firmware;
                     });
                     ui.label("Notes");
@@ -202,12 +202,12 @@ impl BeamBurinApp {
                         ui.colored_label(Color32::from_rgb(200, 60, 60), error);
                     }
                     ui.horizontal(|ui| {
-                        if ui.button("New").clicked() {
+                        if ui.button("New").on_hover_text(crate::ui::icons::description("New")).clicked() {
                             self.machine_editor = crate::machines::MachineProfile::default();
                             self.machine_edit_id = None;
                             self.machine_error = None;
                         }
-                        if ui.button("Save profile").clicked() {
+                        if ui.button("Save profile").on_hover_text(crate::ui::icons::description("Save profile")).clicked() {
                             match self.machine_editor.validate() {
                                 Ok(()) => {
                                     if let Some(id) = &self.machine_edit_id {
@@ -252,10 +252,10 @@ impl BeamBurinApp {
                                 Err(error) => self.machine_error = Some(error),
                             }
                         }
-                        if ui.button("Use work area").clicked() {
+                        if ui.button("Use work area").on_hover_text(crate::ui::icons::description("Use work area")).clicked() {
                             self.apply_machine_work_area();
                         }
-                        if ui.button("Delete").clicked() {
+                        if ui.button("Delete").on_hover_text(crate::ui::icons::description("Delete")).clicked() {
                             if let Some(id) = self.machine_edit_id.take() {
                                 self.machines.remove(&id);
                                 let _ = self.machines.save(&self.machines_path);

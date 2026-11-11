@@ -76,7 +76,8 @@ impl BeamBurinApp {
             .show(ui, |ui| {
                 let name_label = ui.label("Name");
                 ui.text_edit_singleline(&mut self.editor.document.name)
-                    .labelled_by(name_label.id);
+                    .labelled_by(name_label.id)
+                    .on_hover_text(crate::ui::icons::field("Name"));
                 ui.end_row();
 
                 let width_label = ui.label("Width (mm)");
@@ -88,6 +89,7 @@ impl BeamBurinApp {
                             .range(0.1..=10000.0),
                     )
                     .labelled_by(width_label.id)
+                    .on_hover_text(crate::ui::icons::field("Width (mm)"))
                     .changed()
                 {
                     self.editor.document.width_mm = width;
@@ -103,6 +105,7 @@ impl BeamBurinApp {
                             .range(0.1..=10000.0),
                     )
                     .labelled_by(height_label.id)
+                    .on_hover_text(crate::ui::icons::field("Height (mm)"))
                     .changed()
                 {
                     self.editor.document.height_mm = height;
@@ -123,7 +126,8 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(unit_label.id);
+                    .labelled_by(unit_label.id)
+                    .on_hover_text(crate::ui::icons::field("Unit"));
                 ui.end_row();
             });
         ui.separator();
@@ -152,14 +156,15 @@ impl BeamBurinApp {
             .show(ui, |ui| {
                 let name_label = ui.label("Name");
                 ui.text_edit_singleline(&mut object.name)
-                    .labelled_by(name_label.id);
+                    .labelled_by(name_label.id)
+                    .on_hover_text(crate::ui::icons::field("Name"));
                 ui.end_row();
 
                 let layer_label = ui.label("Layer");
                 let current = layers
                     .iter()
                     .find(|(layer_id, _)| layer_id == &object.layer_id)
-                    .map_or("?", |(_, name)| name.as_str());
+                    .map_or("(unassigned)", |(_, name)| name.as_str());
                 egui::ComboBox::from_id_salt("object_layer")
                     .selected_text(current)
                     .show_ui(ui, |ui| {
@@ -168,15 +173,18 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(layer_label.id);
+                    .labelled_by(layer_label.id)
+                    .on_hover_text(crate::ui::icons::field("Layer"));
                 ui.end_row();
 
                 ui.label("Visible");
-                ui.checkbox(&mut object.visible, "");
+                ui.checkbox(&mut object.visible, "")
+                    .on_hover_text("Show or hide this object");
                 ui.end_row();
 
                 ui.label("Locked");
-                ui.checkbox(&mut object.locked, "");
+                ui.checkbox(&mut object.locked, "")
+                    .on_hover_text("Prevent edits to this object");
                 ui.end_row();
             });
         ui.separator();
@@ -332,7 +340,8 @@ impl BeamBurinApp {
                     });
                     ui.end_row();
                     ui.label("Proportions");
-                    ui.checkbox(&mut self.link_proportions, "Link width and height");
+                    ui.checkbox(&mut self.link_proportions, "Link width and height")
+                        .on_hover_text(crate::ui::icons::description("Link width and height"));
                     ui.end_row();
                 });
             ui.separator();
@@ -354,21 +363,24 @@ impl BeamBurinApp {
                             egui::DragValue::new(width)
                                 .speed(0.1)
                                 .range(0.01..=100_000.0),
-                        );
+                        )
+                        .on_hover_text("Rectangle width in the document unit");
                         ui.end_row();
                         ui.label("Height");
                         ui.add(
                             egui::DragValue::new(height)
                                 .speed(0.1)
                                 .range(0.01..=100_000.0),
-                        );
+                        )
+                        .on_hover_text("Rectangle height in the document unit");
                         ui.end_row();
                         ui.label("Corner radius");
                         ui.add(
                             egui::DragValue::new(corner_radius)
                                 .speed(0.1)
                                 .range(0.0..=100_000.0),
-                        );
+                        )
+                        .on_hover_text("Corner radius of the rectangle");
                         ui.end_row();
                     });
             }
@@ -379,10 +391,12 @@ impl BeamBurinApp {
                     .spacing([8.0, 6.0])
                     .show(ui, |ui| {
                         ui.label("Radius X");
-                        ui.add(egui::DragValue::new(rx).speed(0.1).range(0.005..=100_000.0));
+                        ui.add(egui::DragValue::new(rx).speed(0.1).range(0.005..=100_000.0))
+                            .on_hover_text("Horizontal radius of the ellipse");
                         ui.end_row();
                         ui.label("Radius Y");
-                        ui.add(egui::DragValue::new(ry).speed(0.1).range(0.005..=100_000.0));
+                        ui.add(egui::DragValue::new(ry).speed(0.1).range(0.005..=100_000.0))
+                            .on_hover_text("Vertical radius of the ellipse");
                         ui.end_row();
                     });
             }
@@ -397,7 +411,8 @@ impl BeamBurinApp {
                     .show(ui, |ui| {
                         let content_label = ui.label("Content");
                         ui.text_edit_singleline(&mut text.content)
-                            .labelled_by(content_label.id);
+                            .labelled_by(content_label.id)
+                            .on_hover_text(crate::ui::icons::field("Content"));
                         ui.end_row();
                         ui.label("Font");
                         let mut font = text.font.clone();
@@ -411,7 +426,8 @@ impl BeamBurinApp {
                             egui::DragValue::new(&mut text.size)
                                 .speed(0.1)
                                 .range(0.1..=10000.0),
-                        );
+                        )
+                        .on_hover_text("Font size of the text");
                         ui.end_row();
                         ui.label("Letter spacing");
                         ui.add(
@@ -419,20 +435,25 @@ impl BeamBurinApp {
                                 .speed(0.05)
                                 .range(-10.0..=50.0)
                                 .suffix(" mm"),
-                        );
+                        )
+                        .on_hover_text("Extra space between letters");
                         ui.end_row();
                         ui.label("Line spacing");
                         ui.add(
                             egui::Slider::new(&mut text.line_spacing, 0.5..=5.0).fixed_decimals(2),
-                        );
+                        )
+                        .on_hover_text("Line height as a multiple of the font size");
                         ui.end_row();
                         ui.label("Upper case");
-                        ui.checkbox(&mut text.uppercase, "Force upper case");
+                        ui.checkbox(&mut text.uppercase, "Force upper case")
+                            .on_hover_text(crate::ui::icons::description("Force upper case"));
                         ui.end_row();
                         ui.label("Style");
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut text.bold, "Bold");
-                            ui.checkbox(&mut text.italic, "Italic");
+                            ui.checkbox(&mut text.bold, "Bold")
+                                .on_hover_text(crate::ui::icons::description("Bold"));
+                            ui.checkbox(&mut text.italic, "Italic")
+                                .on_hover_text(crate::ui::icons::description("Italic"));
                         });
                         ui.end_row();
                         let align_label = ui.label("Align");
@@ -449,7 +470,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(align_label.id);
+                            .labelled_by(align_label.id)
+                            .on_hover_text(crate::ui::icons::field("Align"));
                         text.align = align;
                         ui.end_row();
                         let valign_label = ui.label("Vertical");
@@ -466,7 +488,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(valign_label.id);
+                            .labelled_by(valign_label.id)
+                            .on_hover_text(crate::ui::icons::field("Vertical"));
                         text.vertical_align = valign;
                         ui.end_row();
                     });
@@ -478,7 +501,8 @@ impl BeamBurinApp {
                 ui.horizontal(|ui| {
                     let path_label = ui.label("Path");
                     ui.text_edit_singleline(&mut image.path)
-                        .labelled_by(path_label.id);
+                        .labelled_by(path_label.id)
+                        .on_hover_text(crate::ui::icons::field("Path"));
                     if ui.button("Relink...").clicked() {
                         relink_request = true;
                     }
@@ -522,16 +546,20 @@ impl BeamBurinApp {
                                     &mut rotation,
                                     candidate,
                                     format!("{candidate:.0} deg"),
-                                );
+                                )
+                                .on_hover_text(crate::ui::icons::description("Rotation angle"));
                             }
                         })
                         .response
-                        .labelled_by(rotation_label.id);
+                        .labelled_by(rotation_label.id)
+                        .on_hover_text(crate::ui::icons::field("Rotation"));
                     image.settings.rotation_degrees = rotation;
                 });
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut image.settings.flip_horizontal, "Flip horizontal");
-                    ui.checkbox(&mut image.settings.flip_vertical, "Flip vertical");
+                    ui.checkbox(&mut image.settings.flip_horizontal, "Flip horizontal")
+                        .on_hover_text(crate::ui::icons::description("Flip horizontal"));
+                    ui.checkbox(&mut image.settings.flip_vertical, "Flip vertical")
+                        .on_hover_text(crate::ui::icons::description("Flip vertical"));
                 });
                 ui.horizontal(|ui| {
                     ui.label("Working size");
@@ -540,13 +568,15 @@ impl BeamBurinApp {
                             .speed(1.0)
                             .range(0..=20000)
                             .suffix(" px X"),
-                    );
+                    )
+                    .on_hover_text("Working width of the prepared image");
                     ui.add(
                         egui::DragValue::new(&mut image.settings.target_height_px)
                             .speed(1.0)
                             .range(0..=20000)
                             .suffix(" px Y"),
-                    );
+                    )
+                    .on_hover_text("Working height of the prepared image");
                 });
                 ui.weak("0 x 0 keeps the source resolution.");
                 let mut crop_x = image.crop.map_or(0, |crop| crop.x);
@@ -561,7 +591,11 @@ impl BeamBurinApp {
                     ui.add(egui::DragValue::new(&mut crop_h).speed(1.0).prefix("H "));
                 });
                 ui.horizontal(|ui| {
-                    if ui.button("Apply crop").clicked() {
+                    if ui
+                        .button("Apply crop")
+                        .on_hover_text(crate::ui::icons::description("Apply crop"))
+                        .clicked()
+                    {
                         image.crop = Some(crate::objects::ImageCrop {
                             x: crop_x,
                             y: crop_y,
@@ -569,7 +603,11 @@ impl BeamBurinApp {
                             height: crop_h,
                         });
                     }
-                    if ui.button("Clear crop").clicked() {
+                    if ui
+                        .button("Clear crop")
+                        .on_hover_text(crate::ui::icons::description("Clear crop"))
+                        .clicked()
+                    {
                         image.crop = None;
                     }
                 });
@@ -586,20 +624,26 @@ impl BeamBurinApp {
                     .selected_text(mode.label())
                     .show_ui(ui, |ui| {
                         for candidate in ImageMode::all() {
-                            ui.selectable_value(&mut mode, candidate, candidate.label());
+                            ui.selectable_value(&mut mode, candidate, candidate.label())
+                                .on_hover_text("Image preparation mode");
                         }
                     });
                 image.settings.mode = mode;
-                ui.add(egui::Slider::new(&mut image.settings.threshold, 0..=255).text("Threshold"));
+                ui.add(egui::Slider::new(&mut image.settings.threshold, 0..=255).text("Threshold"))
+                    .on_hover_text("Tone above which a pixel burns");
                 ui.add(
                     egui::Slider::new(&mut image.settings.brightness, -100..=100)
                         .text("Brightness"),
-                );
+                )
+                .on_hover_text("Brighten or darken the prepared image");
                 ui.add(
                     egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0).text("Contrast"),
-                );
-                ui.add(egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0).text("Gamma"));
-                ui.checkbox(&mut image.settings.invert, "Invert");
+                )
+                .on_hover_text("Spread the tones around the mid grey");
+                ui.add(egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0).text("Gamma"))
+                    .on_hover_text("Bend the midtones without moving black or white");
+                ui.checkbox(&mut image.settings.invert, "Invert")
+                    .on_hover_text(crate::ui::icons::description("Invert"));
                 ui.add(
                     egui::DragValue::new(&mut image.settings.line_interval_mm)
                         .speed(0.01)
@@ -612,7 +656,11 @@ impl BeamBurinApp {
                 if let Err(error) = image.settings.validate() {
                     ui.colored_label(Color32::from_rgb(200, 60, 60), error);
                 }
-                if ui.button("Reset preparation").clicked() {
+                if ui
+                    .button("Reset preparation")
+                    .on_hover_text(crate::ui::icons::description("Reset preparation"))
+                    .clicked()
+                {
                     image.settings = crate::objects::ImageSettings::default();
                 }
             }
@@ -639,12 +687,20 @@ impl BeamBurinApp {
             });
         ui.horizontal(|ui| {
             if let Some(color) = object.style.stroke.clone() {
-                if ui.button("Select same stroke").clicked() {
+                if ui
+                    .button("Select same stroke")
+                    .on_hover_text(crate::ui::icons::description("Select same stroke"))
+                    .clicked()
+                {
                     select_same_color = Some(color);
                 }
             }
             if let Some(color) = object.style.fill.clone() {
-                if ui.button("Select same fill").clicked() {
+                if ui
+                    .button("Select same fill")
+                    .on_hover_text(crate::ui::icons::description("Select same fill"))
+                    .clicked()
+                {
                     select_same_color = Some(color);
                 }
             }
@@ -831,10 +887,18 @@ impl BeamBurinApp {
         }
         ui.separator();
         ui.horizontal(|ui| {
-            if ui.button("Duplicate").clicked() {
+            if ui
+                .button("Duplicate")
+                .on_hover_text(crate::ui::icons::description("Duplicate"))
+                .clicked()
+            {
                 self.editor.duplicate_selection();
             }
-            if ui.button("Delete").clicked() {
+            if ui
+                .button("Delete")
+                .on_hover_text(crate::ui::icons::description("Delete"))
+                .clicked()
+            {
                 self.editor.delete_selection();
             }
         });

@@ -50,7 +50,7 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(dialect_label.id);
+                    .labelled_by(dialect_label.id).on_hover_text(crate::ui::icons::field("G-code dialect"));
                 self.gcode_dialect = dialect;
                 let smooth_label = ui.label("Smooth paths (mm)");
                 ui.add(
@@ -70,7 +70,7 @@ impl BeamBurinApp {
                 )
                 .labelled_by(decimals_label.id)
                 .on_hover_text("Decimals written for coordinates");
-                ui.checkbox(&mut self.gcode_comments, "Comments");
+                ui.checkbox(&mut self.gcode_comments, "Comments").on_hover_text(crate::ui::icons::description("Comments"));
                 ui.checkbox(&mut self.gcode_travel, "Travel moves");
                 ui.checkbox(&mut self.gcode_crlf, "CRLF line endings");
                 ui.checkbox(&mut self.gcode_arcs, "Arcs (G2/G3)")
@@ -141,14 +141,18 @@ impl BeamBurinApp {
                             );
                             let selected =
                                 current.as_deref() == Some(operation.id.as_str());
-                            if ui.selectable_label(selected, label).clicked() {
+                            if ui
+                                .selectable_label(selected, label)
+                                .on_hover_text("Make this the active operation")
+                                .clicked()
+                            {
                                 self.active_operation = Some(operation.id.clone());
                                 ui.close();
                             }
                         }
                     })
                     .response
-                    .labelled_by(entry_label.id);
+                    .labelled_by(entry_label.id).on_hover_text(crate::ui::icons::field("Cut entry"));
                 ui.weak(format!("{} entries", operations.len()));
             });
             ui.separator();
@@ -168,7 +172,7 @@ impl BeamBurinApp {
                         .show(ui, |ui| {
                             let name_label = ui.label("Name");
                             ui.text_edit_singleline(&mut operation.name)
-                                .labelled_by(name_label.id);
+                                .labelled_by(name_label.id).on_hover_text(crate::ui::icons::field("Name"));
                             ui.end_row();
                             ui.label("Colour");
                             let rgb = parse_hex_color(&operation.params.color)
@@ -193,11 +197,12 @@ impl BeamBurinApp {
                                     }
                                 })
                                 .response
-                                .labelled_by(mode_label.id);
+                                .labelled_by(mode_label.id).on_hover_text(crate::ui::icons::field("Mode"));
                             operation.op_type = op_type;
                             ui.end_row();
                             ui.label("Output");
                             ui.checkbox(&mut operation.enabled, "")
+                                .on_hover_text("Run this operation in the job")
                                 .widget_info(|| {
                                     egui::WidgetInfo::selected(
                                         egui::WidgetType::Checkbox,
@@ -209,6 +214,7 @@ impl BeamBurinApp {
                             ui.end_row();
                             ui.label("Air assist");
                             ui.checkbox(&mut operation.params.air_assist, "")
+                                .on_hover_text("Enable air assist for this operation")
                                 .widget_info(|| {
                                     egui::WidgetInfo::selected(
                                         egui::WidgetType::Checkbox,
@@ -220,6 +226,7 @@ impl BeamBurinApp {
                             ui.end_row();
                             ui.label("Show in preview");
                             ui.checkbox(&mut operation.params.show_in_preview, "")
+                                .on_hover_text("Draw this operation in the preview")
                                 .widget_info(|| {
                                     egui::WidgetInfo::selected(
                                         egui::WidgetType::Checkbox,
@@ -235,7 +242,7 @@ impl BeamBurinApp {
                                     .speed(10.0)
                                     .range(1.0..=100_000.0),
                             )
-                            .labelled_by(speed_label.id);
+                            .labelled_by(speed_label.id).on_hover_text(crate::ui::icons::field("Speed (mm/min)"));
                             ui.end_row();
                             let power_label = ui.label("Max power (%)");
                             ui.add(
@@ -243,14 +250,14 @@ impl BeamBurinApp {
                                     .speed(1.0)
                                     .range(0.0..=100.0),
                             )
-                            .labelled_by(power_label.id);
+                            .labelled_by(power_label.id).on_hover_text(crate::ui::icons::field("Max power (%)"));
                             ui.end_row();
                             let passes_label = ui.label("Number of passes");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.passes)
                                     .range(1..=1000),
                             )
-                            .labelled_by(passes_label.id);
+                            .labelled_by(passes_label.id).on_hover_text(crate::ui::icons::field("Number of passes"));
                             ui.end_row();
                             let interval_label = ui.label("Line interval (mm)");
                             ui.add(
@@ -260,7 +267,7 @@ impl BeamBurinApp {
                                 .speed(0.01)
                                 .range(0.01..=2.0),
                             )
-                            .labelled_by(interval_label.id);
+                            .labelled_by(interval_label.id).on_hover_text(crate::ui::icons::field("Line interval (mm)"));
                             ui.end_row();
                             ui.label("Lines per inch");
                             ui.weak(format!(
@@ -276,11 +283,12 @@ impl BeamBurinApp {
                                 .speed(1.0)
                                 .range(-180.0..=180.0),
                             )
-                            .labelled_by(angle_label.id);
+                            .labelled_by(angle_label.id).on_hover_text(crate::ui::icons::field("Scan angle (deg)"));
                             ui.end_row();
                             ui.label("Bi-directional fill");
                             let alternate =
-                                ui.checkbox(&mut operation.params.fill_alternate, "");
+                                ui.checkbox(&mut operation.params.fill_alternate, "")
+                                .on_hover_text("Reverse the fill direction on each pass");
                             alternate.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::Checkbox,
@@ -291,7 +299,8 @@ impl BeamBurinApp {
                             });
                             ui.end_row();
                             ui.label("Cross-hatch");
-                            let cross = ui.checkbox(&mut operation.params.cross_hatch, "");
+                            let cross = ui.checkbox(&mut operation.params.cross_hatch, "")
+                                .on_hover_text("Add a second fill at the hatch angle");
                             cross.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::Checkbox,
@@ -307,7 +316,7 @@ impl BeamBurinApp {
                                     .speed(0.1)
                                     .range(0.0..=50.0),
                             )
-                            .labelled_by(overscan_label.id);
+                            .labelled_by(overscan_label.id).on_hover_text(crate::ui::icons::field("Overscan (mm)"));
                             ui.end_row();
                             let kerf_label = ui.label("Kerf (mm)");
                             ui.add(
@@ -315,14 +324,14 @@ impl BeamBurinApp {
                                     .speed(0.01)
                                     .range(0.0..=10.0),
                             )
-                            .labelled_by(kerf_label.id);
+                            .labelled_by(kerf_label.id).on_hover_text(crate::ui::icons::field("Kerf (mm)"));
                             ui.end_row();
                             let tabs_label = ui.label("Holding tabs");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.tabs)
                                     .range(0..=20),
                             )
-                            .labelled_by(tabs_label.id);
+                            .labelled_by(tabs_label.id).on_hover_text(crate::ui::icons::field("Holding tabs"));
                             ui.end_row();
                             let tab_width_label = ui.label("Tab width (mm)");
                             ui.add(
@@ -332,7 +341,7 @@ impl BeamBurinApp {
                                 .speed(0.1)
                                 .range(0.0..=20.0),
                             )
-                            .labelled_by(tab_width_label.id);
+                            .labelled_by(tab_width_label.id).on_hover_text(crate::ui::icons::field("Tab width (mm)"));
                             ui.end_row();
                             let tab_spacing_label = ui.label("Tab spacing (mm)");
                             ui.add(
@@ -356,7 +365,7 @@ impl BeamBurinApp {
                                     .speed(0.1)
                                     .range(0.0..=50.0),
                                 )
-                                .labelled_by(lead_label.id);
+                                .labelled_by(lead_label.id).on_hover_text(crate::ui::icons::field("Lead-in / out (mm)"));
                                 ui.add(
                                     egui::DragValue::new(
                                         &mut operation.params.lead_out_mm,
@@ -364,18 +373,19 @@ impl BeamBurinApp {
                                     .speed(0.1)
                                     .range(0.0..=50.0),
                                 )
-                                .labelled_by(lead_label.id);
+                                .labelled_by(lead_label.id).on_hover_text(crate::ui::icons::field("Lead-in / out (mm)"));
                             });
                             ui.end_row();
                             ui.label("Curved leads");
                             ui.checkbox(
                                 &mut operation.params.curved_leads,
                                 "Quarter-circle entry and exit",
-                            );
+                            ).on_hover_text(crate::ui::icons::description("Quarter-circle entry and exit"));
                             ui.end_row();
                             ui.label("Constant power mode");
                             let constant =
-                                ui.checkbox(&mut operation.params.constant_power, "");
+                                ui.checkbox(&mut operation.params.constant_power, "")
+                                .on_hover_text("Hold the power steady across the fill");
                             constant.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::Checkbox,
@@ -455,7 +465,7 @@ impl BeamBurinApp {
                 });
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.button("+ Cut").clicked() {
+                if ui.button("+ Cut").on_hover_text(crate::ui::icons::description("+ Cut")).clicked() {
                     let operation = crate::operations::Operation::new(
                         format!("Cut {}", operations.len() + 1),
                         OperationType::OutlineCutting,
@@ -463,7 +473,7 @@ impl BeamBurinApp {
                     self.active_operation = Some(operation.id.clone());
                     operations.push(operation);
                 }
-                if ui.button("Duplicate").clicked() {
+                if ui.button("Duplicate").on_hover_text(crate::ui::icons::description("Duplicate")).clicked() {
                     if let Some(id) = self.active_operation.clone() {
                         if let Some(index) = operations
                             .iter()
@@ -477,7 +487,7 @@ impl BeamBurinApp {
                         }
                     }
                 }
-                if ui.button("Delete").clicked() {
+                if ui.button("Delete").on_hover_text(crate::ui::icons::description("Delete")).clicked() {
                     if let Some(id) = self.active_operation.clone() {
                         operations.retain(|operation| operation.id != id);
                         self.active_operation = operations
@@ -485,7 +495,7 @@ impl BeamBurinApp {
                             .map(|operation| operation.id.clone());
                     }
                 }
-                if ui.button("Up").clicked() {
+                if ui.button("Up").on_hover_text(crate::ui::icons::description("Up")).clicked() {
                     if let Some(id) = self.active_operation.clone() {
                         if let Some(index) = operations
                             .iter()
@@ -497,7 +507,7 @@ impl BeamBurinApp {
                         }
                     }
                 }
-                if ui.button("Down").clicked() {
+                if ui.button("Down").on_hover_text(crate::ui::icons::description("Down")).clicked() {
                     if let Some(id) = self.active_operation.clone() {
                         if let Some(index) = operations
                             .iter()
@@ -819,7 +829,8 @@ impl BeamBurinApp {
                                 &mut self.constraint_kind_key,
                                 key.to_string(),
                                 constraint_kind_label(key),
-                            );
+                            )
+                            .on_hover_text("Choose this constraint type");
                         }
                     })
                     .response
@@ -843,7 +854,7 @@ impl BeamBurinApp {
                             } else {
                                 " mm"
                             }),
-                    )
+                    ).on_hover_text(crate::ui::icons::field("angle"))
                     .widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::DragValue,
@@ -902,7 +913,11 @@ impl BeamBurinApp {
                     {
                         ui.horizontal(|ui| {
                             let mut enabled = constraint.enabled;
-                            if ui.checkbox(&mut enabled, "").changed() {
+                            if ui
+                                .checkbox(&mut enabled, "")
+                                .on_hover_text("Turn this constraint on or off")
+                                .changed()
+                            {
                                 constraint.enabled = enabled;
                             }
                             ui.label(constraint.kind.label());
@@ -1101,7 +1116,7 @@ impl BeamBurinApp {
                 .show(ui, |ui| {
                     let name_label = ui.label("Name");
                     ui.text_edit_singleline(&mut self.recipe_name)
-                        .labelled_by(name_label.id);
+                        .labelled_by(name_label.id).on_hover_text(crate::ui::icons::field("Name"));
                     ui.end_row();
                     let material_label = ui.label("Material");
                     egui::ComboBox::from_id_salt("recipe_save_material")
@@ -1120,7 +1135,7 @@ impl BeamBurinApp {
                             }
                         })
                         .response
-                        .labelled_by(material_label.id);
+                        .labelled_by(material_label.id).on_hover_text(crate::ui::icons::field("Material"));
                     ui.end_row();
                     let machine_label = ui.label("Machine");
                     egui::ComboBox::from_id_salt("recipe_save_machine")
@@ -1130,7 +1145,7 @@ impl BeamBurinApp {
                                 &mut self.recipe_machine,
                                 String::new(),
                                 "Any machine",
-                            );
+                            ).on_hover_text(crate::ui::icons::description("Any machine"));
                             for (id, name) in &machines {
                                 ui.selectable_value(
                                     &mut self.recipe_machine,
@@ -1140,7 +1155,7 @@ impl BeamBurinApp {
                             }
                         })
                         .response
-                        .labelled_by(machine_label.id);
+                        .labelled_by(machine_label.id).on_hover_text(crate::ui::icons::field("Machine"));
                     ui.end_row();
                     let head_label = ui.label("Head");
                     ui.text_edit_singleline(&mut self.recipe_head)
@@ -1164,7 +1179,7 @@ impl BeamBurinApp {
             ui.horizontal(|ui| {
                 let search_label = ui.label("Search");
                 ui.text_edit_singleline(&mut self.recipe_search)
-                    .labelled_by(search_label.id);
+                    .labelled_by(search_label.id).on_hover_text(crate::ui::icons::field("Search"));
                 let material_label = ui.label("Material");
                 egui::ComboBox::from_id_salt("recipe_filter_material")
                     .selected_text(if self.recipe_filter_material.is_empty() {
@@ -1177,7 +1192,7 @@ impl BeamBurinApp {
                             &mut self.recipe_filter_material,
                             String::new(),
                             "All",
-                        );
+                        ).on_hover_text(crate::ui::icons::description("All"));
                         for (id, name) in &materials {
                             ui.selectable_value(
                                 &mut self.recipe_filter_material,
@@ -1187,7 +1202,7 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(material_label.id);
+                    .labelled_by(material_label.id).on_hover_text(crate::ui::icons::field("Material"));
                 let machine_label = ui.label("Machine");
                 egui::ComboBox::from_id_salt("recipe_filter_machine")
                     .selected_text(machine_name(&self.recipe_filter_machine))
@@ -1196,7 +1211,7 @@ impl BeamBurinApp {
                             &mut self.recipe_filter_machine,
                             String::new(),
                             "All machines",
-                        );
+                        ).on_hover_text(crate::ui::icons::description("All machines"));
                         for (id, name) in &machines {
                             ui.selectable_value(
                                 &mut self.recipe_filter_machine,
@@ -1206,7 +1221,7 @@ impl BeamBurinApp {
                         }
                     })
                     .response
-                    .labelled_by(machine_label.id);
+                    .labelled_by(machine_label.id).on_hover_text(crate::ui::icons::field("Machine"));
             });
             let query = self.recipe_search.trim().to_lowercase();
             ui.separator();

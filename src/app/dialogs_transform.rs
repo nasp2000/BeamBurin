@@ -56,13 +56,13 @@ impl BeamBurinApp {
                             .range(0.0..=100_000.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(radius_label.id);
+                    .labelled_by(radius_label.id).on_hover_text(crate::ui::icons::field("Radius"));
                 });
                 ui.weak(
                     "Apply rounds every corner; Pick corner applies the radius where you click next.",
                 );
                 ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
+                    if ui.button("Apply").on_hover_text(crate::ui::icons::description("Apply")).clicked() {
                         apply = true;
                     }
                     if ui
@@ -74,11 +74,11 @@ impl BeamBurinApp {
                         self.corner_radius_open = false;
                         self.status = "Click the corner to round".to_string();
                     }
-                    if ui.button("Clear corners").clicked() {
+                    if ui.button("Clear corners").on_hover_text(crate::ui::icons::description("Clear corners")).clicked() {
                         self.corner_radius_value = 0.0;
                         apply = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button("Cancel").on_hover_text(crate::ui::icons::description("Cancel")).clicked() {
                         cancel = true;
                     }
                 });
@@ -118,7 +118,8 @@ impl BeamBurinApp {
                 ui.horizontal(|ui| {
                     let text_label = ui.label("Text");
                     ui.add(egui::TextEdit::singleline(&mut self.barcode_text).desired_width(240.0))
-                        .labelled_by(text_label.id);
+                        .labelled_by(text_label.id)
+                        .on_hover_text(crate::ui::icons::field("Text"));
                 });
                 ui.horizontal(|ui| {
                     let module_label = ui.label("Module (mm)");
@@ -128,7 +129,8 @@ impl BeamBurinApp {
                             .range(0.1..=5.0)
                             .fixed_decimals(2),
                     )
-                    .labelled_by(module_label.id);
+                    .labelled_by(module_label.id)
+                    .on_hover_text(crate::ui::icons::field("Module (mm)"));
                     let height_label = ui.label("Height (mm)");
                     ui.add(
                         egui::DragValue::new(&mut self.barcode_height_mm)
@@ -136,14 +138,23 @@ impl BeamBurinApp {
                             .range(1.0..=200.0)
                             .fixed_decimals(1),
                     )
-                    .labelled_by(height_label.id);
+                    .labelled_by(height_label.id)
+                    .on_hover_text(crate::ui::icons::field("Height (mm)"));
                 });
                 ui.weak("Code 39: A-Z, 0-9, space and - . $ / + %. Lower case becomes upper case.");
                 ui.horizontal(|ui| {
-                    if ui.button("Insert").clicked() {
+                    if ui
+                        .button("Insert")
+                        .on_hover_text(crate::ui::icons::description("Insert"))
+                        .clicked()
+                    {
                         insert = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text(crate::ui::icons::description("Cancel"))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
@@ -192,7 +203,8 @@ impl BeamBurinApp {
                             .speed(0.5)
                             .suffix(" mm"),
                     )
-                    .labelled_by(x_label.id);
+                    .labelled_by(x_label.id)
+                    .on_hover_text(crate::ui::icons::field("X"));
                 });
                 ui.horizontal(|ui| {
                     let y_label = ui.label("Y");
@@ -201,14 +213,23 @@ impl BeamBurinApp {
                             .speed(0.5)
                             .suffix(" mm"),
                     )
-                    .labelled_by(y_label.id);
+                    .labelled_by(y_label.id)
+                    .on_hover_text(crate::ui::icons::field("Y"));
                 });
                 ui.weak("Places the bottom-left corner of the selection at X / Y.");
                 ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
+                    if ui
+                        .button("Apply")
+                        .on_hover_text(crate::ui::icons::description("Apply"))
+                        .clicked()
+                    {
                         apply = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text(crate::ui::icons::description("Cancel"))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
@@ -252,7 +273,8 @@ impl BeamBurinApp {
                             .range(-80.0..=80.0)
                             .suffix(" deg"),
                     )
-                    .labelled_by(horizontal_label.id);
+                    .labelled_by(horizontal_label.id)
+                    .on_hover_text(crate::ui::icons::field("Horizontal"));
                 });
                 ui.horizontal(|ui| {
                     let vertical_label = ui.label("Vertical");
@@ -262,10 +284,15 @@ impl BeamBurinApp {
                             .range(-80.0..=80.0)
                             .suffix(" deg"),
                     )
-                    .labelled_by(vertical_label.id);
+                    .labelled_by(vertical_label.id)
+                    .on_hover_text(crate::ui::icons::field("Vertical"));
                 });
                 ui.weak("The shear is applied around the selection centre.");
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = true;
                 }
             });
@@ -303,12 +330,14 @@ impl BeamBurinApp {
                             &mut self.repeat_options.mode,
                             RepeatMode::Linear,
                             "Linear",
-                        );
+                        )
+                        .on_hover_text(crate::ui::icons::description("Linear"));
                         ui.selectable_value(
                             &mut self.repeat_options.mode,
                             RepeatMode::Circular,
                             "Circular",
-                        );
+                        )
+                        .on_hover_text(crate::ui::icons::description("Circular"));
                     });
                 ui.horizontal(|ui| {
                     let copies_label = ui.label("Copies");
@@ -317,7 +346,8 @@ impl BeamBurinApp {
                             .speed(1.0)
                             .range(1..=100),
                     )
-                    .labelled_by(copies_label.id);
+                    .labelled_by(copies_label.id)
+                    .on_hover_text(crate::ui::icons::field("Copies"));
                 });
                 match self.repeat_options.mode {
                     RepeatMode::Linear => {
@@ -328,14 +358,16 @@ impl BeamBurinApp {
                                     .speed(0.5)
                                     .suffix(" mm"),
                             )
-                            .labelled_by(x_label.id);
+                            .labelled_by(x_label.id)
+                            .on_hover_text(crate::ui::icons::field("X"));
                             let y_label = ui.label("Y");
                             ui.add(
                                 egui::DragValue::new(&mut self.repeat_options.dy)
                                     .speed(0.5)
                                     .suffix(" mm"),
                             )
-                            .labelled_by(y_label.id);
+                            .labelled_by(y_label.id)
+                            .on_hover_text(crate::ui::icons::field("Y"));
                         });
                         ui.horizontal(|ui| {
                             let rotation_label = ui.label("Rotation per copy");
@@ -344,7 +376,8 @@ impl BeamBurinApp {
                                     .speed(1.0)
                                     .suffix(" deg"),
                             )
-                            .labelled_by(rotation_label.id);
+                            .labelled_by(rotation_label.id)
+                            .on_hover_text(crate::ui::icons::field("Rotation per copy"));
                         });
                     }
                     RepeatMode::Circular => {
@@ -356,16 +389,24 @@ impl BeamBurinApp {
                                     .range(0.0..=10000.0)
                                     .suffix(" mm"),
                             )
-                            .labelled_by(radius_label.id);
+                            .labelled_by(radius_label.id)
+                            .on_hover_text(crate::ui::icons::field("Radius"));
                         });
                         ui.checkbox(
                             &mut self.repeat_options.rotate_copies,
                             "Rotate copies along the orbit",
-                        );
+                        )
+                        .on_hover_text(crate::ui::icons::description(
+                            "Rotate copies along the orbit",
+                        ));
                     }
                 }
                 ui.weak("Copies are spaced evenly and stay separate from the original.");
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = true;
                 }
             });
@@ -429,6 +470,7 @@ impl BeamBurinApp {
                                 .suffix(" mm"),
                         )
                         .labelled_by(spacing_label.id)
+                        .on_hover_text(crate::ui::icons::field("Spacing"))
                         .changed()
                     {
                         preview = true;
@@ -442,6 +484,7 @@ impl BeamBurinApp {
                                 .suffix(" mm"),
                         )
                         .labelled_by(margin_label.id)
+                        .on_hover_text(crate::ui::icons::field("Margin"))
                         .changed()
                     {
                         preview = true;
@@ -454,7 +497,11 @@ impl BeamBurinApp {
                     }
                 });
                 ui.horizontal(|ui| {
-                    if ui.button("Preview").clicked() {
+                    if ui
+                        .button("Preview")
+                        .on_hover_text(crate::ui::icons::description("Preview"))
+                        .clicked()
+                    {
                         preview = true;
                     }
                     let can_apply = self
@@ -549,9 +596,14 @@ impl BeamBurinApp {
                         .range(0.001..=5.0)
                         .suffix(" mm"),
                 )
-                .labelled_by(tolerance_label.id);
+                .labelled_by(tolerance_label.id)
+                .on_hover_text(crate::ui::icons::field("Tolerance"));
                 ui.weak("Curves are flattened and straightened within the tolerance.");
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = true;
                 }
             });
@@ -585,10 +637,15 @@ impl BeamBurinApp {
                         .range(-100.0..=100.0)
                         .suffix(" mm"),
                 )
-                .labelled_by(distance_label.id);
+                .labelled_by(distance_label.id)
+                .on_hover_text(crate::ui::icons::field("Distance"));
                 ui.weak("Positive expands the outline; negative contracts it.");
                 ui.weak("Shapes that collapse are removed.");
-                if ui.button("Apply").clicked() {
+                if ui
+                    .button("Apply")
+                    .on_hover_text(crate::ui::icons::description("Apply"))
+                    .clicked()
+                {
                     apply = true;
                 }
             });
@@ -622,14 +679,16 @@ impl BeamBurinApp {
                             .speed(1.0)
                             .range(1..=100),
                     )
-                    .labelled_by(columns_label.id);
+                    .labelled_by(columns_label.id)
+                    .on_hover_text(crate::ui::icons::field("Columns"));
                     let rows_label = ui.label("Rows");
                     ui.add(
                         egui::DragValue::new(&mut options.rows)
                             .speed(1.0)
                             .range(1..=100),
                     )
-                    .labelled_by(rows_label.id);
+                    .labelled_by(rows_label.id)
+                    .on_hover_text(crate::ui::icons::field("Rows"));
                 });
                 ui.horizontal(|ui| {
                     let x_label = ui.label("Spacing X");
@@ -639,7 +698,8 @@ impl BeamBurinApp {
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(x_label.id);
+                    .labelled_by(x_label.id)
+                    .on_hover_text(crate::ui::icons::field("X"));
                     let y_label = ui.label("Y");
                     ui.add(
                         egui::DragValue::new(&mut options.dy)
@@ -647,7 +707,8 @@ impl BeamBurinApp {
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(y_label.id);
+                    .labelled_by(y_label.id)
+                    .on_hover_text(crate::ui::icons::field("Y"));
                 });
                 ui.horizontal(|ui| {
                     let x_label = ui.label("Margin X");
@@ -657,7 +718,8 @@ impl BeamBurinApp {
                             .range(-10000.0..=10000.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(x_label.id);
+                    .labelled_by(x_label.id)
+                    .on_hover_text(crate::ui::icons::field("X"));
                     let y_label = ui.label("Y");
                     ui.add(
                         egui::DragValue::new(&mut options.margin_y)
@@ -667,7 +729,8 @@ impl BeamBurinApp {
                     )
                     .labelled_by(y_label.id);
                 });
-                ui.checkbox(&mut options.column_major, "Fill column by column");
+                ui.checkbox(&mut options.column_major, "Fill column by column")
+                    .on_hover_text(crate::ui::icons::description("Fill column by column"));
                 let options = *options;
                 ui.label(format!(
                     "Creates {} copies of the {} selected object(s).",

@@ -117,10 +117,18 @@ impl BeamBurinApp {
                     });
                     ui.label("It was written because the application closed with unsaved changes.");
                     ui.horizontal(|ui| {
-                        if ui.button("Open draft").clicked() {
+                        if ui
+                            .button("Open draft")
+                            .on_hover_text(crate::ui::icons::description("Open draft"))
+                            .clicked()
+                        {
                             open_draft = true;
                         }
-                        if ui.button("Discard").clicked() {
+                        if ui
+                            .button("Discard")
+                            .on_hover_text(crate::ui::icons::description("Discard"))
+                            .clicked()
+                        {
                             discard = true;
                         }
                     });
@@ -157,7 +165,11 @@ impl BeamBurinApp {
                     ui.label(format!("{} already exists.", path.display()));
                     ui.label("Replacing it cannot be undone.");
                     ui.horizontal(|ui| {
-                        if ui.button("Replace").clicked() {
+                        if ui
+                            .button("Replace")
+                            .on_hover_text(crate::ui::icons::description("Replace"))
+                            .clicked()
+                        {
                             replace = true;
                         }
                         if ui
@@ -188,7 +200,11 @@ impl BeamBurinApp {
                     ui.label("This document has unsaved changes.");
                     ui.label("Discard them and continue?");
                     ui.horizontal(|ui| {
-                        if ui.button("Discard").clicked() {
+                        if ui
+                            .button("Discard")
+                            .on_hover_text(crate::ui::icons::description("Discard"))
+                            .clicked()
+                        {
                             action = self.confirm;
                         }
                         if ui
@@ -278,7 +294,11 @@ impl BeamBurinApp {
                     ui.label("Vector drawing and laser job preparation.");
                     ui.label("This build prepares jobs only; it does not control machines.");
                     ui.label("MIT or Apache-2.0 licensed.");
-                    if ui.button("Third-party licences").clicked() {
+                    if ui
+                        .button("Third-party licences")
+                        .on_hover_text(crate::ui::icons::description("Third-party licences"))
+                        .clicked()
+                    {
                         self.licenses_open = true;
                     }
                 });

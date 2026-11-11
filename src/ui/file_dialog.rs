@@ -297,7 +297,10 @@ impl FileDialog {
                     let response = ui
                         .add(egui::TextEdit::singleline(&mut self.path_text).desired_width(width))
                         .labelled_by(path_label.id);
-                    let go = ui.button("Go").clicked()
+                    let go = ui
+                        .button("Go")
+                        .on_hover_text(crate::ui::icons::description("Go"))
+                        .clicked()
                         || (response.lost_focus()
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
                     if go {
@@ -315,7 +318,8 @@ impl FileDialog {
                     let name_label = ui.label("File name:");
                     let response = ui
                         .add(egui::TextEdit::singleline(&mut self.file_name).desired_width(520.0))
-                        .labelled_by(name_label.id);
+                        .labelled_by(name_label.id)
+                        .on_hover_text(crate::ui::icons::field("File name:"));
                     if response.lost_focus()
                         && ui.input(|input| input.key_pressed(egui::Key::Enter))
                     {
@@ -381,12 +385,21 @@ impl FileDialog {
                     ui.colored_label(egui::Color32::from_rgb(200, 60, 60), error);
                 }
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.show_all_files, "Show all files");
+                    ui.checkbox(&mut self.show_all_files, "Show all files")
+                        .on_hover_text(crate::ui::icons::description("Show all files"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(self.mode.action_label()).clicked() {
+                        if ui
+                            .button(self.mode.action_label())
+                            .on_hover_text("Confirm this file action")
+                            .clicked()
+                        {
                             accept = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text(crate::ui::icons::description("Cancel"))
+                            .clicked()
+                        {
                             cancel = true;
                         }
                         ui.label(self.mode.filter_hint());
@@ -528,7 +541,7 @@ impl FileDialog {
                     let name = directory
                         .file_name()
                         .and_then(|value| value.to_str())
-                        .unwrap_or("?")
+                        .unwrap_or("(unnamed)")
                         .to_string();
                     ui.horizontal(|ui| {
                         ui.add(icons::image_at(ui.ctx(), Icon::Folder, 16.0));
@@ -559,7 +572,7 @@ impl FileDialog {
                     let name = file
                         .file_name()
                         .and_then(|value| value.to_str())
-                        .unwrap_or("?");
+                        .unwrap_or("(unnamed)");
                     ui.horizontal(|ui| {
                         ui.add(icons::image_at(ui.ctx(), file_icon(&file), 16.0));
                         let selected = self.selected.as_deref() == Some(file.as_path());

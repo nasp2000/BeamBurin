@@ -32,14 +32,23 @@ impl BeamBurinApp {
                         step -= 1;
                     }
                     let last = step + 1 == steps.len();
-                    if ui.button(if last { "Finish" } else { "Next" }).clicked() {
+                    let next_label = if last { "Finish" } else { "Next" };
+                    if ui
+                        .button(next_label)
+                        .on_hover_text(crate::ui::icons::description(next_label))
+                        .clicked()
+                    {
                         if last {
                             finish = true;
                         } else {
                             step += 1;
                         }
                     }
-                    if ui.button("Skip").clicked() {
+                    if ui
+                        .button("Skip")
+                        .on_hover_text(crate::ui::icons::description("Skip"))
+                        .clicked()
+                    {
                         close_requested = true;
                     }
                     ui.weak("Help → Show the tour reopens this.");
@@ -137,11 +146,13 @@ impl BeamBurinApp {
             .resizable(false)
             .default_width(460.0)
             .show(ctx, |ui| {
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.palette_query)
-                        .hint_text("Type a command, object, layer, operation or parameter")
-                        .desired_width(f32::INFINITY),
-                );
+                let response = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.palette_query)
+                            .hint_text("Type a command, object, layer, operation or parameter")
+                            .desired_width(f32::INFINITY),
+                    )
+                    .on_hover_text(crate::ui::icons::field("Command search"));
                 response.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Command search")
                 });
@@ -336,6 +347,7 @@ impl BeamBurinApp {
                             .hint_text("Workspace name")
                             .desired_width(220.0),
                     )
+                    .on_hover_text("Name for the saved workspace")
                     .widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::TextEdit,
@@ -363,7 +375,11 @@ impl BeamBurinApp {
                 for workspace in &self.preferences.workspaces.saved {
                     ui.horizontal(|ui| {
                         ui.label(&workspace.name);
-                        if ui.button("Apply").clicked() {
+                        if ui
+                            .button("Apply")
+                            .on_hover_text(crate::ui::icons::description("Apply"))
+                            .clicked()
+                        {
                             apply = Some(workspace.name.clone());
                         }
                         if ui
@@ -471,6 +487,7 @@ impl BeamBurinApp {
                             .hint_text("Preset name")
                             .desired_width(220.0),
                     )
+                    .on_hover_text("Name for the saved interface preset")
                     .widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::TextEdit,
@@ -497,10 +514,18 @@ impl BeamBurinApp {
                     ui.horizontal(|ui| {
                         ui.label(&preset.name);
                         ui.weak(preset.theme.clone());
-                        if ui.button("Apply").clicked() {
+                        if ui
+                            .button("Apply")
+                            .on_hover_text(crate::ui::icons::description("Apply"))
+                            .clicked()
+                        {
                             apply = Some(preset.name.clone());
                         }
-                        if ui.button("Delete").clicked() {
+                        if ui
+                            .button("Delete")
+                            .on_hover_text(crate::ui::icons::description("Delete"))
+                            .clicked()
+                        {
                             delete = Some(preset.name.clone());
                         }
                     });
@@ -583,6 +608,7 @@ impl BeamBurinApp {
                             .hint_text("Search settings")
                             .desired_width(240.0),
                     )
+                    .on_hover_text("Filter the settings by name")
                     .widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::TextEdit,
@@ -590,7 +616,12 @@ impl BeamBurinApp {
                             "Search settings",
                         )
                     });
-                    if !self.preferences_search.is_empty() && ui.button("Clear").clicked() {
+                    if !self.preferences_search.is_empty()
+                        && ui
+                            .button("Clear")
+                            .on_hover_text(crate::ui::icons::description("Clear"))
+                            .clicked()
+                    {
                         self.preferences_search.clear();
                     }
                 });
@@ -789,7 +820,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(unit_label.id);
+                            .labelled_by(unit_label.id)
+                            .on_hover_text(crate::ui::icons::field("Default unit"));
                         if unit != self.preferences.general.default_unit {
                             self.preferences.general.default_unit = unit;
                             changed = true;
@@ -821,11 +853,14 @@ impl BeamBurinApp {
                         egui::ComboBox::from_id_salt("pref_theme")
                             .selected_text(if dark { "Dark" } else { "Light" })
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut dark, true, "Dark");
-                                ui.selectable_value(&mut dark, false, "Light");
+                                ui.selectable_value(&mut dark, true, "Dark")
+                                    .on_hover_text(crate::ui::icons::description("Dark"));
+                                ui.selectable_value(&mut dark, false, "Light")
+                                    .on_hover_text(crate::ui::icons::description("Light"));
                             })
                             .response
-                            .labelled_by(theme_label.id);
+                            .labelled_by(theme_label.id)
+                            .on_hover_text(crate::ui::icons::field("Theme"));
                         let wanted = if dark { "dark" } else { "light" };
                         if wanted != self.preferences.general.theme {
                             self.preferences.general.theme = wanted.to_string();
@@ -858,7 +893,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(style_label.id);
+                            .labelled_by(style_label.id)
+                            .on_hover_text(crate::ui::icons::field("Handle style"));
                         if style != self.preferences.drawing.handle_style {
                             self.preferences.drawing.handle_style = style;
                             changed = true;
@@ -874,6 +910,7 @@ impl BeamBurinApp {
                                     .fixed_decimals(2),
                             )
                             .labelled_by(zoom_label.id)
+                            .on_hover_text(crate::ui::icons::field("Zoom step"))
                             .changed();
                         ui.end_row();
 
@@ -888,6 +925,7 @@ impl BeamBurinApp {
                                 .fixed_decimals(2),
                             )
                             .labelled_by(wheel_label.id)
+                            .on_hover_text(crate::ui::icons::field("Wheel zoom step"))
                             .changed();
                         ui.end_row();
                     });
@@ -924,6 +962,7 @@ impl BeamBurinApp {
                                     .suffix(" mm"),
                             )
                             .labelled_by(grid_label.id)
+                            .on_hover_text(crate::ui::icons::field("Grid spacing"))
                             .changed();
                         ui.end_row();
 
@@ -936,6 +975,7 @@ impl BeamBurinApp {
                                     .suffix(" mm"),
                             )
                             .labelled_by(snap_label.id)
+                            .on_hover_text(crate::ui::icons::field("Snap step"))
                             .changed();
                         ui.end_row();
 
@@ -950,6 +990,7 @@ impl BeamBurinApp {
                                 .suffix(" px"),
                             )
                             .labelled_by(tolerance_label.id)
+                            .on_hover_text(crate::ui::icons::field("Snap tolerance"))
                             .changed();
                         ui.end_row();
                     });
@@ -1008,6 +1049,7 @@ impl BeamBurinApp {
                                     .suffix(" MP"),
                             )
                             .labelled_by(largest_label.id)
+                            .on_hover_text(crate::ui::icons::field("Largest imported image"))
                             .changed()
                         {
                             self.preferences.drawing.max_image_pixels =
@@ -1030,6 +1072,7 @@ impl BeamBurinApp {
                         changed |= ui
                             .text_edit_singleline(&mut self.preferences.general.default_directory)
                             .labelled_by(directory_label.id)
+                            .on_hover_text(crate::ui::icons::field("Default directory"))
                             .changed();
                         ui.end_row();
                     });
@@ -1079,10 +1122,18 @@ impl BeamBurinApp {
                             ui.label(command.label());
                             ui.monospace(self.preferences.shortcuts.chord(command));
                             ui.horizontal(|ui| {
-                                if ui.button("Change").clicked() {
+                                if ui
+                                    .button("Change")
+                                    .on_hover_text(crate::ui::icons::description("Change"))
+                                    .clicked()
+                                {
                                     capture = Some(command);
                                 }
-                                if ui.button("Reset").clicked() {
+                                if ui
+                                    .button("Reset")
+                                    .on_hover_text(crate::ui::icons::description("Reset"))
+                                    .clicked()
+                                {
                                     reset = Some(command);
                                 }
                             });
@@ -1096,7 +1147,11 @@ impl BeamBurinApp {
                     self.preferences.shortcuts.reset(command);
                     changed = true;
                 }
-                if ui.button("Reset all shortcuts").clicked() {
+                if ui
+                    .button("Reset all shortcuts")
+                    .on_hover_text(crate::ui::icons::description("Reset all shortcuts"))
+                    .clicked()
+                {
                     self.preferences.shortcuts.reset_all();
                     self.shortcut_capture = None;
                     changed = true;
@@ -1175,31 +1230,51 @@ impl BeamBurinApp {
                 "Values are reference starting points, not guarantees. Test on your own material.",
             );
                 ui.horizontal(|ui| {
-                    if ui.button("Import profiles...").clicked() {
+                    if ui
+                        .button("Import profiles...")
+                        .on_hover_text(crate::ui::icons::description("Import profiles..."))
+                        .clicked()
+                    {
                         self.open_dialog(FileMode::ImportProfiles);
                     }
-                    if ui.button("Export profiles...").clicked() {
+                    if ui
+                        .button("Export profiles...")
+                        .on_hover_text(crate::ui::icons::description("Export profiles..."))
+                        .clicked()
+                    {
                         self.open_dialog(FileMode::ExportProfiles);
                     }
                     ui.menu_button("Materials CSV", |ui| {
-                        if ui.button("Import materials CSV...").clicked() {
+                        if ui
+                            .button("Import materials CSV...")
+                            .on_hover_text(crate::ui::icons::description("Import materials CSV..."))
+                            .clicked()
+                        {
                             self.open_dialog(FileMode::ImportMaterialsCsv);
                             ui.close();
                         }
-                        if ui.button("Export materials CSV...").clicked() {
+                        if ui
+                            .button("Export materials CSV...")
+                            .on_hover_text(crate::ui::icons::description("Export materials CSV..."))
+                            .clicked()
+                        {
                             self.open_dialog(FileMode::ExportMaterialsCsv);
                             ui.close();
                         }
-                    });
+                    })
+                    .response
+                    .on_hover_text(crate::ui::icons::description("Materials CSV"));
                 });
                 ui.horizontal(|ui| {
                     let search_label = ui.label("Search");
                     ui.text_edit_singleline(&mut self.profile_search)
-                        .labelled_by(search_label.id);
+                        .labelled_by(search_label.id)
+                        .on_hover_text(crate::ui::icons::field("Search"));
                 });
                 let query = self.profile_search.trim().to_lowercase();
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.profile_favorites_only, "Favourites only");
+                    ui.checkbox(&mut self.profile_favorites_only, "Favourites only")
+                        .on_hover_text(crate::ui::icons::description("Favourites only"));
                     let category_label = ui.label("Category");
                     let selected = if self.profile_category_filter.is_empty() {
                         "All".to_string()
@@ -1213,18 +1288,21 @@ impl BeamBurinApp {
                                 &mut self.profile_category_filter,
                                 String::new(),
                                 "All",
-                            );
+                            )
+                            .on_hover_text(crate::ui::icons::description("All"));
                             for category in self.profiles.categories() {
                                 ui.selectable_value(
                                     &mut self.profile_category_filter,
                                     category.clone(),
                                     category,
-                                );
+                                )
+                                .on_hover_text("Filter by this category");
                             }
                         })
                         .response
                         .labelled_by(category_label.id);
-                    ui.checkbox(&mut self.profile_sort_by_date, "Newest first");
+                    ui.checkbox(&mut self.profile_sort_by_date, "Newest first")
+                        .on_hover_text(crate::ui::icons::description("Newest first"));
                 });
                 let filter = ProfileFilter {
                     query,
@@ -1248,7 +1326,11 @@ impl BeamBurinApp {
                             ui.horizontal(|ui| {
                                 let selected =
                                     self.selected_material.as_deref() == Some(row.id.as_str());
-                                if ui.selectable_label(selected, &row.name).clicked() {
+                                if ui
+                                    .selectable_label(selected, &row.name)
+                                    .on_hover_text("Open this profile")
+                                    .clicked()
+                                {
                                     self.selected_material = Some(row.id.clone());
                                 }
                                 if row.favorite {
@@ -1263,7 +1345,11 @@ impl BeamBurinApp {
                             });
                         }
                         ui.horizontal(|ui| {
-                            if ui.button("+ Material").clicked() {
+                            if ui
+                                .button("+ Material")
+                                .on_hover_text(crate::ui::icons::description("+ Material"))
+                                .clicked()
+                            {
                                 let profile = self.profiles.add_material(MaterialProfile::new(
                                     "New material",
                                     "Material",
@@ -1325,6 +1411,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.name)
                                             .labelled_by(name_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Name"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1332,6 +1419,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.material)
                                             .labelled_by(material_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Material"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1344,6 +1432,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm"),
                                             )
                                             .labelled_by(thickness_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Thickness"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1351,6 +1440,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.notes)
                                             .labelled_by(notes_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Notes"))
                                             .changed();
                                     });
                                     ui.separator();
@@ -1360,7 +1450,13 @@ impl BeamBurinApp {
                                             .recommended_operations
                                             .iter()
                                             .any(|recommended| recommended == operation_id);
-                                        if ui.checkbox(&mut checked, operation_name).changed() {
+                                        if ui
+                                            .checkbox(&mut checked, operation_name)
+                                            .on_hover_text(
+                                                "Recommend this operation for the profile",
+                                            )
+                                            .changed()
+                                        {
                                             if checked {
                                                 profile
                                                     .recommended_operations
@@ -1400,7 +1496,11 @@ impl BeamBurinApp {
                             ui.horizontal(|ui| {
                                 let selected =
                                     self.selected_operation.as_deref() == Some(row.id.as_str());
-                                if ui.selectable_label(selected, &row.name).clicked() {
+                                if ui
+                                    .selectable_label(selected, &row.name)
+                                    .on_hover_text("Open this profile")
+                                    .clicked()
+                                {
                                     self.selected_operation = Some(row.id.clone());
                                 }
                                 if row.favorite {
@@ -1415,7 +1515,11 @@ impl BeamBurinApp {
                             });
                         }
                         ui.horizontal(|ui| {
-                            if ui.button("+ Operation profile").clicked() {
+                            if ui
+                                .button("+ Operation profile")
+                                .on_hover_text(crate::ui::icons::description("+ Operation profile"))
+                                .clicked()
+                            {
                                 let profile = self.profiles.add_operation(OperationProfile::new(
                                     "New operation",
                                     OperationType::OutlineCutting,
@@ -1470,6 +1574,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.name)
                                             .labelled_by(name_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Name"))
                                             .changed();
                                     });
                                     let mut op_type = profile.op_type;
@@ -1481,7 +1586,8 @@ impl BeamBurinApp {
                                                     &mut op_type,
                                                     candidate,
                                                     candidate.label(),
-                                                );
+                                                )
+                                                .on_hover_text("Operation type for this profile");
                                             }
                                         });
                                     if op_type != profile.op_type {
@@ -1498,6 +1604,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm/min"),
                                             )
                                             .labelled_by(speed_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Speed"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1510,6 +1617,7 @@ impl BeamBurinApp {
                                                     .suffix(" %"),
                                             )
                                             .labelled_by(power_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Power"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1521,6 +1629,7 @@ impl BeamBurinApp {
                                                     .range(1..=100),
                                             )
                                             .labelled_by(passes_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Passes"))
                                             .changed();
                                         let interval_label = ui.label("Interval");
                                         changed |= ui
@@ -1533,6 +1642,7 @@ impl BeamBurinApp {
                                                 .suffix(" mm"),
                                             )
                                             .labelled_by(interval_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Interval"))
                                             .changed();
                                     });
                                 });
@@ -1588,7 +1698,11 @@ impl BeamBurinApp {
                             ui.horizontal(|ui| {
                                 let selected =
                                     self.selected_image_profile.as_deref() == Some(row.id.as_str());
-                                if ui.selectable_label(selected, &row.name).clicked() {
+                                if ui
+                                    .selectable_label(selected, &row.name)
+                                    .on_hover_text("Open this profile")
+                                    .clicked()
+                                {
                                     self.selected_image_profile = Some(row.id.clone());
                                 }
                                 if row.favorite {
@@ -1603,7 +1717,11 @@ impl BeamBurinApp {
                             });
                         }
                         ui.horizontal(|ui| {
-                            if ui.button("+ Image profile").clicked() {
+                            if ui
+                                .button("+ Image profile")
+                                .on_hover_text(crate::ui::icons::description("+ Image profile"))
+                                .clicked()
+                            {
                                 let profile = self.profiles.add_image(
                                     crate::profiles::ImageProfile::new("New image profile"),
                                 );
@@ -1657,6 +1775,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.name)
                                             .labelled_by(name_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Name"))
                                             .changed();
                                     });
                                     let mut mode = profile.settings.mode;
@@ -1715,14 +1834,16 @@ impl BeamBurinApp {
                                     changed |= ui
                                         .checkbox(&mut profile.settings.invert, "Invert")
                                         .changed();
-                                    let interval = ui.add(
-                                        egui::DragValue::new(
-                                            &mut profile.settings.line_interval_mm,
+                                    let interval = ui
+                                        .add(
+                                            egui::DragValue::new(
+                                                &mut profile.settings.line_interval_mm,
+                                            )
+                                            .speed(0.01)
+                                            .range(0.01..=2.0)
+                                            .suffix(" mm"),
                                         )
-                                        .speed(0.01)
-                                        .range(0.01..=2.0)
-                                        .suffix(" mm"),
-                                    );
+                                        .on_hover_text(crate::ui::icons::field("Line interval"));
                                     interval.widget_info(|| {
                                         egui::WidgetInfo::labeled(
                                             egui::WidgetType::DragValue,
@@ -1769,7 +1890,11 @@ impl BeamBurinApp {
                             ui.horizontal(|ui| {
                                 let selected = self.selected_project_profile.as_deref()
                                     == Some(row.id.as_str());
-                                if ui.selectable_label(selected, &row.name).clicked() {
+                                if ui
+                                    .selectable_label(selected, &row.name)
+                                    .on_hover_text("Open this profile")
+                                    .clicked()
+                                {
                                     self.selected_project_profile = Some(row.id.clone());
                                 }
                                 if row.favorite {
@@ -1784,7 +1909,11 @@ impl BeamBurinApp {
                             });
                         }
                         ui.horizontal(|ui| {
-                            if ui.button("+ Project profile").clicked() {
+                            if ui
+                                .button("+ Project profile")
+                                .on_hover_text(crate::ui::icons::description("+ Project profile"))
+                                .clicked()
+                            {
                                 let profile = self.profiles.add_project(
                                     crate::profiles::ProjectProfile::new(
                                         "New project",
@@ -1842,6 +1971,7 @@ impl BeamBurinApp {
                                         changed |= ui
                                             .text_edit_singleline(&mut profile.name)
                                             .labelled_by(name_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Name"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1854,6 +1984,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm"),
                                             )
                                             .labelled_by(width_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Width"))
                                             .changed();
                                         let height_label = ui.label("Height");
                                         changed |= ui
@@ -1864,6 +1995,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm"),
                                             )
                                             .labelled_by(height_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Height"))
                                             .changed();
                                     });
                                     ui.horizontal(|ui| {
@@ -1876,6 +2008,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm"),
                                             )
                                             .labelled_by(grid_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Grid spacing"))
                                             .changed();
                                         let snap_label = ui.label("Snap");
                                         changed |= ui
@@ -1886,6 +2019,7 @@ impl BeamBurinApp {
                                                     .suffix(" mm"),
                                             )
                                             .labelled_by(snap_label.id)
+                                            .on_hover_text(crate::ui::icons::field("Snap step"))
                                             .changed();
                                     });
                                 });
@@ -1901,7 +2035,13 @@ impl BeamBurinApp {
                                     ui.weak("Built-in profile: duplicate it to edit.");
                                 }
                                 let profile_clone = profile.clone();
-                                if ui.button("Apply to project").clicked() {
+                                if ui
+                                    .button("Apply to project")
+                                    .on_hover_text(crate::ui::icons::description(
+                                        "Apply to project",
+                                    ))
+                                    .clicked()
+                                {
                                     if self.editor.apply_project_profile(&profile_clone) {
                                         self.needs_fit = true;
                                         self.status = format!(
@@ -1918,13 +2058,22 @@ impl BeamBurinApp {
                         ui.horizontal(|ui| {
                             let file_label = ui.label("File");
                             ui.text_edit_singleline(&mut self.profile_io_path)
-                                .labelled_by(file_label.id);
+                                .labelled_by(file_label.id)
+                                .on_hover_text(crate::ui::icons::field("File"));
                         });
                         ui.horizontal(|ui| {
-                            if ui.button("Save profiles").clicked() {
+                            if ui
+                                .button("Save profiles")
+                                .on_hover_text(crate::ui::icons::description("Save profiles"))
+                                .clicked()
+                            {
                                 self.save_profiles();
                             }
-                            if ui.button("Import").clicked() {
+                            if ui
+                                .button("Import")
+                                .on_hover_text(crate::ui::icons::description("Import"))
+                                .clicked()
+                            {
                                 let path = std::path::PathBuf::from(self.profile_io_path.trim());
                                 match crate::profiles::import_into(&mut self.profiles, &path) {
                                     Ok(added) => {
@@ -1937,7 +2086,11 @@ impl BeamBurinApp {
                                     }
                                 }
                             }
-                            if ui.button("Export").clicked() {
+                            if ui
+                                .button("Export")
+                                .on_hover_text(crate::ui::icons::description("Export"))
+                                .clicked()
+                            {
                                 let path = std::path::PathBuf::from(self.profile_io_path.trim());
                                 match crate::profiles::export(&self.profiles, &path) {
                                     Ok(()) => {

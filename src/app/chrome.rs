@@ -230,7 +230,7 @@ impl BeamBurinApp {
                                 ui.close();
                             }
                         }
-                    });
+                    }).response.on_hover_text(crate::ui::icons::description("Recent projects"));
                 });
                 if icons::button(ui, Icon::Save, "Save").clicked() {
                     self.save();
@@ -342,7 +342,7 @@ impl BeamBurinApp {
                         self.open_dialog(FileMode::ExportGcode);
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Export selection"));
                 ui.separator();
                 if icons::button(ui, Icon::Page, "Document properties...").clicked() {
                     self.open_document_properties();
@@ -375,7 +375,7 @@ impl BeamBurinApp {
                     self.request(PendingAction::Quit);
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("File"));
             ui.menu_button(icons::menu_label(ui, Icon::Edit, "Edit"), |ui| {
                 if ui
                     .add_enabled(
@@ -526,7 +526,7 @@ impl BeamBurinApp {
                     self.editor.ungroup_selection();
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("Edit"));
             ui.menu_button(icons::menu_label(ui, Icon::Draw, "Draw"), |ui| {
                 for (tool, icon, label) in [
                     (Tool::Select, Icon::Select, "Selection"),
@@ -550,7 +550,7 @@ impl BeamBurinApp {
                     self.barcode_open = true;
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("Draw"));
             ui.menu_button(icons::menu_label(ui, Icon::Operations, "Operations"), |ui| {
                 if icons::button(ui, Icon::Intersections, "Registration marks...").clicked() {
                     self.regmarks_open = true;
@@ -638,7 +638,7 @@ impl BeamBurinApp {
                     }
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("Operations"));
             ui.menu_button(icons::menu_label(ui, Icon::Materials, "Materials and profiles"), |ui| {
                 if icons::button(ui, Icon::Materials, "Materials and operations...").clicked() {
                     self.profiles_open = true;
@@ -656,7 +656,7 @@ impl BeamBurinApp {
                     self.open_dialog(FileMode::ExportProfiles);
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("Materials and profiles"));
             ui.menu_button(icons::menu_label(ui, Icon::Arrange, "Arrange"), |ui| {
                 let enabled = !self.editor.selection.is_empty();
                 if ui
@@ -730,7 +730,7 @@ impl BeamBurinApp {
                         self.editor.distribute_selection_on_page(false);
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Distribute"));
                 ui.separator();
                 ui.menu_button(icons::menu_label(ui, Icon::TransformCenter, "Transform"), |ui| {
                     if ui
@@ -827,7 +827,7 @@ impl BeamBurinApp {
                                 );
                             }
                         },
-                    );
+                    ).response.on_hover_text(crate::ui::icons::description("Transform around"));
                     if ui
                         .add_enabled(enabled, icons::widget(ui, Icon::Recover, "Reset transforms"))
                         .clicked()
@@ -850,7 +850,7 @@ impl BeamBurinApp {
                         self.grid_array_open = true;
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Transform"));
                 ui.menu_button(icons::menu_label(ui, Icon::TextOutline, "Convert"), |ui| {
                     if ui
                         .add_enabled(
@@ -898,7 +898,7 @@ impl BeamBurinApp {
                         self.apply_text_on_path();
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Convert"));
                 ui.menu_button(icons::menu_label(ui, Icon::Nodes, "Paths"), |ui| {
                     if ui
                         .add_enabled(
@@ -967,7 +967,7 @@ impl BeamBurinApp {
                         self.open_nest();
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Paths"));
                 ui.menu_button(icons::menu_label(ui, Icon::FindDuplicates, "Find"), |ui| {
                     if icons::button(ui, Icon::FindDuplicates, "Find duplicates...").clicked() {
                         self.report_duplicates();
@@ -977,7 +977,7 @@ impl BeamBurinApp {
                         self.report_intersections();
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Find"));
                 ui.separator();
                 let can_combine = self.editor.selection.len() == 2;
                 ui.menu_button(icons::menu_label(ui, Icon::Boolean, "Boolean"), |ui| {
@@ -991,7 +991,7 @@ impl BeamBurinApp {
                             ui.close();
                         }
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Boolean"));
                 ui.menu_button(icons::menu_label(ui, Icon::BooleanUnion, "Combine"), |ui| {
                     if ui
                         .add_enabled(
@@ -1043,8 +1043,8 @@ impl BeamBurinApp {
                         self.offset_open = true;
                         ui.close();
                     }
-                });
-            });
+                }).response.on_hover_text(crate::ui::icons::description("Combine"));
+            }).response.on_hover_text(crate::ui::icons::description("Arrange"));
             ui.menu_button(icons::menu_label(ui, Icon::View, "View"), |ui| {
                 ui.menu_button(icons::menu_label(ui, Icon::ZoomIn, "Zoom"), |ui| {
                     if icons::button(ui, Icon::ZoomIn, "Zoom in").clicked() {
@@ -1069,7 +1069,7 @@ impl BeamBurinApp {
                         self.zoom_to_selection_request = true;
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Zoom"));
                 ui.menu_button(icons::menu_label(ui, Icon::Eye, "Display"), |ui| {
                     icons::checkbox(ui, &mut self.editor.canvas.grid_visible, Icon::Grid, "Show grid");
                     if icons::checkbox(
@@ -1111,8 +1111,8 @@ impl BeamBurinApp {
                                 "Grid step",
                             )
                         });
-                    });
-                });
+                    }).response.on_hover_text(crate::ui::icons::description("Snapping"));
+                }).response.on_hover_text(crate::ui::icons::description("Display"));
                 ui.menu_button(icons::menu_label(ui, Icon::Panels, "Panels"), |ui| {
                     icons::checkbox(ui, &mut self.show_layers_panel, Icon::Panels, "Layers panel (F9)");
                     icons::checkbox(ui, &mut self.show_properties_panel, Icon::Panels, "Properties panel (F10)");
@@ -1124,7 +1124,7 @@ impl BeamBurinApp {
                         self.history_open = true;
                         ui.close();
                     }
-                });
+                }).response.on_hover_text(crate::ui::icons::description("Panels"));
                 ui.separator();
                 if icons::button(ui, Icon::Search, "Command palette...").clicked() {
                     self.palette_open = true;
@@ -1142,7 +1142,7 @@ impl BeamBurinApp {
                     self.preferences_open = true;
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("View"));
             ui.menu_button(icons::menu_label(ui, Icon::Help, "Help"), |ui| {
                 if icons::button(ui, Icon::Text, "Keyboard shortcuts").clicked() {
                     self.help_shortcuts_open = true;
@@ -1165,7 +1165,7 @@ impl BeamBurinApp {
                     self.about_open = true;
                     ui.close();
                 }
-            });
+            }).response.on_hover_text(crate::ui::icons::description("Help"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(self.title());
             });
@@ -1342,7 +1342,8 @@ impl BeamBurinApp {
                             .range(0.1..=50.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(radius_button.id);
+                    .labelled_by(radius_button.id)
+                    .on_hover_text("Radius in millimetres");
                 });
             });
         });
@@ -1354,7 +1355,8 @@ impl BeamBurinApp {
                 egui::DragValue::new(&mut self.polygon_sides)
                     .speed(1.0)
                     .range(3..=64),
-            );
+            )
+            .on_hover_text("Number of sides in the new polygon");
             ui.label("sides");
         }
         if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse) {
@@ -1365,13 +1367,15 @@ impl BeamBurinApp {
                         .speed(0.5)
                         .range(0.01..=10000.0)
                         .suffix(" mm W"),
-                );
+                )
+                .on_hover_text("Width of the new shape in millimetres");
                 ui.add(
                     egui::DragValue::new(&mut self.exact_height)
                         .speed(0.5)
                         .range(0.01..=10000.0)
                         .suffix(" mm H"),
-                );
+                )
+                .on_hover_text("Height of the new shape in millimetres");
             }
         }
         if matches!(self.editor.tool, Tool::Rect | Tool::Ellipse | Tool::Line) {
@@ -1408,13 +1412,15 @@ impl BeamBurinApp {
                 egui::DragValue::new(&mut self.star_points)
                     .speed(1.0)
                     .range(3..=64),
-            );
+            )
+            .on_hover_text("Number of tips in the new star");
             ui.label("tips");
             ui.add(
                 egui::Slider::new(&mut self.star_inner, 0.05..=1.0)
                     .text("inner")
                     .fixed_decimals(2),
-            );
+            )
+            .on_hover_text("Inner radius as a fraction of the outer radius");
         }
     }
 
@@ -1442,20 +1448,33 @@ impl BeamBurinApp {
 
                 self.tool_options(ui);
                 ui.separator();
-                if icons::compact_button(ui, "-").clicked() {
+                if icons::compact_button(ui, "-")
+                    .on_hover_text("Zoom out")
+                    .clicked()
+                {
                     self.editor.zoom_out();
                 }
                 ui.label(format!("{:.0}%", self.editor.canvas.zoom * 100.0));
-                if icons::compact_button(ui, "+").clicked() {
+                if icons::compact_button(ui, "+")
+                    .on_hover_text("Zoom in")
+                    .clicked()
+                {
                     self.editor.zoom_in();
                 }
-                if ui.button("Fit").clicked() {
+                if ui
+                    .button("Fit")
+                    .on_hover_text(crate::ui::icons::description("Fit"))
+                    .clicked()
+                {
                     self.needs_fit = true;
                 }
                 ui.separator();
-                ui.checkbox(&mut self.editor.canvas.grid_visible, "Grid");
-                ui.checkbox(&mut self.editor.snap_enabled, "Snap");
-                ui.checkbox(&mut self.preview_toolpaths, "Toolpaths");
+                ui.checkbox(&mut self.editor.canvas.grid_visible, "Grid")
+                    .on_hover_text(crate::ui::icons::description("Grid"));
+                ui.checkbox(&mut self.editor.snap_enabled, "Snap")
+                    .on_hover_text(crate::ui::icons::description("Snap"));
+                ui.checkbox(&mut self.preview_toolpaths, "Toolpaths")
+                    .on_hover_text(crate::ui::icons::description("Toolpaths"));
                 ui.separator();
                 if icons::button(ui, Icon::Open, "Open").clicked() {
                     self.request(PendingAction::Open);

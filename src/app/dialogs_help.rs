@@ -116,7 +116,7 @@ impl BeamBurinApp {
                     }
                 });
             ui.horizontal(|ui| {
-                if ui.button("Copy client configuration").clicked() {
+                if ui.button("Copy client configuration").on_hover_text(crate::ui::icons::description("Copy client configuration")).clicked() {
                     note = Some("Client configuration copied".to_string());
                     copy = Some(crate::assistant::client_config());
                 }

@@ -43,7 +43,8 @@ impl BeamBurinApp {
                     egui::TextEdit::multiline(&mut self.text_editor_draft.content)
                         .desired_rows(4)
                         .desired_width(f32::INFINITY),
-                );
+                )
+                .on_hover_text("Text to place on the canvas");
                 egui::Grid::new("text_editor_grid")
                     .num_columns(2)
                     .spacing([8.0, 6.0])
@@ -60,7 +61,8 @@ impl BeamBurinApp {
                                 .speed(0.1)
                                 .range(0.1..=10_000.0),
                         )
-                        .labelled_by(size_label.id);
+                        .labelled_by(size_label.id)
+                        .on_hover_text(crate::ui::icons::field("Size"));
                         ui.end_row();
                         let spacing_label = ui.label("Letter spacing");
                         ui.add(
@@ -69,7 +71,8 @@ impl BeamBurinApp {
                                 .range(-10.0..=50.0)
                                 .suffix(" mm"),
                         )
-                        .labelled_by(spacing_label.id);
+                        .labelled_by(spacing_label.id)
+                        .on_hover_text(crate::ui::icons::field("Letter spacing"));
                         ui.end_row();
                         let line_label = ui.label("Line spacing");
                         ui.add(
@@ -77,14 +80,16 @@ impl BeamBurinApp {
                                 .fixed_decimals(2)
                                 .show_value(false),
                         )
-                        .labelled_by(line_label.id);
+                        .labelled_by(line_label.id)
+                        .on_hover_text(crate::ui::icons::field("Line spacing"));
                         ui.add(
                             egui::DragValue::new(&mut self.text_editor_draft.line_spacing)
                                 .speed(0.01)
                                 .range(0.5..=5.0)
                                 .fixed_decimals(2),
                         )
-                        .labelled_by(line_label.id);
+                        .labelled_by(line_label.id)
+                        .on_hover_text(crate::ui::icons::field("Line spacing"));
                         ui.end_row();
                         let align_label = ui.label("Align");
                         let mut align = self.text_editor_draft.align;
@@ -100,7 +105,8 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(align_label.id);
+                            .labelled_by(align_label.id)
+                            .on_hover_text(crate::ui::icons::field("Align"));
                         self.text_editor_draft.align = align;
                         ui.end_row();
                         let vertical_label = ui.label("Vertical");
@@ -117,26 +123,38 @@ impl BeamBurinApp {
                                 }
                             })
                             .response
-                            .labelled_by(vertical_label.id);
+                            .labelled_by(vertical_label.id)
+                            .on_hover_text(crate::ui::icons::field("Vertical"));
                         self.text_editor_draft.vertical_align = valign;
                         ui.end_row();
                         ui.label("Upper case");
-                        ui.checkbox(&mut self.text_editor_draft.uppercase, "Force upper case");
+                        ui.checkbox(&mut self.text_editor_draft.uppercase, "Force upper case")
+                            .on_hover_text(crate::ui::icons::description("Force upper case"));
                         ui.end_row();
                         ui.label("Style");
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut self.text_editor_draft.bold, "Bold");
-                            ui.checkbox(&mut self.text_editor_draft.italic, "Italic");
+                            ui.checkbox(&mut self.text_editor_draft.bold, "Bold")
+                                .on_hover_text(crate::ui::icons::description("Bold"));
+                            ui.checkbox(&mut self.text_editor_draft.italic, "Italic")
+                                .on_hover_text(crate::ui::icons::description("Italic"));
                         });
                         ui.end_row();
                     });
                 ui.weak("Shift+Enter starts a new line.");
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("OK").clicked() {
+                        if ui
+                            .button("OK")
+                            .on_hover_text(crate::ui::icons::description("OK"))
+                            .clicked()
+                        {
                             apply = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text(crate::ui::icons::description("Cancel"))
+                            .clicked()
+                        {
                             cancel = true;
                         }
                     });

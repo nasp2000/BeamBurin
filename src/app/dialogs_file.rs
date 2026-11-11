@@ -27,7 +27,7 @@ impl BeamBurinApp {
                     let name_label = ui.label("Name");
                     changed |= ui
                         .text_edit_singleline(&mut self.editor.document.name)
-                        .labelled_by(name_label.id)
+                        .labelled_by(name_label.id).on_hover_text(crate::ui::icons::field("Name"))
                         .changed();
                     ui.end_row();
                     let width_label = ui.label("Width");
@@ -38,7 +38,7 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
-                        .labelled_by(width_label.id)
+                        .labelled_by(width_label.id).on_hover_text(crate::ui::icons::field("Width"))
                         .changed();
                     ui.end_row();
                     let height_label = ui.label("Height");
@@ -49,7 +49,7 @@ impl BeamBurinApp {
                                 .range(10.0..=100_000.0)
                                 .suffix(" mm"),
                         )
-                        .labelled_by(height_label.id)
+                        .labelled_by(height_label.id).on_hover_text(crate::ui::icons::field("Height"))
                         .changed();
                     ui.end_row();
                     let unit_label = ui.label("Unit");
@@ -72,7 +72,7 @@ impl BeamBurinApp {
                             }
                         })
                         .response
-                        .labelled_by(unit_label.id);
+                        .labelled_by(unit_label.id).on_hover_text(crate::ui::icons::field("Unit"));
                     self.editor.document.unit = unit;
                     ui.end_row();
                     ui.label("Origin");
@@ -168,7 +168,7 @@ impl BeamBurinApp {
                         ui.end_row();
                     });
                 ui.horizontal(|ui| {
-                    if ui.button("Use the page size").clicked() {
+                    if ui.button("Use the page size").on_hover_text(crate::ui::icons::description("Use the page size")).clicked() {
                         *stock = crate::document::MaterialZone::new(
                             0.0,
                             0.0,
@@ -224,7 +224,7 @@ impl BeamBurinApp {
                                 .suffix(" mm"),
                         )
                         .changed();
-                    if ui.button("Remove").clicked() {
+                    if ui.button("Remove").on_hover_text(crate::ui::icons::description("Remove")).clicked() {
                         remove_area = Some(index);
                     }
                 });
@@ -235,7 +235,7 @@ impl BeamBurinApp {
                     changed = true;
                 }
             }
-            if ui.button("Add restricted area").clicked() {
+            if ui.button("Add restricted area").on_hover_text(crate::ui::icons::description("Add restricted area")).clicked() {
                 self.editor.document.restricted_areas.push(
                     crate::document::MaterialZone::new(
                         page_width * 0.25,
@@ -332,10 +332,18 @@ impl BeamBurinApp {
                             .suffix(" mm"),
                     )
                     .labelled_by(position_label.id);
-                    if ui.button("Add horizontal").clicked() {
+                    if ui
+                        .button("Add horizontal")
+                        .on_hover_text(crate::ui::icons::description("Add horizontal"))
+                        .clicked()
+                    {
                         self.editor.add_guide(true, self.guide_position);
                     }
-                    if ui.button("Add vertical").clicked() {
+                    if ui
+                        .button("Add vertical")
+                        .on_hover_text(crate::ui::icons::description("Add vertical"))
+                        .clicked()
+                    {
                         self.editor.add_guide(false, self.guide_position);
                     }
                 });

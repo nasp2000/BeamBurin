@@ -61,7 +61,11 @@ impl BeamBurinApp {
                 let before = self.editor.document.clone();
                 let mut message: Option<String> = None;
                 ui.horizontal(|ui| {
-                    if ui.button("+ Layer").clicked() {
+                    if ui
+                        .button("+ Layer")
+                        .on_hover_text(crate::ui::icons::description("+ Layer"))
+                        .clicked()
+                    {
                         let name = format!("Layer {}", self.editor.document.layers.len() + 1);
                         let used: Vec<String> = self
                             .editor
@@ -89,7 +93,11 @@ impl BeamBurinApp {
                         }
                         self.editor.active_layer_id = id;
                     }
-                    if ui.button("- Layer").clicked() {
+                    if ui
+                        .button("- Layer")
+                        .on_hover_text(crate::ui::icons::description("- Layer"))
+                        .clicked()
+                    {
                         let id = self.editor.active_layer_id.clone();
                         match self.delete_layer(&id) {
                             Ok(()) => {
@@ -289,7 +297,10 @@ impl BeamBurinApp {
                                 [52.0, 18.0],
                                 egui::Label::new(speeds).sense(egui::Sense::click()),
                             );
-                            if speeds_response.secondary_clicked() {
+                            if speeds_response
+                                .on_hover_text("Secondary-click to edit this cut entry")
+                                .secondary_clicked()
+                            {
                                 self.open_row_settings(id);
                             }
                             let mut output = operation.is_some_and(|entry| entry.4);
@@ -435,7 +446,11 @@ impl BeamBurinApp {
                 ui.separator();
                 ui.heading("Job");
                 ui.horizontal(|ui| {
-                    if ui.button("Estimate").clicked() {
+                    if ui
+                        .button("Estimate")
+                        .on_hover_text(crate::ui::icons::description("Estimate"))
+                        .clicked()
+                    {
                         match crate::gcode::render_job(
                             &self.editor.document,
                             &crate::gcode::JobOptions::default(),
@@ -447,7 +462,11 @@ impl BeamBurinApp {
                             }
                         }
                     }
-                    if ui.button("Export G-code...").clicked() {
+                    if ui
+                        .button("Export G-code...")
+                        .on_hover_text(crate::ui::icons::description("Export G-code..."))
+                        .clicked()
+                    {
                         self.open_dialog(FileMode::ExportGcode);
                     }
                 });
@@ -603,10 +622,18 @@ impl BeamBurinApp {
             self.row_settings_ui(ui, &id);
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.button("OK").clicked() {
+                if ui
+                    .button("OK")
+                    .on_hover_text(crate::ui::icons::description("OK"))
+                    .clicked()
+                {
                     commit = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if ui
+                    .button("Cancel")
+                    .on_hover_text(crate::ui::icons::description("Cancel"))
+                    .clicked()
+                {
                     cancel = true;
                 }
             });
@@ -696,7 +723,8 @@ impl BeamBurinApp {
                 let name_label = ui.label("Name");
                 if let Some(layer) = self.editor.document.layer_mut(id) {
                     ui.text_edit_singleline(&mut layer.name)
-                        .labelled_by(name_label.id);
+                        .labelled_by(name_label.id)
+                        .on_hover_text(crate::ui::icons::field("Name"));
                 }
                 ui.end_row();
                 ui.label("Colour");
@@ -744,7 +772,8 @@ impl BeamBurinApp {
                     };
                     let cut_label = ui.label("Cut");
                     ui.text_edit_singleline(&mut operation.name)
-                        .labelled_by(cut_label.id);
+                        .labelled_by(cut_label.id)
+                        .on_hover_text(crate::ui::icons::field("Cut"));
                     ui.end_row();
                     let mode_label = ui.label("Mode");
                     let mut kind = operation.op_type;
@@ -762,7 +791,8 @@ impl BeamBurinApp {
                             }
                         })
                         .response
-                        .labelled_by(mode_label.id);
+                        .labelled_by(mode_label.id)
+                        .on_hover_text(crate::ui::icons::field("Mode"));
                     operation.op_type = kind;
                     ui.end_row();
                     let speed_label = ui.label("Speed (mm/min)");
@@ -771,7 +801,8 @@ impl BeamBurinApp {
                             .speed(10.0)
                             .range(1.0..=100_000.0),
                     )
-                    .labelled_by(speed_label.id);
+                    .labelled_by(speed_label.id)
+                    .on_hover_text(crate::ui::icons::field("Speed (mm/min)"));
                     ui.end_row();
                     let power_label = ui.label("Power (%)");
                     ui.add(
@@ -779,7 +810,8 @@ impl BeamBurinApp {
                             .speed(1.0)
                             .range(0.0..=100.0),
                     )
-                    .labelled_by(power_label.id);
+                    .labelled_by(power_label.id)
+                    .on_hover_text(crate::ui::icons::field("Power (%)"));
                     ui.end_row();
                     let passes_label = ui.label("Passes");
                     ui.add(
@@ -787,7 +819,8 @@ impl BeamBurinApp {
                             .speed(0.2)
                             .range(1..=1000),
                     )
-                    .labelled_by(passes_label.id);
+                    .labelled_by(passes_label.id)
+                    .on_hover_text(crate::ui::icons::field("Passes"));
                     ui.end_row();
                     let dpi_label = ui.label("DPI");
                     let mut dpi = (25.4 / operation.params.line_interval_mm.max(0.001)).round();
@@ -806,6 +839,7 @@ impl BeamBurinApp {
                     ui.end_row();
                     ui.label("Air assist");
                     ui.checkbox(&mut operation.params.air_assist, "")
+                        .on_hover_text("Enable air assist for this operation")
                         .widget_info(|| {
                             egui::WidgetInfo::selected(
                                 egui::WidgetType::Checkbox,
@@ -816,14 +850,16 @@ impl BeamBurinApp {
                         });
                     ui.end_row();
                     ui.label("Output");
-                    ui.checkbox(&mut operation.enabled, "").widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::WidgetType::Checkbox,
-                            true,
-                            operation.enabled,
-                            "Output",
-                        )
-                    });
+                    ui.checkbox(&mut operation.enabled, "")
+                        .on_hover_text("Run this operation in the job")
+                        .widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::Checkbox,
+                                true,
+                                operation.enabled,
+                                "Output",
+                            )
+                        });
                     ui.end_row();
                     if ui
                         .button("All settings...")
@@ -848,7 +884,11 @@ impl BeamBurinApp {
             }
         } else {
             ui.weak("This layer has no cut entry.");
-            if ui.button("Add cut entry").clicked() {
+            if ui
+                .button("Add cut entry")
+                .on_hover_text(crate::ui::icons::description("Add cut entry"))
+                .clicked()
+            {
                 let before = self.editor.document.clone();
                 let colour = self.layer_display_colour(id);
                 let operation = self.editor.ensure_operation_for_colour(&colour);
@@ -873,13 +913,21 @@ impl BeamBurinApp {
             }
         }
         ui.separator();
-        if ui.button("Duplicate layer").clicked() {
+        if ui
+            .button("Duplicate layer")
+            .on_hover_text(crate::ui::icons::description("Duplicate layer"))
+            .clicked()
+        {
             if let Some(copy) = self.editor.duplicate_layer(id) {
                 self.editor.active_layer_id = copy;
             }
             self.row_settings_done = true;
         }
-        if ui.button("Delete layer").clicked() {
+        if ui
+            .button("Delete layer")
+            .on_hover_text(crate::ui::icons::description("Delete layer"))
+            .clicked()
+        {
             let before = self.editor.document.clone();
             if let Err(error) = self.delete_layer(id) {
                 self.status = error;
@@ -889,23 +937,39 @@ impl BeamBurinApp {
             }
             self.row_settings_done = true;
         }
-        if ui.button("Select objects").clicked() {
+        if ui
+            .button("Select objects")
+            .on_hover_text(crate::ui::icons::description("Select objects"))
+            .clicked()
+        {
             let count = self.editor.select_layer_objects(id);
             self.status = format!("Selected {count} object(s)");
             self.row_settings_done = true;
         }
-        if ui.button("Select this colour").clicked() {
+        if ui
+            .button("Select this colour")
+            .on_hover_text(crate::ui::icons::description("Select this colour"))
+            .clicked()
+        {
             let colour = self.layer_display_colour(id);
             let count = self.editor.select_by_color(&colour);
             self.status = format!("Selected {count} object(s) of {colour}");
             self.row_settings_done = true;
         }
-        if ui.button("Group objects").clicked() {
+        if ui
+            .button("Group objects")
+            .on_hover_text(crate::ui::icons::description("Group objects"))
+            .clicked()
+        {
             let count = self.editor.group_layer_objects(id);
             self.status = format!("Grouped {count} object(s)");
             self.row_settings_done = true;
         }
-        if ui.button("Group by colour").clicked() {
+        if ui
+            .button("Group by colour")
+            .on_hover_text(crate::ui::icons::description("Group by colour"))
+            .clicked()
+        {
             let (groups, objects) = self.editor.group_by_colour();
             self.status = if groups == 0 {
                 "No colour has two or more objects".to_string()

@@ -58,7 +58,7 @@ impl BeamBurinApp {
                         Color32::from_rgb(190, 60, 50),
                         format!("Cannot build the job: {error}"),
                     );
-                    if ui.button("Refresh").clicked() {
+                    if ui.button("Refresh").on_hover_text(crate::ui::icons::description("Refresh")).clicked() {
                         self.refresh_preview();
                     }
                     return;
@@ -69,21 +69,25 @@ impl BeamBurinApp {
                     } else {
                         "Play"
                     };
-                    if ui.button(play_label).clicked() {
+                    if ui
+                        .button(play_label)
+                        .on_hover_text("Play or pause the preview")
+                        .clicked()
+                    {
                         if !self.playback_playing && self.playback_progress >= total && total > 0.0
                         {
                             self.playback_progress = 0.0;
                         }
                         self.playback_playing = !self.playback_playing;
                     }
-                    if ui.button("Stop").clicked() {
+                    if ui.button("Stop").on_hover_text(crate::ui::icons::description("Stop")).clicked() {
                         self.playback_playing = false;
                         self.playback_progress = 0.0;
                     }
                     ui.add(
                         egui::Slider::new(&mut self.playback_progress, 0.0..=total.max(0.001))
                             .show_value(false),
-                    )
+                    ).on_hover_text(crate::ui::icons::field("Speed"))
                     .widget_info(|| {
                         egui::WidgetInfo::labeled(
                             egui::WidgetType::Slider,
@@ -100,7 +104,7 @@ impl BeamBurinApp {
                             .logarithmic(true)
                             .show_value(false),
                     )
-                    .labelled_by(speed_label.id);
+                    .labelled_by(speed_label.id).on_hover_text(crate::ui::icons::field("Speed"));
                     ui.add(
                         egui::DragValue::new(&mut self.playback_speed)
                             .speed(0.05)
@@ -115,7 +119,7 @@ impl BeamBurinApp {
                             "Speed multiplier",
                         )
                     });
-                    if ui.button("Refresh").clicked() {
+                    if ui.button("Refresh").on_hover_text(crate::ui::icons::description("Refresh")).clicked() {
                         self.refresh_preview();
                     }
                     crate::ui::help::button(ui, "preview");
@@ -136,11 +140,11 @@ impl BeamBurinApp {
                     ui.weak("The document has no toolpaths yet.");
                 }
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.preview_line_numbers, "Line numbers");
-                    ui.checkbox(&mut self.preview_order, "Processing order on canvas");
+                    ui.checkbox(&mut self.preview_line_numbers, "Line numbers").on_hover_text(crate::ui::icons::description("Line numbers"));
+                    ui.checkbox(&mut self.preview_order, "Processing order on canvas").on_hover_text(crate::ui::icons::description("Processing order on canvas"));
                 });
                 ui.weak(format!("Estimated job time: {duration:.1} s"));
-                if ui.button("Copy G-code").clicked() {
+                if ui.button("Copy G-code").on_hover_text(crate::ui::icons::description("Copy G-code")).clicked() {
                     match crate::gcode::render_job(
                         &self.editor.document,
                         &crate::gcode::JobOptions::default(),
@@ -172,7 +176,8 @@ impl BeamBurinApp {
                                     .code_editor()
                                     .desired_rows(18)
                                     .desired_width(f32::INFINITY),
-                            );
+                            )
+                            .on_hover_text("Read-only preview of the generated job");
                         });
                     if self.gcode_line_count > GCODE_PREVIEW_LINES {
                         ui.weak(format!(

@@ -5,6 +5,7 @@
 //! reachable with Tab and the keyboard, and expose their text as a normal
 //! AccessKit label when opened.
 
+use crate::ui::icons::{self, Icon};
 use egui::Ui;
 
 /// One help section. Keyed so tests and callers never depend on the title.
@@ -71,13 +72,15 @@ pub fn topic(key: &str) -> &'static Topic {
         .unwrap_or_else(|| panic!("unknown contextual help key: {key}"))
 }
 
-/// Add a compact help button that opens this section.
+/// Add a compact help icon whose tooltip explains this panel.
 ///
-/// The popup text is a normal label, so keyboard and screen-reader users reach
-/// it the same way as the controls it describes.
+/// Hovering shows the whole section, so the help arrives without a click. The
+/// icon still opens the same text in a popup for keyboard and screen-reader
+/// users, and its accessible name stays "Help for <title>".
 pub fn button(ui: &mut Ui, key: &str) -> egui::Response {
     let topic = topic(key);
-    let response = ui.menu_button("?", |ui| {
+    let icon = icons::image_at(ui.ctx(), Icon::Help, 16.0);
+    let response = ui.menu_button(icon, |ui| {
         ui.set_max_width(360.0);
         ui.strong(topic.title);
         ui.label(topic.text);
@@ -89,9 +92,11 @@ pub fn button(ui: &mut Ui, key: &str) -> egui::Response {
             format!("Help for {}", topic.title),
         )
     });
-    response
-        .response
-        .on_hover_text(format!("Help for {}", topic.title))
+    response.response.on_hover_ui(|ui| {
+        ui.set_max_width(360.0);
+        ui.strong(format!("Help for {}", topic.title));
+        ui.label(topic.text);
+    })
 }
 
 #[cfg(test)]

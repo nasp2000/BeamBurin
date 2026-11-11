@@ -2129,7 +2129,8 @@ fn edit_color(ui: &mut Ui, color: &mut Option<String>) {
             }
         }
         if normalize_hex_color(value).is_none() {
-            ui.colored_label(Color32::from_rgb(200, 60, 60), "?");
+            ui.colored_label(Color32::from_rgb(200, 60, 60), "Invalid")
+                .on_hover_text("Colour must be #rrggbb");
         }
     });
 }
