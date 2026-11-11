@@ -22,6 +22,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "man-of-war.hpgl" => 296,
         "mtext-inline.dxf" => 12,
         "stacked-text.dxf" => 439,
+        "text-fonts.dxf" => 1344,
         "svg-logo.svg" => 18,
         "text.dxf" => 217,
         "uncommon.dxf" => 47,
