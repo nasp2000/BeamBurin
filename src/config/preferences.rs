@@ -549,6 +549,9 @@ pub struct VectorExportPreset {
     /// Frame the drawing bounds (`drawing`) or the whole page (`page`).
     #[serde(default = "default_vector_area")]
     pub area: String,
+    /// Layer ids written by this preset; empty keeps every layer.
+    #[serde(default)]
+    pub layers: Vec<String>,
 }
 
 fn default_vector_area() -> String {
@@ -578,6 +581,18 @@ impl VectorExportPreset {
         }
         if !matches!(self.area.as_str(), "page" | "drawing" | "selection") {
             return Err(format!("unknown vector area: {}", self.area));
+        }
+        if self.layers.len() > 10_000 {
+            return Err("a vector preset can list at most 10000 layers".to_string());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for id in &self.layers {
+            if id.trim().is_empty() {
+                return Err("a vector preset layer id cannot be empty".to_string());
+            }
+            if !seen.insert(id) {
+                return Err(format!("duplicate vector preset layer id: {id}"));
+            }
         }
         Ok(())
     }
@@ -1134,6 +1149,11 @@ mod tests {
         let json = serde_json::to_string(&vector).unwrap();
         let vector: VectorExportPreset = serde_json::from_str(&json).unwrap();
         assert_eq!(vector.area, "selection");
+
+        vector.layers = vec!["layer-a".to_string(), "layer-b".to_string()];
+        let json = serde_json::to_string(&vector).unwrap();
+        let vector: VectorExportPreset = serde_json::from_str(&json).unwrap();
+        assert_eq!(vector.layers, vec!["layer-a", "layer-b"]);
     }
 
     #[test]
@@ -1194,6 +1214,7 @@ mod tests {
             dxf_unit: "mm".to_string(),
             embed_images: false,
             area: "page".to_string(),
+            layers: Vec::new(),
         }
     }
 
@@ -1232,6 +1253,11 @@ mod tests {
         bad.area = "other".to_string();
         assert!(presets.upsert(bad.clone()).is_err());
         bad.area = "page".to_string();
+        bad.layers = vec![String::new()];
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.layers = vec!["layer-1".to_string(), "layer-1".to_string()];
+        assert!(presets.upsert(bad.clone()).is_err());
+        bad.layers = vec!["layer-1".to_string()];
         assert!(presets.upsert(bad).is_ok());
 
         let mut duplicate = VectorExportPresetPrefs {
@@ -1248,6 +1274,7 @@ mod tests {
         let preset: VectorExportPreset = serde_json::from_str(json).unwrap();
         assert!(preset.margin_mm.abs() < f64::EPSILON);
         assert_eq!(preset.area, "page");
+        assert!(preset.layers.is_empty());
     }
 
     #[test]

@@ -4307,6 +4307,8 @@ fn the_export_presets_window_saves_image_and_vector_options() {
 
     let mut app = ui_test_app();
     app.export_presets_open = true;
+    let first_layer = app.editor.document.layers[0].id.clone();
+    let second_layer = app.editor.document.add_layer("Layer 2").id.clone();
     app.export_image_dpi = 300.0;
     app.export_image_margin_mm = 4.0;
     app.export_image_custom_size = true;
@@ -4321,6 +4323,11 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     app.export_vector_drawing = true;
     app.vector_export_preset_name = "DXF arcs".to_string();
     app.vector_export_preset_format = "dxf".to_string();
+    app.export_dxf_layer_ids = vec![
+        first_layer.clone(),
+        second_layer.clone(),
+        "missing-layer".to_string(),
+    ];
     let mut harness = ui_harness(app);
     harness.run();
 
@@ -4367,6 +4374,15 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!((vector.margin_mm - 6.0).abs() < f64::EPSILON);
     assert_eq!(vector.dxf_unit, "in");
     assert_eq!(vector.area, "drawing", "the vector framing was not saved");
+    assert_eq!(
+        vector.layers,
+        vec![
+            first_layer.clone(),
+            second_layer.clone(),
+            "missing-layer".to_string()
+        ],
+        "the vector layer set was not saved"
+    );
     let svg = preferences
         .vector_export_presets
         .find("SVG embedded")
@@ -4419,6 +4435,29 @@ fn the_export_presets_window_saves_image_and_vector_options() {
     assert!(
         (state.export_vector_margin_mm - 6.0).abs() < f64::EPSILON,
         "the preset margin was not applied"
+    );
+    assert_eq!(
+        state.export_dxf_layer_ids,
+        vec![first_layer.clone(), second_layer.clone()],
+        "the preset layer set was not applied or kept a missing layer"
+    );
+    let mut bare = vector.clone();
+    bare.layers.clear();
+    state.export_dxf_layer_ids = vec![second_layer.clone()];
+    state.apply_vector_export_preset(&bare);
+    assert_eq!(
+        state.export_dxf_layer_ids,
+        vec![second_layer.clone()],
+        "a preset without layers replaced the current selection"
+    );
+    let mut foreign = vector.clone();
+    foreign.layers = vec!["only-missing".to_string()];
+    state.export_dxf_layer_ids = vec![second_layer.clone()];
+    state.apply_vector_export_preset(&foreign);
+    assert_eq!(
+        state.export_dxf_layer_ids,
+        vec![second_layer.clone()],
+        "a preset with no matching layer cleared the current selection"
     );
 }
 

@@ -646,6 +646,13 @@ impl BeamBurinApp {
         preset: &crate::config::preferences::VectorExportPreset,
     ) {
         self.export_vector_margin_mm = preset.margin_mm;
+        let saved_layers: Vec<String> = preset
+            .layers
+            .iter()
+            .filter(|id| self.editor.document.layer(id.as_str()).is_some())
+            .cloned()
+            .collect();
+        let restore_layers = !preset.layers.is_empty() && !saved_layers.is_empty();
         self.export_vector_drawing = preset.area == "drawing";
         let selection = preset.area == "selection";
         self.export_svg_selection = selection && preset.format == "svg";
@@ -661,14 +668,25 @@ impl BeamBurinApp {
             "svg" => {
                 self.export_svg_text_paths = preset.text_as_paths;
                 self.export_svg_embed_images = preset.embed_images;
+                if restore_layers {
+                    self.export_svg_layer_ids.clone_from(&saved_layers);
+                }
             }
             "dxf" => {
                 self.export_dxf_text_paths = preset.text_as_paths;
                 self.export_dxf_arcs = preset.arcs;
                 self.export_dxf_unit =
                     crate::export::DxfUnit::from_id(&preset.dxf_unit).unwrap_or_default();
+                if restore_layers {
+                    self.export_dxf_layer_ids.clone_from(&saved_layers);
+                }
             }
-            _ => self.export_vector_text_paths = preset.text_as_paths,
+            _ => {
+                self.export_vector_text_paths = preset.text_as_paths;
+                if restore_layers {
+                    self.export_vector_layer_ids.clone_from(&saved_layers);
+                }
+            }
         }
     }
 
@@ -1191,8 +1209,8 @@ impl BeamBurinApp {
         let mut apply: Option<String> = None;
         let mut delete: Option<String> = None;
         ui.label(
-            "Resolution, transparency, margin, offset and a custom pixel size. \
-             The area (page, selection or drawing) is chosen per export.",
+            "Resolution, transparency, margin, offset, a custom pixel size and \
+             page, selection or drawing framing are saved with the preset.",
         );
         ui.horizontal(|ui| {
             let name_label = ui.label("Image preset name");
@@ -1242,6 +1260,8 @@ impl BeamBurinApp {
                     },
                     if preset.drawing {
                         " · drawing"
+                    } else if preset.selection {
+                        " · selection"
                     } else {
                         " · page"
                     }
@@ -1307,8 +1327,8 @@ impl BeamBurinApp {
         let mut apply: Option<String> = None;
         let mut delete: Option<String> = None;
         ui.label(
-            "Text as paths and, for DXF, circles and ellipses as curves. \
-             The area and the layers are chosen per export.",
+            "Text as paths, SVG image embedding, DXF curves and unit, margin, \
+             framing and the layer set are saved with the preset.",
         );
         ui.horizontal(|ui| {
             let format_label = ui.label("Format");
@@ -1361,8 +1381,13 @@ impl BeamBurinApp {
                 } else {
                     ""
                 };
+                let layers = if preset.layers.is_empty() {
+                    " · all layers".to_string()
+                } else {
+                    format!(" · {} layer(s)", preset.layers.len())
+                };
                 ui.weak(format!(
-                    "{} · {}{}{}{}{}{}",
+                    "{} · {}{}{}{}{}{}{}",
                     preset.format.to_uppercase(),
                     if preset.text_as_paths {
                         "text as paths"
@@ -1381,7 +1406,8 @@ impl BeamBurinApp {
                         "drawing" => " · drawing",
                         "selection" => " · selection",
                         _ => " · page",
-                    }
+                    },
+                    layers
                 ));
                 if ui
                     .button("Apply")
@@ -1421,6 +1447,11 @@ impl BeamBurinApp {
             } else {
                 "page".to_string()
             };
+            let layers = match format.as_str() {
+                "svg" => self.export_svg_layer_ids.clone(),
+                "dxf" => self.export_dxf_layer_ids.clone(),
+                _ => self.export_vector_layer_ids.clone(),
+            };
             let preset = crate::config::preferences::VectorExportPreset {
                 name: name.clone(),
                 format,
@@ -1430,6 +1461,7 @@ impl BeamBurinApp {
                 dxf_unit: self.export_dxf_unit.id().to_string(),
                 embed_images,
                 area,
+                layers,
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {
