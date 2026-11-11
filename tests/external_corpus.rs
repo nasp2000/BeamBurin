@@ -24,6 +24,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "stacked-text.dxf" => 439,
         "text-fonts.dxf" => 1344,
         "text-mirror.dxf" => 672,
+        "tracemonkey.pdf" => 1546,
         "svg-logo.svg" => 18,
         "text.dxf" => 217,
         "uncommon.dxf" => 47,
