@@ -2136,12 +2136,36 @@ impl EditorState {
     /// The clicked point is in world coordinates; the nearest corner within
     /// `tolerance` is rounded with a cubic arc and the shape becomes a path.
     pub fn round_corner_at(&mut self, point: Point2, tolerance: f64, radius: f64) -> bool {
+        let ids = self.selection.ids().to_vec();
+        self.round_corner_on(&ids, point, tolerance, radius)
+    }
+
+    /// Round the nearest corner or path point of any drawing at `point`.
+    ///
+    /// The selected objects are tried first, then every other object from the
+    /// topmost down, so the Radius button works without a prior selection.
+    pub fn round_corner_anywhere(&mut self, point: Point2, tolerance: f64, radius: f64) -> bool {
+        let mut ids = self.selection.ids().to_vec();
+        for object in self.document.objects.iter().rev() {
+            if !ids.contains(&object.id) {
+                ids.push(object.id.clone());
+            }
+        }
+        self.round_corner_on(&ids, point, tolerance, radius)
+    }
+
+    fn round_corner_on(
+        &mut self,
+        ids: &[String],
+        point: Point2,
+        tolerance: f64,
+        radius: f64,
+    ) -> bool {
         if radius <= 1e-9 || !radius.is_finite() {
             return false;
         }
-        let ids = self.selection.ids().to_vec();
         for id in ids {
-            let Some(object) = self.document.object(&id) else {
+            let Some(object) = self.document.object(id) else {
                 continue;
             };
             if object.locked {
@@ -2185,7 +2209,7 @@ impl EditorState {
                 continue;
             };
             self.record_action("Corner radius");
-            if let Some(object) = self.document.object_mut(&id) {
+            if let Some(object) = self.document.object_mut(id) {
                 object.shape = Shape::Path(rounded);
             }
             return true;
@@ -4659,6 +4683,28 @@ mod tests {
             2
         );
         assert!(!editor.round_corner_at(Point2::new(50.0, 50.0), 0.5, 2.0));
+    }
+
+    #[test]
+    fn round_corner_anywhere_reaches_an_unselected_object() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        assert!(editor.round_corner_anywhere(Point2::new(10.0, 0.0), 0.5, 2.0));
+        let object = editor.document.object(&id).unwrap();
+        let crate::document::Shape::Path(path) = &object.shape else {
+            panic!("the unselected rectangle did not become a path");
+        };
+        assert_eq!(
+            path.segments
+                .iter()
+                .filter(|segment| matches!(segment, Segment::Cubic(_)))
+                .count(),
+            1
+        );
+        assert!(!editor.round_corner_anywhere(Point2::new(50.0, 50.0), 0.5, 2.0));
     }
 
     #[test]

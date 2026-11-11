@@ -3,6 +3,23 @@
 use super::*;
 
 impl BeamBurinApp {
+    /// Apply the radius armed by the Radius button at a document point.
+    ///
+    /// The nearest corner of the selection, or of any drawing under the point,
+    /// is rounded. Returns true when a radius was armed and consumed.
+    pub(super) fn apply_pending_corner_radius(&mut self, point: Point2) -> bool {
+        let Some(radius) = self.pending_corner_radius.take() else {
+            return false;
+        };
+        let tolerance = 8.0 / self.editor.canvas.zoom.max(0.01);
+        if self.editor.round_corner_anywhere(point, tolerance, radius) {
+            self.status = format!("Rounded the corner with a {radius:.1} mm radius");
+        } else {
+            self.status = "No corner or point of a drawing is near the click".to_string();
+        }
+        true
+    }
+
     pub(super) fn canvas(&mut self, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
@@ -145,21 +162,10 @@ impl BeamBurinApp {
                 }
 
                 let mut rounded_corner = false;
-                if primary_pressed
-                    && pointer_in_canvas
-                    && let Some(radius) = self.pending_corner_radius.take()
-                {
-                    rounded_corner = true;
+                if primary_pressed && pointer_in_canvas {
                     if let Some(pos) = pointer {
                         let point = self.doc_point(rect, pos);
-                        let tolerance = 8.0 / self.editor.canvas.zoom.max(0.01);
-                        if self.editor.round_corner_at(point, tolerance, radius) {
-                            self.status =
-                                format!("Rounded the corner with a {radius:.1} mm radius");
-                        } else {
-                            self.status =
-                                "No corner of the selected shape is near the click".to_string();
-                        }
+                        rounded_corner = self.apply_pending_corner_radius(point);
                     }
                 }
                 if primary_pressed && pointer_in_canvas && !rounded_corner {

@@ -1324,14 +1324,25 @@ impl BeamBurinApp {
                         self.apply_outline_stroke();
                     }
                     ui.separator();
-                    let radius_label = ui.label("Radius");
+                    let radius_button = ui
+                        .add(egui::Button::new("Radius"))
+                        .on_hover_text(
+                            "Arm the radius below; the next click rounds a corner or point",
+                        );
+                    if radius_button.clicked() {
+                        self.pending_corner_radius = Some(self.offset_distance);
+                        self.status = format!(
+                            "Click a corner or point to round it with a {:.1} mm radius",
+                            self.offset_distance
+                        );
+                    }
                     ui.add(
                         egui::DragValue::new(&mut self.offset_distance)
                             .speed(0.1)
                             .range(0.1..=50.0)
                             .suffix(" mm"),
                     )
-                    .labelled_by(radius_label.id);
+                    .labelled_by(radius_button.id);
                 });
             });
         });

@@ -777,6 +777,61 @@ fn the_arrange_menu_welds_overlapping_shapes() {
 }
 
 #[test]
+fn the_radius_button_rounds_the_corner_clicked_next() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0))
+        .expect("the rectangle was not added");
+    app.editor.selection.clear();
+    app.offset_distance = 3.0;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Radius")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().pending_corner_radius,
+        Some(3.0),
+        "the button did not arm the radius shown below it"
+    );
+    assert!(
+        harness.state().status.contains("Click a corner or point"),
+        "status is {}",
+        harness.state().status
+    );
+    assert!(
+        harness
+            .state_mut()
+            .apply_pending_corner_radius(Point2::new(10.0, 10.0)),
+        "the armed radius was not consumed by the next click"
+    );
+    let state = harness.state();
+    assert!(
+        state.pending_corner_radius.is_none(),
+        "the radius stayed armed after the click"
+    );
+    let object = state
+        .editor
+        .document
+        .object(&id)
+        .expect("the rectangle disappeared");
+    let crate::document::Shape::Path(path) = &object.shape else {
+        panic!("the unselected rectangle did not become a path");
+    };
+    assert_eq!(
+        path.segments
+            .iter()
+            .filter(|segment| matches!(segment, crate::geometry::path::Segment::Cubic(_)))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn the_arrange_menu_sets_and_clears_the_corner_radius() {
     use egui_kittest::kittest::Queryable as _;
 
