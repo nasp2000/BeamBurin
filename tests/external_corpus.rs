@@ -11,6 +11,26 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Lowest object counts seen for representative entries. They guard against an
+/// importer change that silently drops geometry while the file still imports.
+fn minimum_objects(name: &str) -> Option<usize> {
+    Some(match name {
+        "bricscad-insert.dxf" => 450,
+        "caret-encoding.dxf" => 60,
+        "dimension-in-blocks.dxf" => 28,
+        "escher-lizard.hpgl" => 127,
+        "man-of-war.hpgl" => 296,
+        "mtext-inline.dxf" => 12,
+        "stacked-text.dxf" => 439,
+        "svg-logo.svg" => 18,
+        "text.dxf" => 217,
+        "uncommon.dxf" => 47,
+        "wipeout-door.dxf" => 278,
+        "world-map.hpgl" => 480,
+        _ => return None,
+    })
+}
+
 struct Entry {
     name: String,
     path: PathBuf,
@@ -89,6 +109,14 @@ fn assert_importable(entry: &Entry) {
         outcome.document.layers.len(),
         outcome.warnings.len()
     );
+    if let Some(minimum) = minimum_objects(&entry.name) {
+        assert!(
+            outcome.document.objects.len() >= minimum,
+            "{} imported {} object(s), expected at least {minimum}",
+            entry.name,
+            outcome.document.objects.len()
+        );
+    }
     if extension.eq_ignore_ascii_case("svg")
         || extension.eq_ignore_ascii_case("dxf")
         || extension.eq_ignore_ascii_case("plt")
