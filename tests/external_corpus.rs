@@ -17,6 +17,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
     Some(match name {
         "bricscad-insert.dxf" => 450,
         "caret-encoding.dxf" => 60,
+        "columns-r2007.dxf" => 67,
         "dimension-in-blocks.dxf" => 28,
         "escher-lizard.hpgl" => 127,
         "man-of-war.hpgl" => 296,
