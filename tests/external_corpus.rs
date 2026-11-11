@@ -34,6 +34,8 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "uncommon.dxf" => 47,
         "wipeout-door.dxf" => 278,
         "viewport-frozen-layers.dxf" => 7,
+        "wipeout-random.dxf" => 30,
+        "world-map.svg" => 2338,
         "world-map.hpgl" => 480,
         _ => return None,
     })
