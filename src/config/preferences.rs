@@ -1271,7 +1271,7 @@ mod tests {
         let preset: VectorExportPreset = serde_json::from_str(json).unwrap();
         assert!(preset.margin_mm.abs() < f64::EPSILON);
         assert_eq!(preset.area, "page");
-        assert!(preset.layers.is_empty());
+        assert_eq!(preset.layers, Vec::<String>::new());
     }
 
     #[test]
