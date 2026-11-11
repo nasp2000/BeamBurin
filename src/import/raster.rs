@@ -60,6 +60,9 @@ pub fn import_raster_with_limit_cancellable(
             "image has {pixels} pixels; the limit is {max_pixels}"
         )));
     }
+    // The first preview can reuse this decode instead of reading the file a
+    // second time; the cache consumes it and the next import replaces it.
+    crate::raster::remember_decoded_source(path, image);
     let mut image_object =
         ImageObject::new(path.to_string_lossy(), width_px, height_px, DEFAULT_DPI);
     // Show the whole picture in grayscale first; the engraving mode and its
@@ -87,7 +90,7 @@ fn decode_cancellable(path: &Path, cancel: &dyn Fn() -> bool) -> Result<image::D
         inner: BufReader::new(file),
         cancel,
     };
-    image::ImageReader::new(reader)
+    let picture = image::ImageReader::new(reader)
         .with_guessed_format()
         .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?
         .decode()
@@ -97,7 +100,10 @@ fn decode_cancellable(path: &Path, cancel: &dyn Fn() -> bool) -> Result<image::D
             } else {
                 BeamError::InvalidInput(format!("cannot read image: {error}"))
             }
-        })
+        })?;
+    #[cfg(test)]
+    crate::raster::note_decode();
+    Ok(picture)
 }
 
 struct CancellableReader<'a, R> {

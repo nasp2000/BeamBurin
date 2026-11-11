@@ -689,6 +689,87 @@ fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Opti
     Some(CACHE.with(|cache| f(&mut cache.borrow_mut())))
 }
 
+/// Decoded source handed over by a raster import for the next preview.
+///
+/// An import already decodes the file to reject corrupt and oversized images.
+/// The one-entry cache keeps that image until the first bounded preview asks
+/// for it, so a loaded photo is decoded once instead of once for the import
+/// and again for the canvas. The entry is consumed on first use and replaced
+/// by the next import, so switching images invalidates it.
+struct SourceCache {
+    path: String,
+    length: u64,
+    modified: u128,
+    picture: image::DynamicImage,
+}
+
+/// File identity that changes when the source is replaced on disk.
+fn source_identity(path: &std::path::Path) -> (String, u64, u128) {
+    let metadata = std::fs::metadata(path).ok();
+    let length = metadata.as_ref().map_or(0, std::fs::Metadata::len);
+    let modified = metadata
+        .as_ref()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |duration| duration.as_nanos());
+    (path.display().to_string(), length, modified)
+}
+
+/// Keep the image decoded by an import for the next preview.
+pub(crate) fn remember_decoded_source(path: &std::path::Path, picture: image::DynamicImage) {
+    let (path, length, modified) = source_identity(path);
+    let _ = with_source_cache(|cache| {
+        *cache = Some(SourceCache {
+            path,
+            length,
+            modified,
+            picture,
+        });
+    });
+}
+
+/// Take the import's image when it belongs to this file.
+fn take_decoded_source(path: &std::path::Path) -> Option<image::DynamicImage> {
+    let (wanted_path, wanted_length, wanted_modified) = source_identity(path);
+    with_source_cache(|cache| {
+        let entry = cache.as_ref()?;
+        if entry.path != wanted_path
+            || entry.length != wanted_length
+            || entry.modified != wanted_modified
+        {
+            return None;
+        }
+        cache.take().map(|entry| entry.picture)
+    })
+    .flatten()
+}
+
+#[cfg(not(test))]
+fn with_source_cache<R>(f: impl FnOnce(&mut Option<SourceCache>) -> R) -> Option<R> {
+    static CACHE: OnceLock<Mutex<Option<SourceCache>>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .map(|mut cache| f(&mut cache))
+}
+
+#[cfg(test)]
+#[allow(clippy::unnecessary_wraps)]
+fn with_source_cache<R>(f: impl FnOnce(&mut Option<SourceCache>) -> R) -> Option<R> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<Option<SourceCache>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    Some(CACHE.with(|cache| f(&mut cache.borrow_mut())))
+}
+
+/// Count one real decode in tests.
+#[cfg(test)]
+pub(crate) fn note_decode() {
+    DECODE_COUNT.with(|count| count.set(count.get() + 1));
+}
+
 fn preview_key(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
@@ -740,19 +821,25 @@ fn load_prepared_picture(
     image: &crate::objects::ImageObject,
     max_side: Option<u32>,
 ) -> Result<image::DynamicImage> {
-    // Check the source header before decoding: crop, rotation and a smaller
-    // working size do not reduce the memory the decoder needs for the file.
-    let (width, height) = image_dimensions(path)?;
-    let pixels = u64::from(width) * u64::from(height);
-    if pixels > MAX_PIXELS {
-        return Err(BeamError::InvalidInput(format!(
-            "image has {pixels} pixels; the limit is {MAX_PIXELS}"
-        )));
-    }
-    let mut picture = image::open(path)
-        .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
-    #[cfg(test)]
-    DECODE_COUNT.with(|count| count.set(count.get() + 1));
+    // The recent import may already have decoded this file. Otherwise check
+    // the header before decoding: crop, rotation and a smaller working size do
+    // not reduce the memory the decoder needs for the file.
+    let mut picture = if let Some(picture) = take_decoded_source(path) {
+        picture
+    } else {
+        let (width, height) = image_dimensions(path)?;
+        let pixels = u64::from(width) * u64::from(height);
+        if pixels > MAX_PIXELS {
+            return Err(BeamError::InvalidInput(format!(
+                "image has {pixels} pixels; the limit is {MAX_PIXELS}"
+            )));
+        }
+        let picture = image::open(path)
+            .map_err(|error| BeamError::InvalidInput(format!("cannot read image: {error}")))?;
+        #[cfg(test)]
+        note_decode();
+        picture
+    };
     if image.settings.flip_horizontal {
         picture = picture.fliph();
     }
@@ -1335,6 +1422,54 @@ mod object_tests {
             }
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_import_decode_serves_the_first_preview() {
+        use crate::document::Shape;
+
+        let path = write_image("bw_raster_import_shared_decode.png", 200, 100);
+        reset_decode_count();
+        let document = crate::import::raster::import_raster(&path).unwrap();
+        let Shape::Image(image) = &document.objects[0].shape else {
+            panic!("the import did not create an image object");
+        };
+        let _ = process_object_preview(&path, image, 64).unwrap();
+        let _ = histogram_preview(&path, image, 64).unwrap();
+        let _ = auto_levels_preview(&path, image, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            1,
+            "the import and the preview decoded the file separately"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn switching_images_does_not_reuse_the_previous_decode() {
+        use crate::document::Shape;
+
+        let first = write_image("bw_raster_switch_a.png", 40, 20);
+        let second = write_image("bw_raster_switch_b.png", 40, 20);
+        reset_decode_count();
+        let first_document = crate::import::raster::import_raster(&first).unwrap();
+        let second_document = crate::import::raster::import_raster(&second).unwrap();
+        let Shape::Image(second_image) = &second_document.objects[0].shape else {
+            panic!("the second import did not create an image object");
+        };
+        let _ = process_object_preview(&second, second_image, 16).unwrap();
+        assert_eq!(decode_count(), 2, "the second import kept its own decode");
+        let Shape::Image(first_image) = &first_document.objects[0].shape else {
+            panic!("the first import did not create an image object");
+        };
+        let _ = process_object_preview(&first, first_image, 16).unwrap();
+        assert_eq!(
+            decode_count(),
+            3,
+            "switching back reused a decode from another image"
+        );
+        let _ = std::fs::remove_file(&first);
+        let _ = std::fs::remove_file(&second);
     }
 
     #[test]
