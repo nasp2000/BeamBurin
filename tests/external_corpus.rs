@@ -15,7 +15,6 @@ fn root() -> PathBuf {
 /// importer change that silently drops geometry while the file still imports.
 fn minimum_objects(name: &str) -> Option<usize> {
     Some(match name {
-        "annotation-stamp.pdf" => 18,
         "bricscad-insert.dxf" => 450,
         "caret-encoding.dxf" => 60,
         "Cassini.hpgl" => 1400,
@@ -44,7 +43,7 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "symbols-labels.svg" => 22,
         "text-mirror.dxf" => 672,
         "tracemonkey.pdf" => 1546,
-        "svg-logo.svg" | "text-viewports.dxf" => 18,
+        "annotation-stamp.pdf" | "svg-logo.svg" | "text-viewports.dxf" => 18,
         "text.dxf" => 217,
         "uncommon.dxf" => 47,
         "wipeout-door.dxf" => 278,
