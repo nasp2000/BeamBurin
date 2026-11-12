@@ -53,10 +53,7 @@ pub fn segments_intersect(a: &Segment, b: &Segment) -> bool {
     let d2 = cross(b, a.x2, a.y2);
     let d3 = cross(a, b.x1, b.y1);
     let d4 = cross(a, b.x2, b.y2);
-    if ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0)) {
-        return true;
-    }
-    false
+    ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0))
 }
 
 fn cross(s: &Segment, px: f64, py: f64) -> f64 {
