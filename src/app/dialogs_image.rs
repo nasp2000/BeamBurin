@@ -491,6 +491,9 @@ impl BeamBurinApp {
                             .max_height(preview_height - 36.0)
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
+                                // The previews row is narrow: keep the long
+                                // status lines inside the column.
+                                ui.set_max_width(more_width - 20.0);
                                 ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(&mut burn_map, "Burn map").on_hover_text(crate::ui::icons::description("Burn map"));
                                     let label = if (zoom - 1.0).abs() < f32::EPSILON {
