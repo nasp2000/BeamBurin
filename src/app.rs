@@ -591,6 +591,7 @@ pub struct BeamBurinApp {
     export_offset_origin: bool,
     export_image_open: bool,
     export_image_dpi: f64,
+    export_image_dpi_custom: bool,
     export_image_transparent: bool,
     export_image_selection: bool,
     export_image_drawing: bool,

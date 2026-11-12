@@ -2,6 +2,25 @@
 
 use super::*;
 
+/// Resolutions offered in the image export options. The numeric field accepts
+/// any value between 10 and 2400 dpi; the presets make the common screen and
+/// print resolutions one click away.
+const EXPORT_DPI_PRESETS: [(u32, &str); 5] = [
+    (96, "96 dpi"),
+    (150, "150 dpi"),
+    (200, "200 dpi"),
+    (300, "300 dpi"),
+    (600, "600 dpi"),
+];
+
+/// The preset label matching `dpi`, if the value is one of [`EXPORT_DPI_PRESETS`].
+fn export_dpi_preset(dpi: f64) -> Option<&'static str> {
+    EXPORT_DPI_PRESETS
+        .iter()
+        .find(|(value, _)| (dpi - f64::from(*value)).abs() < 0.5)
+        .map(|(_, label)| *label)
+}
+
 impl BeamBurinApp {
     fn drawing_area_mm(&self) -> Option<(f64, f64)> {
         let (min, max) = self.editor.visible_bounds()?;
@@ -78,15 +97,47 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([10.0, 6.0])
                     .show(ui, |ui| {
+                        let dpi_preset = export_dpi_preset(self.export_image_dpi);
+                        let custom_dpi = self.export_image_dpi_custom || dpi_preset.is_none();
                         let resolution_label = ui.label("Resolution");
-                        ui.add(
-                            egui::DragValue::new(&mut self.export_image_dpi)
-                                .speed(1.0)
-                                .range(10.0..=2400.0)
-                                .suffix(" dpi"),
-                        )
-                        .labelled_by(resolution_label.id).on_hover_text(crate::ui::icons::field("Resolution"));
+                        egui::ComboBox::from_id_salt("export_image_resolution")
+                            .selected_text(if custom_dpi {
+                                "Custom..."
+                            } else {
+                                dpi_preset.unwrap_or_default()
+                            })
+                            .width(110.0)
+                            .show_ui(ui, |ui| {
+                                for (value, label) in EXPORT_DPI_PRESETS {
+                                    let selected = !self.export_image_dpi_custom
+                                        && (self.export_image_dpi - f64::from(value)).abs() < 0.5;
+                                    if ui.selectable_label(selected, label).clicked() {
+                                        self.export_image_dpi = f64::from(value);
+                                        self.export_image_dpi_custom = false;
+                                        ui.close();
+                                    }
+                                }
+                                if ui.selectable_label(custom_dpi, "Custom...").clicked() {
+                                    self.export_image_dpi_custom = true;
+                                    ui.close();
+                                }
+                            })
+                            .response
+                            .labelled_by(resolution_label.id)
+                            .on_hover_text(crate::ui::icons::field("Resolution"));
                         ui.end_row();
+                        if custom_dpi {
+                            let exact_label = ui.label("Exact DPI");
+                            ui.add(
+                                egui::DragValue::new(&mut self.export_image_dpi)
+                                    .speed(1.0)
+                                    .range(10.0..=2400.0)
+                                    .suffix(" dpi"),
+                            )
+                            .labelled_by(exact_label.id)
+                            .on_hover_text(crate::ui::icons::field("Exact DPI"));
+                            ui.end_row();
+                        }
                         ui.label("Background");
                         ui.checkbox(&mut self.export_image_transparent, "Transparent").on_hover_text(crate::ui::icons::description("Transparent"));
                         ui.end_row();

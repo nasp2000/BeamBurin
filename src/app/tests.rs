@@ -3182,6 +3182,73 @@ fn the_image_export_options_use_an_explicit_size() {
 }
 
 #[test]
+fn the_image_export_options_pick_a_dpi_preset() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("png_dpi_preset_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+
+    // Custom keeps the free-form field available.
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::ComboBox, "Resolution")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Custom...")
+        .click();
+    harness.run();
+    assert!(
+        harness.state().export_image_dpi_custom,
+        "the custom resolution was not selected"
+    );
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::SpinButton, "Exact DPI")
+        .expect("the exact resolution field is missing when custom is selected");
+
+    // The preset sets the value and hides the free-form field again.
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::ComboBox, "Resolution")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "300 dpi")
+        .click();
+    harness.run();
+    assert!(
+        (harness.state().export_image_dpi - 300.0).abs() < f64::EPSILON,
+        "the 300 dpi preset did not reach the export options"
+    );
+    assert!(
+        !harness.state().export_image_dpi_custom,
+        "the preset left the custom field open"
+    );
+
+    harness.get_by_label("Export").click();
+    harness.run();
+    harness.get_by_label("Export").click();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("untitled.png");
+    let (width, height) = image::image_dimensions(&path).expect("cannot read the PNG size");
+    // The 300 x 200 mm page at 300 dpi, rounded to whole pixels.
+    assert_eq!(
+        (width, height),
+        (3543, 2362),
+        "the PNG is {width} x {height} px instead of 300 dpi"
+    );
+}
+
+#[test]
 fn the_image_export_options_add_a_margin() {
     use egui_kittest::kittest::Queryable as _;
 
