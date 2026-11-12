@@ -1508,6 +1508,40 @@ mod object_tests {
     }
 
     #[test]
+    fn histogram_first_still_shares_one_decode_with_preview_and_auto_levels() {
+        let path = write_image("bw_raster_histogram_first.png", 200, 100);
+        let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        reset_decode_count();
+        let _ = histogram_preview(&path, &object, 64).unwrap();
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        let _ = auto_levels_preview(&path, &object, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            1,
+            "histogram, preview and auto levels decoded the file separately"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn replacing_the_file_invalidates_the_preview_cache() {
+        let path = write_image("bw_raster_cache_replace.png", 200, 100);
+        let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        reset_decode_count();
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        assert_eq!(decode_count(), 1);
+        let replacement = write_image("bw_raster_cache_replace.png", 120, 60);
+        assert_eq!(replacement, path);
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        assert_eq!(
+            decode_count(),
+            2,
+            "a file replaced on disk reused the previous decode"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn an_alpha_mask_removes_transparent_pixels() {
         let path = std::env::temp_dir().join("bw_raster_alpha_mask.png");
         let mut picture = image::RgbaImage::new(8, 8);
