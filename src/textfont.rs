@@ -223,6 +223,18 @@ pub fn ensure_loaded(ctx: &Context, requested: &[String]) {
         );
     }
 
+    // The interface font is egui's default, which has no arrows: hints such as
+    // "Preferences → Shortcuts" rendered a box. The bundled face is already in
+    // the binary, so use it as the last fallback for the interface families;
+    // egui only reaches for it on glyphs the default font does not carry.
+    let bundled_key = family_key(BUNDLED_NAME);
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        let chain = definitions.families.entry(family).or_default();
+        if !chain.contains(&bundled_key) {
+            chain.push(bundled_key.clone());
+        }
+    }
+
     ctx.set_fonts(definitions);
     ctx.data_mut(|data| data.insert_temp(id, needed));
     ctx.request_repaint();
@@ -325,6 +337,24 @@ mod tests {
         assert_eq!(family("sans"), family(BUNDLED_NAME));
         assert_eq!(read("sans"), BUNDLED_DATA);
         assert_eq!(read("a font that does not exist"), BUNDLED_DATA);
+    }
+
+    #[test]
+    fn the_interface_falls_back_to_the_bundled_font_for_arrows() {
+        // Hints say "Preferences → Shortcuts"; the default interface font has
+        // no arrow, so the bundled face has to be in the fallback chain.
+        let ctx = Context::default();
+        ensure_loaded(&ctx, &[]);
+        for character in ['→', '←'] {
+            let mut has_glyph = false;
+            ctx.fonts(|fonts| {
+                has_glyph = fonts.has_glyph(&egui::FontId::proportional(13.0), character);
+            });
+            assert!(
+                has_glyph,
+                "the interface font has no glyph for {character:?}"
+            );
+        }
     }
 
     #[test]
