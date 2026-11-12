@@ -346,11 +346,12 @@ mod tests {
         // no arrow, so the bundled face has to be in the fallback chain.
         let ctx = Context::default();
         ensure_loaded(&ctx, &[]);
+        // Fonts exist only after a pass, and the definitions set above are used
+        // from that pass on.
+        let _ = ctx.run(egui::RawInput::default(), |_| {});
         for character in ['→', '←'] {
-            let mut has_glyph = false;
-            ctx.fonts(|fonts| {
-                has_glyph = fonts.has_glyph(&egui::FontId::proportional(13.0), character);
-            });
+            let has_glyph = ctx
+                .fonts_mut(|fonts| fonts.has_glyph(&egui::FontId::proportional(13.0), character));
             assert!(
                 has_glyph,
                 "the interface font has no glyph for {character:?}"
