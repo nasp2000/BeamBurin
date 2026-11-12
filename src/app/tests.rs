@@ -3211,9 +3211,12 @@ fn the_image_export_options_pick_a_dpi_preset() {
         harness.state().export_image_dpi_custom,
         "the custom resolution was not selected"
     );
-    harness
-        .get_by_role_and_label(egui::accesskit::Role::SpinButton, "Exact DPI")
-        .expect("the exact resolution field is missing when custom is selected");
+    assert!(
+        harness
+            .query_by_role_and_label(egui::accesskit::Role::SpinButton, "Exact DPI")
+            .is_some(),
+        "the exact resolution field is missing when custom is selected"
+    );
 
     // The preset sets the value and hides the free-form field again.
     harness
