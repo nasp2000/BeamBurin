@@ -434,7 +434,10 @@ fn ui_harness(app: BeamBurinApp) -> egui_kittest::Harness<'static, BeamBurinApp>
 
 fn open_image_more(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>) {
     use egui_kittest::kittest::Queryable as _;
-    if harness.query_by_label("More options").is_some() {
+    // The panel is open when the image window appears; click only when closed.
+    if harness.query_by_label("Burn map").is_none()
+        && harness.query_by_label("More options").is_some()
+    {
         harness.get_by_label("More options").click_accesskit();
         harness.run();
     }
@@ -803,12 +806,20 @@ fn the_radius_button_rounds_the_corner_clicked_next() {
         "status is {}",
         harness.state().status
     );
-    assert!(
-        harness
-            .state_mut()
-            .apply_pending_corner_radius(Point2::new(10.0, 10.0)),
-        "the armed radius was not consumed by the next click"
+    // A real pointer click on the corner must consume the armed radius.
+    let canvas = harness.ctx.available_rect();
+    let (corner_x, corner_y) = harness.state().editor.canvas.doc_to_screen(10.0, 10.0);
+    #[allow(clippy::cast_possible_truncation)]
+    let corner = egui::pos2(
+        canvas.min.x + corner_x as f32,
+        canvas.min.y + corner_y as f32,
     );
+    harness.hover_at(corner);
+    harness.run();
+    harness.drag_at(corner);
+    harness.run();
+    harness.drop_at(corner);
+    harness.run();
     let state = harness.state();
     assert!(
         state.pending_corner_radius.is_none(),
@@ -4602,6 +4613,41 @@ fn the_export_presets_window_keeps_selection_framing() {
 }
 
 #[test]
+fn the_image_more_options_are_visible_and_can_be_reopened() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("image_more_panel");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(32, 32, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("cannot write the PNG fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the PNG");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("Burn map").is_some(),
+        "the More options panel is hidden when the image window opens"
+    );
+    harness.get_by_label("More options").click_accesskit();
+    harness.run();
+    assert!(
+        harness.query_by_label("Burn map").is_none(),
+        "the More options panel did not collapse"
+    );
+    harness.get_by_label("More options").click_accesskit();
+    harness.run();
+    assert!(
+        harness.query_by_label("Burn map").is_some(),
+        "the More options panel did not reopen"
+    );
+}
+
+#[test]
 fn the_main_dialogs_expose_named_accessibility_nodes() {
     use egui_kittest::kittest::Queryable as _;
 
@@ -4639,8 +4685,7 @@ fn the_main_dialogs_expose_named_accessibility_nodes() {
     let mut harness = ui_harness(app);
     harness.run();
     audits.push(("adjust image", unnamed_interactive(&harness)));
-    harness.get_by_label("More options").click_accesskit();
-    harness.run();
+    open_image_more(&mut harness);
     audits.push(("adjust image more", unnamed_interactive(&harness)));
 
     let mut app = ui_test_app();

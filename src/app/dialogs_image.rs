@@ -398,7 +398,9 @@ impl BeamBurinApp {
                     cancel = true;
                 }
                 ui.set_min_height(660.0);
-                let preview_width = ((ui.available_width() - 44.0) / 2.0).clamp(260.0, 450.0);
+                let more_width = 300.0;
+                let preview_width =
+                    ((ui.available_width() - more_width - 88.0) / 2.0).clamp(200.0, 340.0);
                 let preview_height = 340.0;
                 ui.horizontal(|ui| {
                     ui.allocate_ui_with_layout(
@@ -475,240 +477,21 @@ impl BeamBurinApp {
                             );
                         });
                     });
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Reset All").on_hover_text(crate::ui::icons::description("Reset All")).clicked() {
-                        reset = true;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let selected_profile = self.selected_image_profile.clone();
-                        let removable = selected_profile
-                            .as_deref()
-                            .and_then(|id| self.profiles.image(id))
-                            .is_some_and(|profile| !profile.builtin);
-                        if ui
-                            .add_enabled(removable, egui::Button::new("Delete preset"))
-                            .on_hover_text("Remove the selected image profile")
-                            .clicked()
-                        {
-                            if let Some(id) = &selected_profile {
-                                match self.profiles.remove_image(id) {
-                                    Ok(()) => {
-                                        self.selected_image_profile = None;
-                                        self.save_profiles();
-                                        self.status = "Image profile deleted".to_string();
-                                    }
-                                    Err(error) => self.status = error,
-                                }
-                            }
-                        }
-                        if ui
-                            .add_enabled(
-                                selected_profile.is_some(),
-                                egui::Button::new("Duplicate preset"),
-                            )
-                            .on_hover_text("Copy the selected image profile")
-                            .clicked()
-                        {
-                            if let Some(id) = &selected_profile {
-                                if let Some(copy) = self.profiles.duplicate_image(id) {
-                                    self.selected_image_profile = Some(copy);
-                                    self.save_profiles();
-                                    self.status = "Image profile duplicated".to_string();
-                                }
-                            }
-                        }
-                        let preset_label = self
-                            .selected_image_profile
-                            .as_deref()
-                            .and_then(|id| self.profiles.image(id))
-                            .map_or_else(|| "Presets".to_string(), |profile| profile.name.clone());
-                        let presets_label = ui.label("Preset");
-                        egui::ComboBox::from_id_salt("image_adjust_presets")
-                            .selected_text(preset_label)
-                            .width(180.0)
-                            .show_ui(ui, |ui| {
-                                for profile in &self.profiles.images {
-                                    let selected = self.selected_image_profile.as_deref()
-                                        == Some(profile.id.as_str());
-                                    if ui
-                                        .selectable_label(selected, &profile.name)
-                                        .on_hover_text("Apply this image profile")
-                                        .clicked()
-                                    {
-                                        preset = Some(profile.settings);
-                                        self.selected_image_profile = Some(profile.id.clone());
-                                    }
-                                }
-                            })
-                            .response
-                            .labelled_by(presets_label.id).on_hover_text(crate::ui::icons::field("Preset"));
-                    });
-                });
-                ui.add_space(4.0);
-                ui.horizontal_top(|ui| {
-                    let group_width = ((ui.available_width() - 40.0) / 2.0).clamp(320.0, 460.0);
-                    ui.group(|ui| {
-                        ui.set_width(group_width);
-                        ui.strong("Layer Settings");
-                        egui::Grid::new("image_layer_settings")
-                            .num_columns(2)
-                            .spacing([12.0, 6.0])
-                            .show(ui, |ui| {
-                                let mode_label = ui.label("Image mode");
-                                let mut mode = image.settings.mode;
-                                egui::ComboBox::from_id_salt("image_adjust_mode")
-                                    .selected_text(mode.label())
-                                    .show_ui(ui, |ui| {
-                                        for candidate in crate::objects::ImageMode::all() {
-                                            ui.selectable_value(
-                                                &mut mode,
-                                                candidate,
-                                                candidate.label(),
-                                            )
-                                            .on_hover_text(candidate.hint());
-                                        }
-                                    })
-                                    .response
-                                    .labelled_by(mode_label.id).on_hover_text(crate::ui::icons::field("Image mode"));
-                                image.settings.mode = mode;
-                                ui.end_row();
-                                ui.label("Negative image");
-                                let negative = ui
-                                    .checkbox(&mut image.settings.invert, "")
-                                    .on_hover_text("Invert the image tones");
-                                negative.widget_info(|| {
-                                    egui::WidgetInfo::selected(
-                                        egui::WidgetType::Checkbox,
-                                        true,
-                                        image.settings.invert,
-                                        "Negative image",
-                                    )
-                                });
-                                ui.end_row();
-                                ui.label("Cells per inch");
-                                ui.weak(format!(
-                                    "{:.1}",
-                                    25.4 / image.settings.line_interval_mm.max(0.001)
-                                ));
-                                ui.end_row();
-                                let interval_label = ui.label("Line interval (mm)");
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.line_interval_mm)
-                                        .speed(0.01)
-                                        .range(0.01..=2.0),
-                                )
-                                .labelled_by(interval_label.id).on_hover_text(crate::ui::icons::field("Line interval (mm)"));
-                                ui.end_row();
-                                let angle_label = ui.label("Halftone angle");
-                                ui.add(
-                                    egui::DragValue::new(
-                                        &mut image.settings.halftone_angle_degrees,
-                                    )
-                                    .speed(0.5)
-                                    .range(-360.0..=360.0)
-                                    .suffix(" deg"),
-                                )
-                                .labelled_by(angle_label.id).on_hover_text(crate::ui::icons::field("Halftone angle"));
-                                ui.end_row();
-                                ui.label("DPI");
-                                ui.weak(format!("{:.1}", image.effective_dpi()));
-                                ui.end_row();
-                            });
-                    });
-                    ui.group(|ui| {
-                        ui.set_width(group_width);
-                        ui.strong("Image Settings");
-                        egui::Grid::new("image_adjust_settings")
-                            .num_columns(3)
-                            .spacing([8.0, 6.0])
-                            .show(ui, |ui| {
-                                let contrast_label = ui.label("Contrast");
-                                ui.add(
-                                    egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0)
-                                        .show_value(false),
-                                )
-                                .labelled_by(contrast_label.id).on_hover_text(crate::ui::icons::field("Contrast"));
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.contrast)
-                                        .speed(0.01)
-                                        .range(0.25..=3.0)
-                                        .fixed_decimals(2),
-                                )
-                                .labelled_by(contrast_label.id).on_hover_text(crate::ui::icons::field("Contrast"));
-                                ui.end_row();
-                                let brightness_label = ui.label("Brightness");
-                                ui.add(
-                                    egui::Slider::new(&mut image.settings.brightness, -100..=100)
-                                        .show_value(false),
-                                )
-                                .labelled_by(brightness_label.id).on_hover_text(crate::ui::icons::field("Brightness"));
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.brightness)
-                                        .speed(1.0)
-                                        .range(-100..=100),
-                                )
-                                .labelled_by(brightness_label.id).on_hover_text(crate::ui::icons::field("Brightness"));
-                                ui.end_row();
-                                let radius_label = ui.label("Enhance Radius");
-                                ui.add(
-                                    egui::Slider::new(
-                                        &mut image.settings.enhance_radius_px,
-                                        0..=32,
-                                    )
-                                    .show_value(false),
-                                )
-                                .labelled_by(radius_label.id).on_hover_text(crate::ui::icons::field("Enhance Radius"));
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.enhance_radius_px)
-                                        .range(0..=32),
-                                )
-                                .labelled_by(radius_label.id).on_hover_text(crate::ui::icons::field("Enhance Radius"));
-                                ui.end_row();
-                                let amount_label = ui.label("Enhance Amount");
-                                ui.add(
-                                    egui::Slider::new(
-                                        &mut image.settings.enhance_amount,
-                                        0.0..=5.0,
-                                    )
-                                    .show_value(false),
-                                )
-                                .labelled_by(amount_label.id).on_hover_text(crate::ui::icons::field("Enhance Amount"));
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.enhance_amount)
-                                        .speed(0.05)
-                                        .range(0.0..=5.0)
-                                        .fixed_decimals(2),
-                                )
-                                .labelled_by(amount_label.id).on_hover_text(crate::ui::icons::field("Enhance Amount"));
-                                ui.end_row();
-                                let gamma_label = ui.label("Gamma");
-                                ui.add(
-                                    egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0)
-                                        .show_value(false),
-                                )
-                                .labelled_by(gamma_label.id).on_hover_text(crate::ui::icons::field("Gamma"));
-                                ui.add(
-                                    egui::DragValue::new(&mut image.settings.gamma)
-                                        .speed(0.01)
-                                        .range(0.2..=3.0)
-                                        .fixed_decimals(2),
-                                )
-                                .labelled_by(gamma_label.id).on_hover_text(crate::ui::icons::field("Gamma"));
-                                ui.end_row();
-                            });
-                    });
-                });
-                ui.add_space(4.0);
+                    ui.separator();
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(more_width, preview_height + 28.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.set_width(more_width);
                 egui::CollapsingHeader::new("More options")
-                    .default_open(false)
+                    .default_open(true)
                     .show(ui, |ui| {
                         egui::ScrollArea::vertical()
                             .id_salt("image_more_scroll")
-                            .max_height(220.0)
+                            .max_height(preview_height - 36.0)
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(&mut burn_map, "Burn map").on_hover_text(crate::ui::icons::description("Burn map"));
                                     let label = if (zoom - 1.0).abs() < f32::EPSILON {
                                         "1:1".to_string()
@@ -820,7 +603,7 @@ impl BeamBurinApp {
                                     }
                                 }
                                 ui.separator();
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(&mut mask, "Mask").on_hover_text(crate::ui::icons::description("Mask"));
                                     ui.weak("Limit the engraved area (source pixels)");
                                     if ui.button("Full image").on_hover_text(crate::ui::icons::description("Full image")).clicked() {
@@ -828,7 +611,7 @@ impl BeamBurinApp {
                                     }
                                 });
                                 if mask {
-                                    ui.horizontal(|ui| {
+                                    ui.horizontal_wrapped(|ui| {
                                         let x_label = ui.label("Mask X");
                                         ui.add(egui::DragValue::new(&mut mask_x).range(
                                             0..=image.width_px.saturating_sub(1),
@@ -853,7 +636,7 @@ impl BeamBurinApp {
                                         .labelled_by(h_label.id).on_hover_text(crate::ui::icons::field("Mask H"));
                                     });
                                 }
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(&mut image.mask_alpha, "Transparent pixels").on_hover_text(crate::ui::icons::description("Transparent pixels"));
                                     ui.add_enabled(
                                         image.mask_alpha,
@@ -871,7 +654,7 @@ impl BeamBurinApp {
                                     });
                                     ui.weak("alpha below this is background");
                                 });
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.strong("Colour mask");
                                     ui.weak("Treat these colours as background");
                                     if !image.mask_colours.is_empty()
@@ -887,7 +670,7 @@ impl BeamBurinApp {
                                         }
                                     });
                                 }
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     let tolerance_label = ui.label("Tolerance");
                                     ui.add(
                                         egui::DragValue::new(&mut image.mask_tolerance)
@@ -1166,6 +949,233 @@ impl BeamBurinApp {
                                 }
                             });
                     });
+                        },
+                    );
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Reset All").on_hover_text(crate::ui::icons::description("Reset All")).clicked() {
+                        reset = true;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let selected_profile = self.selected_image_profile.clone();
+                        let removable = selected_profile
+                            .as_deref()
+                            .and_then(|id| self.profiles.image(id))
+                            .is_some_and(|profile| !profile.builtin);
+                        if ui
+                            .add_enabled(removable, egui::Button::new("Delete preset"))
+                            .on_hover_text("Remove the selected image profile")
+                            .clicked()
+                        {
+                            if let Some(id) = &selected_profile {
+                                match self.profiles.remove_image(id) {
+                                    Ok(()) => {
+                                        self.selected_image_profile = None;
+                                        self.save_profiles();
+                                        self.status = "Image profile deleted".to_string();
+                                    }
+                                    Err(error) => self.status = error,
+                                }
+                            }
+                        }
+                        if ui
+                            .add_enabled(
+                                selected_profile.is_some(),
+                                egui::Button::new("Duplicate preset"),
+                            )
+                            .on_hover_text("Copy the selected image profile")
+                            .clicked()
+                        {
+                            if let Some(id) = &selected_profile {
+                                if let Some(copy) = self.profiles.duplicate_image(id) {
+                                    self.selected_image_profile = Some(copy);
+                                    self.save_profiles();
+                                    self.status = "Image profile duplicated".to_string();
+                                }
+                            }
+                        }
+                        let preset_label = self
+                            .selected_image_profile
+                            .as_deref()
+                            .and_then(|id| self.profiles.image(id))
+                            .map_or_else(|| "Presets".to_string(), |profile| profile.name.clone());
+                        let presets_label = ui.label("Preset");
+                        egui::ComboBox::from_id_salt("image_adjust_presets")
+                            .selected_text(preset_label)
+                            .width(180.0)
+                            .show_ui(ui, |ui| {
+                                for profile in &self.profiles.images {
+                                    let selected = self.selected_image_profile.as_deref()
+                                        == Some(profile.id.as_str());
+                                    if ui
+                                        .selectable_label(selected, &profile.name)
+                                        .on_hover_text("Apply this image profile")
+                                        .clicked()
+                                    {
+                                        preset = Some(profile.settings);
+                                        self.selected_image_profile = Some(profile.id.clone());
+                                    }
+                                }
+                            })
+                            .response
+                            .labelled_by(presets_label.id).on_hover_text(crate::ui::icons::field("Preset"));
+                    });
+                });
+                ui.add_space(4.0);
+                ui.horizontal_top(|ui| {
+                    let group_width = ((ui.available_width() - 40.0) / 2.0).clamp(320.0, 460.0);
+                    ui.group(|ui| {
+                        ui.set_width(group_width);
+                        ui.strong("Layer Settings");
+                        egui::Grid::new("image_layer_settings")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                let mode_label = ui.label("Image mode");
+                                let mut mode = image.settings.mode;
+                                egui::ComboBox::from_id_salt("image_adjust_mode")
+                                    .selected_text(mode.label())
+                                    .show_ui(ui, |ui| {
+                                        for candidate in crate::objects::ImageMode::all() {
+                                            ui.selectable_value(
+                                                &mut mode,
+                                                candidate,
+                                                candidate.label(),
+                                            )
+                                            .on_hover_text(candidate.hint());
+                                        }
+                                    })
+                                    .response
+                                    .labelled_by(mode_label.id).on_hover_text(crate::ui::icons::field("Image mode"));
+                                image.settings.mode = mode;
+                                ui.end_row();
+                                ui.label("Negative image");
+                                let negative = ui
+                                    .checkbox(&mut image.settings.invert, "")
+                                    .on_hover_text("Invert the image tones");
+                                negative.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Checkbox,
+                                        true,
+                                        image.settings.invert,
+                                        "Negative image",
+                                    )
+                                });
+                                ui.end_row();
+                                ui.label("Cells per inch");
+                                ui.weak(format!(
+                                    "{:.1}",
+                                    25.4 / image.settings.line_interval_mm.max(0.001)
+                                ));
+                                ui.end_row();
+                                let interval_label = ui.label("Line interval (mm)");
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.line_interval_mm)
+                                        .speed(0.01)
+                                        .range(0.01..=2.0),
+                                )
+                                .labelled_by(interval_label.id).on_hover_text(crate::ui::icons::field("Line interval (mm)"));
+                                ui.end_row();
+                                let angle_label = ui.label("Halftone angle");
+                                ui.add(
+                                    egui::DragValue::new(
+                                        &mut image.settings.halftone_angle_degrees,
+                                    )
+                                    .speed(0.5)
+                                    .range(-360.0..=360.0)
+                                    .suffix(" deg"),
+                                )
+                                .labelled_by(angle_label.id).on_hover_text(crate::ui::icons::field("Halftone angle"));
+                                ui.end_row();
+                                ui.label("DPI");
+                                ui.weak(format!("{:.1}", image.effective_dpi()));
+                                ui.end_row();
+                            });
+                    });
+                    ui.group(|ui| {
+                        ui.set_width(group_width);
+                        ui.strong("Image Settings");
+                        egui::Grid::new("image_adjust_settings")
+                            .num_columns(3)
+                            .spacing([8.0, 6.0])
+                            .show(ui, |ui| {
+                                let contrast_label = ui.label("Contrast");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.contrast, 0.25..=3.0)
+                                        .show_value(false),
+                                )
+                                .labelled_by(contrast_label.id).on_hover_text(crate::ui::icons::field("Contrast"));
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.contrast)
+                                        .speed(0.01)
+                                        .range(0.25..=3.0)
+                                        .fixed_decimals(2),
+                                )
+                                .labelled_by(contrast_label.id).on_hover_text(crate::ui::icons::field("Contrast"));
+                                ui.end_row();
+                                let brightness_label = ui.label("Brightness");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.brightness, -100..=100)
+                                        .show_value(false),
+                                )
+                                .labelled_by(brightness_label.id).on_hover_text(crate::ui::icons::field("Brightness"));
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.brightness)
+                                        .speed(1.0)
+                                        .range(-100..=100),
+                                )
+                                .labelled_by(brightness_label.id).on_hover_text(crate::ui::icons::field("Brightness"));
+                                ui.end_row();
+                                let radius_label = ui.label("Enhance Radius");
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut image.settings.enhance_radius_px,
+                                        0..=32,
+                                    )
+                                    .show_value(false),
+                                )
+                                .labelled_by(radius_label.id).on_hover_text(crate::ui::icons::field("Enhance Radius"));
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.enhance_radius_px)
+                                        .range(0..=32),
+                                )
+                                .labelled_by(radius_label.id).on_hover_text(crate::ui::icons::field("Enhance Radius"));
+                                ui.end_row();
+                                let amount_label = ui.label("Enhance Amount");
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut image.settings.enhance_amount,
+                                        0.0..=5.0,
+                                    )
+                                    .show_value(false),
+                                )
+                                .labelled_by(amount_label.id).on_hover_text(crate::ui::icons::field("Enhance Amount"));
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.enhance_amount)
+                                        .speed(0.05)
+                                        .range(0.0..=5.0)
+                                        .fixed_decimals(2),
+                                )
+                                .labelled_by(amount_label.id).on_hover_text(crate::ui::icons::field("Enhance Amount"));
+                                ui.end_row();
+                                let gamma_label = ui.label("Gamma");
+                                ui.add(
+                                    egui::Slider::new(&mut image.settings.gamma, 0.2..=3.0)
+                                        .show_value(false),
+                                )
+                                .labelled_by(gamma_label.id).on_hover_text(crate::ui::icons::field("Gamma"));
+                                ui.add(
+                                    egui::DragValue::new(&mut image.settings.gamma)
+                                        .speed(0.01)
+                                        .range(0.2..=3.0)
+                                        .fixed_decimals(2),
+                                )
+                                .labelled_by(gamma_label.id).on_hover_text(crate::ui::icons::field("Gamma"));
+                                ui.end_row();
+                            });
+                    });
+                });
+                ui.add_space(4.0);
                 ui.separator();
                 ui.horizontal(|ui| {
                     crate::ui::help::button(ui, "image_adjust");

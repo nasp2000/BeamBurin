@@ -110,6 +110,7 @@ pub enum Icon {
     BooleanExclusion,
     OutlineStroke,
     Offset,
+    RadiusCorner,
     // Align.
     AlignLeft,
     AlignCenterH,
@@ -228,6 +229,7 @@ impl Icon {
         Icon::BooleanExclusion,
         Icon::OutlineStroke,
         Icon::Offset,
+        Icon::RadiusCorner,
         Icon::AlignLeft,
         Icon::AlignCenterH,
         Icon::AlignRight,
@@ -960,6 +962,19 @@ fn prims(icon: Icon) -> Vec<Prim> {
             frame(2.0, 2.0, 14.0, 14.0, 1.1),
             frame(5.2, 5.2, 10.8, 10.8, 1.1),
         ],
+        // A square corner replaced by a quarter round, the corner radius tool.
+        Icon::RadiusCorner => vec![
+            line(2.6, 14.2, 2.6, 7.6, 1.4),
+            arc(
+                7.0,
+                7.0,
+                4.4,
+                1.4,
+                std::f32::consts::PI,
+                1.5 * std::f32::consts::PI,
+            ),
+            line(7.6, 2.6, 14.2, 2.6, 1.4),
+        ],
         Icon::ZoomIn => vec![
             ring(7.0, 7.0, 4.4, 1.5),
             line(10.2, 10.2, 14.0, 14.0, 1.8),
@@ -1156,6 +1171,7 @@ impl Icon {
             | Icon::BooleanExclusion
             | Icon::OutlineStroke
             | Icon::Offset
+            | Icon::RadiusCorner
             | Icon::AlignLeft
             | Icon::AlignCenterH
             | Icon::AlignRight

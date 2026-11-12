@@ -1324,11 +1324,14 @@ impl BeamBurinApp {
                         self.apply_outline_stroke();
                     }
                     ui.separator();
-                    let radius_button = ui
-                        .add(egui::Button::new("Radius"))
-                        .on_hover_text(
-                            "Arm the radius below; the next click rounds a corner or point",
-                        );
+                    let radius_button = icons::icon_button(
+                        ui,
+                        self.pending_corner_radius.is_some(),
+                        Icon::RadiusCorner,
+                        18.0,
+                        "Radius",
+                        "Arm the radius below; the next click rounds a corner or point",
+                    );
                     if radius_button.clicked() {
                         self.pending_corner_radius = Some(self.offset_distance);
                         self.status = format!(
