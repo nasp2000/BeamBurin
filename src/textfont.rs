@@ -318,9 +318,10 @@ fn walk(dir: &Path, depth: usize, entries: &mut Vec<FontEntry>) {
 mod tests {
     use super::{
         BUNDLED_BOLD_DATA, BUNDLED_BOLD_NAME, BUNDLED_BOLD_OBLIQUE_DATA, BUNDLED_BOLD_OBLIQUE_NAME,
-        BUNDLED_DATA, BUNDLED_NAME, BUNDLED_OBLIQUE_NAME, collect_from, family, family_key, names,
-        read, resolve, variant,
+        BUNDLED_DATA, BUNDLED_NAME, BUNDLED_OBLIQUE_NAME, collect_from, ensure_loaded, family,
+        family_key, names, read, resolve, variant,
     };
+    use egui::Context;
 
     #[test]
     fn the_bundled_font_is_always_the_first_choice() {
