@@ -136,10 +136,19 @@ jobs:
             libxcb1 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 \
             libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # nextest runs every test in its own process, in parallel, keeps going
+      # after a failure and prints one line per failure. Doctests stay in the
+      # quality job because nextest does not run them; the choice is recorded
+      # in CONTRIBUTING.md ("Continuous integration").
       - name: Tests on the target platform
         env:
           RUSTFLAGS: ${{ startsWith(matrix.os, 'windows') && '-C target-feature=+crt-static' || '' }}
-        run: cargo test --workspace --locked --target ${{ matrix.target }}
+        run: cargo nextest run --workspace --locked --target ${{ matrix.target }}
 
   build:
     name: ${{ matrix.name }}

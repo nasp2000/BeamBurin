@@ -17,8 +17,8 @@ only when it has logic, UI, persistence, error handling and tests.
 - **Tests:** add Rust unit or integration tests for the change. UI behaviour
   uses the headless `egui_kittest` harness in `src/app.rs`; no GPU is needed.
 - **Formatting:** `cargo fmt --all` before committing. CI runs
-  `cargo fmt --all --check`, clippy with `-D warnings`, the test suite,
-  `cargo-deny`, actionlint and the headless start test.
+  `cargo fmt --all --check`, clippy with `-D warnings`, the test suite through
+  `cargo-nextest`, `cargo-deny`, actionlint and the headless start test.
 - **Files:** validate before saving, write atomically, and never lose or corrupt
   a project. Warn about unsupported imported or exported elements.
 - **Identifiers:** layers and objects are identified by UUID, never by name.
@@ -29,6 +29,31 @@ only when it has logic, UI, persistence, error handling and tests.
 - **Names:** do not add names, logos or screenshots of commercial products to
   the code, tests, assets, documentation or commit messages. Describe formats
   and behaviour generically. The `no_product_names` test enforces this.
+
+## Continuous integration
+
+`Build` (`.github/workflows/build.yml`) is the only place that compiles and
+tests the project; nothing is built on a developer machine by policy.
+
+- **Unit and UI tests** run with `cargo-nextest`
+  (`cargo nextest run --workspace --locked --target <target>`), on Windows
+  x86_64 and Linux aarch64. nextest gives each test its own process, runs the
+  binaries in parallel instead of one after the other, keeps going after a
+  failure and ends with a single list of the failed tests. A test that leaves
+  state behind or depends on another test's timing fails here instead of
+  hiding inside a shared process.
+- **Doctests** stay in the `quality` job (`cargo test --workspace --doc`)
+  because nextest does not run them.
+- **The scheduled corpus job** (`corpus.yml`) keeps `cargo test` for its two
+  `--ignored` selections, because it runs named scenarios rather than the
+  suite.
+- **Locally**, if you have nextest installed
+  (`cargo install cargo-nextest --locked`), `cargo nextest run --workspace`
+  matches CI. It is not required: `cargo test` still works.
+- **If the suite outgrows the job budget**, the recorded next step is to shard
+  it in the existing matrix with `--partition count:<i>/<n>` rather than
+  splitting the tests by hand. It has not been necessary so far: the whole
+  suite stays around two minutes per platform.
 
 ## Developer Certificate of Origin
 
