@@ -519,7 +519,7 @@ impl BeamBurinApp {
                                 });
                                 draw_histogram(ui, &histogram, &image.settings);
                                 ui.separator();
-                                ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
                                     egui::Grid::new("image_target_resolution")
                                         .num_columns(2)
                                         .spacing([12.0, 6.0])
