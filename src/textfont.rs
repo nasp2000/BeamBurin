@@ -348,7 +348,7 @@ mod tests {
         ensure_loaded(&ctx, &[]);
         // Fonts exist only after a pass, and the definitions set above are used
         // from that pass on.
-        let _ = ctx.run(egui::RawInput::default(), |_| {});
+        let _ = ctx.run_ui(egui::RawInput::default(), |_| {});
         for character in ['→', '←'] {
             let has_glyph = ctx
                 .fonts_mut(|fonts| fonts.has_glyph(&egui::FontId::proportional(13.0), character));
