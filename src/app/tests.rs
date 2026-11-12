@@ -806,13 +806,25 @@ fn the_radius_button_rounds_the_corner_clicked_next() {
         "status is {}",
         harness.state().status
     );
-    // A real pointer click on the corner must consume the armed radius.
-    let canvas = harness.ctx.available_rect();
-    let (corner_x, corner_y) = harness.state().editor.canvas.doc_to_screen(10.0, 10.0);
+    // A real pointer click on the corner must consume the armed radius. Two
+    // probes over the canvas give the millimetre to pixel mapping.
+    harness.hover_at(egui::pos2(500.0, 400.0));
+    harness.run();
+    let probe = harness
+        .state()
+        .cursor_doc
+        .expect("the canvas did not report the pointer");
+    harness.hover_at(egui::pos2(700.0, 400.0));
+    harness.run();
+    let probe_right = harness
+        .state()
+        .cursor_doc
+        .expect("the canvas did not report the pointer");
+    let zoom = 200.0 / (probe_right.x - probe.x);
     #[allow(clippy::cast_possible_truncation)]
     let corner = egui::pos2(
-        canvas.min.x + corner_x as f32,
-        canvas.min.y + corner_y as f32,
+        (500.0 + (10.0 - probe.x) * zoom) as f32,
+        (400.0 + (probe.y - 10.0) * zoom) as f32,
     );
     harness.hover_at(corner);
     harness.run();
