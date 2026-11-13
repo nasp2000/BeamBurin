@@ -1988,7 +1988,13 @@ impl eframe::App for BeamBurinApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
         let events = ui.ctx().input(|input| input.events.len());
-        self.frame_trace.end(events);
+        let causes: Vec<String> = ui
+            .ctx()
+            .repaint_causes()
+            .iter()
+            .map(|cause| format!("{}:{} {}", cause.file, cause.line, cause.reason))
+            .collect();
+        self.frame_trace.end(events, &causes);
     }
 }
 

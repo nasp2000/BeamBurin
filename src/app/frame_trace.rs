@@ -29,7 +29,7 @@ impl FrameTrace {
     }
 
     /// Print the frame line and remember when it ended.
-    pub(super) fn end(&mut self, events: usize) {
+    pub(super) fn end(&mut self, events: usize, causes: &[String]) {
         if !self.enabled {
             return;
         }
@@ -42,10 +42,18 @@ impl FrameTrace {
             .map_or(0.0, |last| (start - last).as_secs_f64() * 1000.0);
         let work = (now - start).as_secs_f64() * 1000.0;
         self.index += 1;
-        eprintln!(
-            "frame {} gap={gap:.1}ms work={work:.1}ms events={events}",
-            self.index
-        );
+        if causes.is_empty() {
+            eprintln!(
+                "frame {} gap={gap:.1}ms work={work:.1}ms events={events}",
+                self.index
+            );
+        } else {
+            eprintln!(
+                "frame {} gap={gap:.1}ms work={work:.1}ms events={events} causes=[{}]",
+                self.index,
+                causes.join("; ")
+            );
+        }
         self.last_end = Some(now);
     }
 }
