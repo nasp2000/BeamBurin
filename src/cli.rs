@@ -25,6 +25,11 @@ pub struct Cli {
     #[arg(long)]
     pub licenses: bool,
 
+    /// Print one line per frame on stderr (gap since the previous frame and
+    /// the work it did), for measuring a slow session.
+    #[arg(long)]
+    pub frame_log: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

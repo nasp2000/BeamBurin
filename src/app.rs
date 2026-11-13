@@ -38,6 +38,7 @@ mod dialogs_reports;
 mod dialogs_text;
 mod dialogs_transform;
 mod files;
+mod frame_trace;
 mod layers;
 mod properties;
 mod state;
@@ -404,6 +405,8 @@ pub struct BeamBurinApp {
     quit_requested: bool,
     /// Frames left before a smoke-test run closes itself.
     smoke_frames: Option<u32>,
+    /// Frame timing trace, enabled with `--frame-log`.
+    frame_trace: frame_trace::FrameTrace,
     job: Option<crate::gcode::JobReport>,
     active_operation: Option<String>,
     profiles: crate::profiles::ProfileLibrary,
@@ -1978,11 +1981,14 @@ impl BeamBurinApp {
 
 impl eframe::App for BeamBurinApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.frame_trace.begin();
         self.advance(ctx);
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+        let events = ui.ctx().input(|input| input.events.len());
+        self.frame_trace.end(events);
     }
 }
 

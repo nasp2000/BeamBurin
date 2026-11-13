@@ -81,6 +81,9 @@ fn main() -> eframe::Result<()> {
             if cli.smoke_test {
                 app.set_smoke_frames(20);
             }
+            if cli.frame_log {
+                app.enable_frame_log();
+            }
             Ok(Box::new(app))
         }),
     )

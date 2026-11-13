@@ -8,6 +8,11 @@ impl BeamBurinApp {
         self.smoke_frames = Some(frames);
     }
 
+    /// Print one line per frame on stderr, for measuring a slow session.
+    pub fn enable_frame_log(&mut self) {
+        self.frame_trace.enable();
+    }
+
     pub fn new(file: Option<PathBuf>) -> Self {
         Self::new_inner(file, true)
     }
@@ -85,6 +90,7 @@ impl BeamBurinApp {
             needs_fit: true,
             quit_requested: false,
             smoke_frames: None,
+            frame_trace: frame_trace::FrameTrace::default(),
             job: None,
             active_operation: None,
             profiles: crate::profiles::load_or_default(&crate::profiles::default_path())
