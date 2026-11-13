@@ -39,6 +39,8 @@ mod dialogs_text;
 mod dialogs_transform;
 mod files;
 mod frame_trace;
+mod native;
+pub use native::wgpu_configuration;
 mod layers;
 mod properties;
 mod state;
@@ -407,6 +409,8 @@ pub struct BeamBurinApp {
     smoke_frames: Option<u32>,
     /// Frame timing trace, enabled with `--frame-log`.
     frame_trace: frame_trace::FrameTrace,
+    /// Last window title sent as a viewport command.
+    last_title: Option<String>,
     job: Option<crate::gcode::JobReport>,
     active_operation: Option<String>,
     profiles: crate::profiles::ProfileLibrary,
@@ -1971,9 +1975,7 @@ impl BeamBurinApp {
         self.advance_playback(ctx);
         self.autosave(ctx);
         self.poll_task(ctx);
-        let title = format!("BeamBurin - {}", self.title());
-        let current = ctx.input(|input| input.viewport().title.clone());
-        if current.as_deref() != Some(title.as_str()) {
+        if let Some(title) = self.pending_title() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
     }

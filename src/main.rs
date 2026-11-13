@@ -39,20 +39,12 @@ use clap::Parser;
 /// rejects the device, so the window never opens. The interface only needs one
 /// colour attachment, so the adapter's own limits are requested instead.
 fn native_options() -> eframe::NativeOptions {
-    let mut wgpu = eframe::egui_wgpu::WgpuConfiguration::default();
-    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut wgpu.wgpu_setup {
-        setup.device_descriptor = std::sync::Arc::new(|adapter| eframe::wgpu::DeviceDescriptor {
-            label: Some("BeamBurin device"),
-            required_limits: adapter.limits(),
-            ..Default::default()
-        });
-    }
     eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("BeamBurin")
             .with_inner_size([1280.0, 800.0])
             .with_icon(load_icon()),
-        wgpu_options: wgpu,
+        wgpu_options: beamburin::app::wgpu_configuration(),
         ..Default::default()
     }
 }

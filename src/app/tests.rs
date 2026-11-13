@@ -483,6 +483,36 @@ fn wait_for_task(harness: &mut egui_kittest::Harness<'static, BeamBurinApp>) {
 }
 
 #[test]
+fn the_window_title_is_sent_once_per_change() {
+    let mut app = ui_test_app();
+    assert!(
+        app.pending_title().is_some(),
+        "the first title was not sent to the window manager"
+    );
+    assert!(
+        app.pending_title().is_none(),
+        "the title is sent on every frame, which asks for a repaint every frame"
+    );
+    app.editor.document.name = "panel".to_string();
+    assert!(
+        app.pending_title().is_some(),
+        "a changed title was not sent"
+    );
+}
+
+#[test]
+fn frames_are_presented_without_waiting_for_vertical_blank() {
+    // Waiting for vertical blank costs about a second per frame on the small
+    // board's virtual display (measured with --frame-log).
+    let wgpu = crate::app::wgpu_configuration();
+    assert_eq!(
+        wgpu.surface.present_mode,
+        eframe::wgpu::PresentMode::AutoNoVsync,
+        "the editor waits for vertical blank"
+    );
+}
+
+#[test]
 fn the_ui_keeps_the_menus_and_the_toolbar_align_actions() {
     use egui_kittest::kittest::Queryable as _;
 

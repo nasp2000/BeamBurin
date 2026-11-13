@@ -91,6 +91,7 @@ impl BeamBurinApp {
             quit_requested: false,
             smoke_frames: None,
             frame_trace: frame_trace::FrameTrace::default(),
+            last_title: None,
             job: None,
             active_operation: None,
             profiles: crate::profiles::load_or_default(&crate::profiles::default_path())
@@ -353,6 +354,20 @@ impl BeamBurinApp {
 
     pub(super) fn is_dirty(&self) -> bool {
         self.saved_snapshot.as_ref() != Some(&self.editor.document)
+    }
+
+    /// Title to send to the window manager, if it changed since the last one.
+    ///
+    /// The reported viewport title is not reliable on every platform (X11 does
+    /// not report it back), so the comparison is against what was last sent.
+    /// Sending it every frame asked for a repaint every frame.
+    pub(super) fn pending_title(&mut self) -> Option<String> {
+        let title = format!("BeamBurin - {}", self.title());
+        if self.last_title.as_deref() == Some(title.as_str()) {
+            return None;
+        }
+        self.last_title = Some(title.clone());
+        Some(title)
     }
 
     pub(super) fn title(&self) -> String {
