@@ -188,7 +188,11 @@ impl Canvas {
         let height = usize::try_from(height_px).unwrap_or(1);
         let scale_x = width as f64 / width_mm;
         let scale_y = height as f64 / height_mm;
-        let stretched = (scale_x - scale_y).abs() > scale_x.max(scale_y) * 1e-6;
+        // A size asked for in whole pixels rounds each axis by up to half a
+        // pixel. That alone is not a stretched picture: only warn when the two
+        // axes disagree by more than a pixel's worth over the smaller side.
+        let aspect_error_px = (scale_x - scale_y).abs() * width_mm.min(height_mm);
+        let stretched = aspect_error_px > 1.0;
         let background = if options.transparent {
             [0, 0, 0, 0]
         } else {
@@ -696,6 +700,57 @@ mod tests {
         };
         let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
         assert_eq!((width, height), (20, 10));
+        assert!(
+            warnings.iter().any(|warning| warning.contains("stretched")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn rounding_the_output_size_is_not_a_stretched_picture() {
+        // 126.0 x 95.7 mm at 96 dpi is 476.0 x 361.7 pixels; rounding the
+        // height to 362 must not warn about a stretched picture.
+        let document = Document {
+            width_mm: 126.0,
+            height_mm: 95.7,
+            ..Document::default()
+        };
+        let options = PngOptions {
+            dpi: 96.0,
+            transparent: false,
+            width_px: None,
+            height_px: None,
+            margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            area: None,
+        };
+        let (_, width, height, warnings) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (476, 362));
+        assert!(
+            !warnings.iter().any(|warning| warning.contains("stretched")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn a_deliberate_stretch_still_warns() {
+        let document = Document {
+            width_mm: 126.0,
+            height_mm: 95.7,
+            ..Document::default()
+        };
+        let options = PngOptions {
+            dpi: 96.0,
+            transparent: false,
+            width_px: Some(476),
+            height_px: Some(400),
+            margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            area: None,
+        };
+        let (_, _, _, warnings) = render_rgba(&document, &options).unwrap();
         assert!(
             warnings.iter().any(|warning| warning.contains("stretched")),
             "{warnings:?}"
