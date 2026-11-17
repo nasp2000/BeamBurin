@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use beamburin::document::Shape;
 use beamburin::raster::{
-    MAX_PIXELS, PREVIEW_MAX_SIDE, auto_levels_preview, histogram_preview, process_object_preview,
+    MAX_PIXELS, PREVIEW_MAX_SIDE, auto_levels_preview, histogram_preview, prepared_rgb_preview,
+    process_object_preview,
 };
 
 #[test]
@@ -89,6 +90,28 @@ fn a_multi_megabyte_photo_imports_and_previews_within_budget() {
         "auto levels are inverted: {black} > {white}"
     );
     println!("histogram and auto levels: {histogram_time:?}");
+
+    // The original-image view used to decode the whole file; it now reuses the
+    // bounded source the preview already decoded.
+    let full_start = Instant::now();
+    let full = image::open(&path).expect("full decode");
+    let full_time = full_start.elapsed();
+    drop(full);
+    println!("full decode for the original preview (old path): {full_time:?}");
+
+    let cached_start = Instant::now();
+    let original =
+        prepared_rgb_preview(&path, image, PREVIEW_MAX_SIDE).expect("cached original preview");
+    let cached_time = cached_start.elapsed();
+    println!(
+        "original preview from the prepared cache: {} x {}, {cached_time:?}",
+        original.width(),
+        original.height()
+    );
+    assert!(
+        cached_time < full_time,
+        "the cached original preview ({cached_time:?}) was not faster than a full decode ({full_time:?})"
+    );
 
     let _ = std::fs::remove_file(&path);
 }

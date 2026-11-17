@@ -770,6 +770,29 @@ pub(crate) fn note_decode() {
     DECODE_COUNT.with(|count| count.set(count.get() + 1));
 }
 
+/// Identity of the file on disk, for caches that key on its contents.
+pub fn source_stamp(path: &std::path::Path) -> String {
+    let (path, length, modified) = source_identity(path);
+    format!("{path}|{length}|{modified}")
+}
+
+/// Bounded colour source for the original-image preview.
+///
+/// The adjust dialog shows the untouched photo beside the processed one. It
+/// used to decode the whole file for that, although the canvas preview had
+/// already decoded the same bounded source; reuse that buffer and let only the
+/// first caller pay for the decode.
+pub fn prepared_rgb_preview(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+) -> Result<Arc<image::RgbImage>> {
+    prepared_image(path, image, Some(max_side.max(1)))?;
+    let rgb =
+        with_preview_cache(|cache| cache.as_ref().map(|entry| Arc::clone(&entry.rgb))).flatten();
+    rgb.ok_or_else(|| BeamError::InvalidInput("the image preview cache is unavailable".to_string()))
+}
+
 fn preview_key(
     path: &std::path::Path,
     image: &crate::objects::ImageObject,
@@ -1503,6 +1526,22 @@ mod object_tests {
             decode_count(),
             2,
             "a crop change did not invalidate the source"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_original_preview_reuses_the_preview_decode() {
+        let path = write_image("bw_raster_original_shared.png", 200, 100);
+        let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
+        reset_decode_count();
+        let _ = process_object_preview(&path, &object, 64).unwrap();
+        let rgb = prepared_rgb_preview(&path, &object, 64).unwrap();
+        assert_eq!((rgb.width(), rgb.height()), (64, 32));
+        assert_eq!(
+            decode_count(),
+            1,
+            "the original preview decoded the file again"
         );
         let _ = std::fs::remove_file(&path);
     }

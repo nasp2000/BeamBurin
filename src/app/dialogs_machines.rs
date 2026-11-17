@@ -606,41 +606,25 @@ impl BeamBurinApp {
         image: &crate::objects::ImageObject,
     ) -> Option<egui::TextureHandle> {
         let key = format!(
-            "{}|{:?}|{}",
-            image.path, image.crop, image.settings.rotation_degrees
+            "{}|{:?}|{}|{}",
+            image.path,
+            image.crop,
+            image.settings.rotation_degrees,
+            crate::raster::source_stamp(std::path::Path::new(&image.path))
         );
         if let Some(texture) = self.image_original_previews.get(&key) {
             return Some(texture.clone());
         }
-        let mut picture = image::open(&image.path).ok()?;
-        if let Some(crop) = image.crop {
-            picture = picture.crop_imm(crop.x, crop.y, crop.width, crop.height);
-        }
-        let rotation = image.settings.rotation_degrees;
-        if (rotation - 90.0).abs() < f64::EPSILON {
-            picture = picture.rotate90();
-        } else if (rotation - 180.0).abs() < f64::EPSILON {
-            picture = picture.rotate180();
-        } else if (rotation - 270.0).abs() < f64::EPSILON {
-            picture = picture.rotate270();
-        }
-        let width = picture.width().max(1);
-        let height = picture.height().max(1);
-        let scale = (480.0 / width.max(height) as f32).min(1.0);
-        if scale < 1.0 {
-            let target_width = ((width as f32) * scale).max(1.0) as u32;
-            let target_height = ((height as f32) * scale).max(1.0) as u32;
-            picture = picture.resize(
-                target_width,
-                target_height,
-                image::imageops::FilterType::Triangle,
-            );
-        }
-        let rgba = picture.to_rgba8();
-        let color = egui::ColorImage::from_rgba_unmultiplied(
-            [rgba.width() as usize, rgba.height() as usize],
-            rgba.as_raw(),
-        );
+        // The canvas preview has already decoded this bounded source, so the
+        // original view reuses it instead of decoding the whole file again.
+        let rgb = crate::raster::prepared_rgb_preview(
+            std::path::Path::new(&image.path),
+            image,
+            crate::raster::PREVIEW_MAX_SIDE,
+        )
+        .ok()?;
+        let color =
+            egui::ColorImage::from_rgb([rgb.width() as usize, rgb.height() as usize], rgb.as_raw());
         let texture = ctx.load_texture(
             format!("image-original-{key}"),
             color,
