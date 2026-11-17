@@ -215,8 +215,8 @@ fn bundled_fixtures() -> Vec<PathBuf> {
     let directory = root().join("tests/fixtures/corpus");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&directory)
         .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
+        .filter_map(Result::ok)
+        .map(std::fs::DirEntry::path)
         .filter(|path| path.is_file())
         .collect();
     files.sort();
