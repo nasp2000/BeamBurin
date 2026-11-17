@@ -213,12 +213,15 @@ fn the_external_corpus_imports() {
 /// every importer without downloading the external manifest.
 fn bundled_fixtures() -> Vec<PathBuf> {
     let directory = root().join("tests/fixtures/corpus");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&directory)
-        .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
-        .filter_map(|entry| entry.ok())
-        .map(std::fs::DirEntry::path)
-        .filter(|path| path.is_file())
-        .collect();
+    let listing = std::fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in listing.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path);
+        }
+    }
     files.sort();
     files
 }
