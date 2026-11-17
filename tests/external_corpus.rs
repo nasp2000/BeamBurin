@@ -208,3 +208,57 @@ fn the_external_corpus_imports() {
         assert_importable(entry);
     }
 }
+
+/// Files committed with the repository, so a fresh checkout still exercises
+/// every importer without downloading the external manifest.
+fn bundled_fixtures() -> Vec<PathBuf> {
+    let directory = root().join("tests/fixtures/corpus");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn the_bundled_corpus_imports_and_reports_each_file() {
+    let fixtures = bundled_fixtures();
+    assert!(
+        fixtures.len() >= 6,
+        "the bundled corpus has only {} file(s)",
+        fixtures.len()
+    );
+    for path in fixtures {
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let started = Instant::now();
+        let outcome = beamburin::import::format::import_with_report(&path)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let elapsed = started.elapsed();
+        assert!(
+            outcome.document.width_mm.is_finite() && outcome.document.width_mm > 0.0,
+            "{name}: invalid page width"
+        );
+        assert!(
+            outcome.document.height_mm.is_finite() && outcome.document.height_mm > 0.0,
+            "{name}: invalid page height"
+        );
+        assert!(
+            !outcome.document.objects.is_empty(),
+            "{name} imported no objects"
+        );
+        assert!(elapsed < Duration::from_secs(10), "{name} took {elapsed:?}");
+        println!(
+            "{name}: {} object(s), {} layer(s), {} warning(s), {elapsed:?}",
+            outcome.document.objects.len(),
+            outcome.document.layers.len(),
+            outcome.warnings.len()
+        );
+    }
+}

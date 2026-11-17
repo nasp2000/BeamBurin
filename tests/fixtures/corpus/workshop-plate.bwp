@@ -1,0 +1,120 @@
+{
+  "name": "workshop-plate",
+  "unit": "Millimeters",
+  "width_mm": 300.0,
+  "height_mm": 200.0,
+  "origin": "BottomLeft",
+  "layers": [
+    {
+      "id": "90f091cb-9291-425c-a5dc-1b554fda09be",
+      "name": "Layer 1",
+      "color": "#000000",
+      "visible": true,
+      "locked": false,
+      "order": 0,
+      "operation_id": "938d0e49-c14f-4cf8-88fe-1e08360a9bfc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "8636257f-f13d-49e8-bcb4-5936c1837db0",
+      "name": "Rectangle",
+      "layer_id": "90f091cb-9291-425c-a5dc-1b554fda09be",
+      "color": "#000000",
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "tx": 164.6843549862763,
+        "ty": 128.27081427264415
+      },
+      "shape": {
+        "Rect": {
+          "width": 87.83165599268068,
+          "height": 71.36322049405305,
+          "corner_radius": 0.0
+        }
+      },
+      "style": {
+        "stroke": "#000000",
+        "fill": null,
+        "stroke_width_mm": 0.2
+      },
+      "operation_id": "938d0e49-c14f-4cf8-88fe-1e08360a9bfc",
+      "group_id": null,
+      "hole_of": null,
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "804563b4-db0f-4333-912b-fb38a4adf793",
+      "name": "Ellipse",
+      "layer_id": "90f091cb-9291-425c-a5dc-1b554fda09be",
+      "color": "#000000",
+      "transform": {
+        "a": 1.0,
+        "b": 0.0,
+        "c": 0.0,
+        "d": 1.0,
+        "tx": 262.0711344922232,
+        "ty": 139.24977127172923
+      },
+      "shape": {
+        "Ellipse": {
+          "rx": 32.936870997255255,
+          "ry": 27.44739249771272
+        }
+      },
+      "style": {
+        "stroke": "#000000",
+        "fill": null,
+        "stroke_width_mm": 0.2
+      },
+      "operation_id": "938d0e49-c14f-4cf8-88fe-1e08360a9bfc",
+      "group_id": null,
+      "hole_of": null,
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "operations": [
+    {
+      "id": "938d0e49-c14f-4cf8-88fe-1e08360a9bfc",
+      "name": "C00",
+      "op_type": "OutlineCutting",
+      "params": {
+        "speed": 1000.0,
+        "power": 20.0,
+        "passes": 1,
+        "line_interval_mm": 0.1,
+        "fill_angle_degrees": 0.0,
+        "fill_alternate": true,
+        "fill_margin_mm": 0.0,
+        "fill_offset_mm": 0.0,
+        "color": "#000000",
+        "air_assist": false,
+        "show_in_preview": true,
+        "constant_power": false,
+        "cross_hatch": false,
+        "overscan_mm": 0.0,
+        "kerf_mm": 0.0,
+        "tabs": 0,
+        "tab_width_mm": 2.0,
+        "tab_spacing_mm": 0.0,
+        "lead_in_mm": 0.0,
+        "lead_out_mm": 0.0,
+        "curved_leads": false,
+        "expressions": {}
+      },
+      "enabled": true,
+      "depends_on": []
+    }
+  ],
+  "guides": [],
+  "stock": null,
+  "restricted_areas": [],
+  "parameters": [],
+  "constraints": [],
+  "format_version": 2
+}
