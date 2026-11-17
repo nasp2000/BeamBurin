@@ -42,5 +42,7 @@ jobs:
         run: scripts/fetch-external-corpus.sh
       - name: Import the external corpus
         run: cargo test --locked --test external_corpus -- --ignored --nocapture
+      - name: Import the files committed with the repository
+        run: cargo test --locked --test external_corpus the_bundled_corpus -- --nocapture
       - name: Import and preview a multi-megabyte photo
         run: cargo test --locked --test large_images -- --ignored --nocapture
