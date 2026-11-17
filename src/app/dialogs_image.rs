@@ -97,6 +97,8 @@ impl BeamBurinApp {
                     .num_columns(2)
                     .spacing([10.0, 6.0])
                     .show(ui, |ui| {
+                        self.preset_picker(ui, "image");
+                        ui.end_row();
                         let dpi_preset = export_dpi_preset(self.export_image_dpi);
                         let custom_dpi = self.export_image_dpi_custom || dpi_preset.is_none();
                         let resolution_label = ui.label("Resolution");

@@ -4425,6 +4425,92 @@ fn the_palette_creates_a_cut_entry_for_the_active_layer() {
 }
 
 #[test]
+fn the_image_export_dialog_applies_a_saved_preset() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.preferences.image_export_presets.saved.push(
+        crate::config::preferences::ImageExportPreset {
+            name: "Print".to_string(),
+            dpi: 300.0,
+            transparent: true,
+            margin_mm: 3.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            custom_size: false,
+            width_px: 1000,
+            height_px: 1000,
+            keep_aspect: true,
+            drawing: true,
+            selection: false,
+        },
+    );
+    app.editor
+        .add_rectangle(Point2::new(5.0, 5.0), Point2::new(25.0, 20.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Export image...").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::ComboBox, "Preset")
+        .click();
+    harness.run();
+    harness.get_by_label("Print").click();
+    harness.run();
+    let state = harness.state();
+    assert_eq!(state.export_image_dpi, 300.0);
+    assert!((state.export_image_margin_mm - 3.0).abs() < f64::EPSILON);
+    assert!(
+        state.export_image_transparent,
+        "transparency was not applied"
+    );
+    assert!(state.export_image_drawing, "the framing was not applied");
+}
+
+#[test]
+fn the_vector_preset_picker_only_lists_the_open_format() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let preset = |name: &str, format: &str| crate::config::preferences::VectorExportPreset {
+        name: name.to_string(),
+        format: format.to_string(),
+        text_as_paths: false,
+        arcs: false,
+        margin_mm: 0.0,
+        dxf_unit: "mm".to_string(),
+        embed_images: false,
+        area: "page".to_string(),
+        layers: Vec::new(),
+    };
+    let mut app = ui_test_app();
+    app.preferences
+        .vector_export_presets
+        .saved
+        .push(preset("Sheet SVG", "svg"));
+    app.preferences
+        .vector_export_presets
+        .saved
+        .push(preset("Sheet DXF", "dxf"));
+    app.open_export_svg(false);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::ComboBox, "Preset")
+        .click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Sheet SVG").is_some(),
+        "the SVG preset is not offered in the SVG dialog"
+    );
+    assert!(
+        harness.query_by_label("Sheet DXF").is_none(),
+        "a DXF preset leaked into the SVG dialog"
+    );
+}
+
+#[test]
 fn the_export_presets_window_saves_image_and_vector_options() {
     use egui_kittest::kittest::Queryable as _;
 

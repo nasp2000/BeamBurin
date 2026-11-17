@@ -699,6 +699,76 @@ impl BeamBurinApp {
         self.export_dxf_open = true;
     }
 
+    /// Line that applies a saved export preset, or opens the presets window.
+    ///
+    /// `format` is `image`, `svg`, `dxf`, `pdf`, `eps` or `hpgl`. A vector
+    /// preset only appears in the dialog of the format it was saved for.
+    pub(super) fn preset_picker(&mut self, ui: &mut Ui, format: &str) {
+        let names: Vec<String> = if format == "image" {
+            self.preferences
+                .image_export_presets
+                .saved
+                .iter()
+                .map(|preset| preset.name.clone())
+                .collect()
+        } else {
+            self.preferences
+                .vector_export_presets
+                .saved
+                .iter()
+                .filter(|preset| preset.format == format)
+                .map(|preset| preset.name.clone())
+                .collect()
+        };
+        let label = ui.label("Preset");
+        let mut apply: Option<String> = None;
+        let mut edit = false;
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt(format!("export_preset_{format}"))
+                .selected_text(if names.is_empty() {
+                    "None saved"
+                } else {
+                    "Apply preset..."
+                })
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    if names.is_empty() {
+                        ui.weak("No preset saved for this format.");
+                    }
+                    for name in &names {
+                        if ui.selectable_label(false, name).clicked() {
+                            apply = Some(name.clone());
+                        }
+                    }
+                })
+                .response
+                .labelled_by(label.id)
+                .on_hover_text(crate::ui::icons::field("Preset"));
+            if ui
+                .button("Edit presets...")
+                .on_hover_text("Save, apply or delete export presets")
+                .clicked()
+            {
+                edit = true;
+            }
+        });
+        if let Some(name) = apply {
+            if format == "image" {
+                if let Some(preset) = self.preferences.image_export_presets.find(&name).cloned() {
+                    self.apply_image_export_preset(&preset);
+                    self.status = format!("Applied image preset '{name}'");
+                }
+            } else if let Some(preset) = self.preferences.vector_export_presets.find(&name).cloned()
+            {
+                self.apply_vector_export_preset(&preset);
+                self.status = format!("Applied {format} preset '{name}'");
+            }
+        }
+        if edit {
+            self.export_presets_open = true;
+        }
+    }
+
     pub(super) fn export_dxf_window(&mut self, ctx: &egui::Context) {
         let mut open = self.export_dxf_open;
         let mut start = false;
@@ -722,6 +792,7 @@ impl BeamBurinApp {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
                 }
+                self.preset_picker(ui, "dxf");
                 ui.label("Origin");
                 ui.horizontal(|ui| {
                     let whole = !self.export_dxf_selection && !self.export_vector_drawing;
@@ -866,6 +937,7 @@ impl BeamBurinApp {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
                 }
+                self.preset_picker(ui, if hpgl { "hpgl" } else { "pdf" });
                 ui.label(if hpgl { "Origin" } else { "Area" });
                 ui.horizontal(|ui| {
                     let whole = !self.export_vector_selection && !self.export_vector_drawing;
@@ -975,6 +1047,7 @@ impl BeamBurinApp {
                 if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                     cancel = true;
                 }
+                self.preset_picker(ui, "svg");
                 ui.label("Area");
                 ui.horizontal(|ui| {
                     let whole = !self.export_svg_selection && !self.export_vector_drawing;
