@@ -1,8 +1,11 @@
-//! Hash-pinned real-world files, imported in the scheduled corpus workflow.
+//! Import corpus: downloaded real-world files and files committed with the tree.
 //!
-//! `scripts/fetch-external-corpus.sh` downloads each entry into
-//! `assets/external/files/` and verifies its SHA-256 before this test runs. The
-//! test is ignored in the normal suite because the files are not committed.
+//! `scripts/fetch-external-corpus.sh` downloads each entry of
+//! `assets/external/corpus.tsv` into `assets/external/files/` and verifies its
+//! SHA-256 before the manifest test runs; that test is ignored in the normal
+//! suite because those files are not committed. The small fixtures under
+//! `tests/fixtures/corpus` are committed and run with every ordinary test, so a
+//! fresh checkout still imports each format and prints one line per file.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
