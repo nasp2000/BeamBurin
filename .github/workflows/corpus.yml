@@ -38,8 +38,14 @@ jobs:
             libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
             libgl1-mesa-dev libudev-dev libxcb1 libxcb-render0 libxcb-shape0 \
             libxcb-xfixes0 libxcb-randr0
+      - name: Check the corpus manifest without downloading
+        run: python3 scripts/check-corpus-manifest.py
       - name: Download the hash-pinned external corpus
-        run: scripts/fetch-external-corpus.sh
+        run: scripts/fetch-external-corpus.sh --prune
+      - name: Check the downloaded corpus
+        run: |
+          python3 scripts/check-corpus-manifest.py --strict-downloads
+          scripts/fetch-external-corpus.sh --check
       - name: Import the external corpus
         run: cargo test --locked --test external_corpus -- --ignored --nocapture
       - name: Import the files committed with the repository

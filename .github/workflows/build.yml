@@ -66,6 +66,15 @@ jobs:
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
 
+  corpus-manifest:
+    name: Corpus manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the corpus manifest without downloading
+        run: python3 scripts/check-corpus-manifest.py
+
   msrv:
     name: Minimum Rust version
     runs-on: ubuntu-latest

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="20mm" viewBox="0 0 60 20">
+  <defs><path id="arc" d="M 5 15 Q 30 0 55 15" fill="none"/></defs>
+  <path d="M 5 15 Q 30 0 55 15" fill="none" stroke="#000000"/>
+  <text font-size="6" fill="#000000"><textPath href="#arc" startOffset="10%">TEXT ON A PATH</textPath></text>
+</svg>

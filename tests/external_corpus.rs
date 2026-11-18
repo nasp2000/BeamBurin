@@ -1,14 +1,40 @@
 //! Import corpus: downloaded real-world files and files committed with the tree.
 //!
-//! `scripts/fetch-external-corpus.sh` downloads each entry of
+//! `scripts/fetch-external-corpus.sh` downloads each remote entry of
 //! `assets/external/corpus.tsv` into `assets/external/files/` and verifies its
 //! SHA-256 before the manifest test runs; that test is ignored in the normal
 //! suite because those files are not committed. The small fixtures under
 //! `tests/fixtures/corpus` are committed and run with every ordinary test, so a
 //! fresh checkout still imports each format and prints one line per file.
+//!
+//! The manifest has eight tab-separated columns: name, SHA-256, URL, format,
+//! bytes, licence, tier and notes. Local fixtures use a `local:` URL and the
+//! `smoke` tier; every other entry is downloaded on the scheduled corpus run.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+const COLUMNS: usize = 8;
+const FORMATS: [&str; 6] = ["svg", "dxf", "hpgl", "plt", "pdf", "bwp"];
+const TIERS: [&str; 3] = ["smoke", "full", "heavy"];
+const LICENSES: [&str; 16] = [
+    "MIT",
+    "MIT OR Apache-2.0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "CC-BY-SA-2.5",
+    "CC-BY-SA-3.0",
+    "CC-BY-SA-4.0",
+    "AGPL-3.0",
+    "PD",
+    "W3C",
+    "NOASSERTION",
+    "verify",
+];
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -55,8 +81,27 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "world-map.svg" => 2338,
         "world-map.hpgl" => 480,
         "Wikipedia_wordmark.svg" => 10,
+        // Local Tier A fixtures.
+        "minimal-r12.dxf" => 2,
+        "r2000-blocks.dxf" => 4,
+        "r2018-hatch.dxf" => 2,
+        "ocs-lwpolyline.dxf" => 1,
+        "mask-clip.svg" => 2,
+        "text-on-path.svg" => 1,
+        "pattern-units.svg" => 10,
+        "hpgl-pd-pa.hpgl" => 1,
+        "hpgl-scaling.plt" => 1,
+        "vector-only.pdf" => 2,
         _ => return None,
     })
+}
+
+/// Files that must fail with a specific message instead of importing.
+fn expected_rejection(name: &str) -> Option<&'static str> {
+    match name {
+        "dummy.pdf" | "text-only.pdf" => Some("no vector paths"),
+        _ => None,
+    }
 }
 
 struct Entry {
@@ -64,6 +109,12 @@ struct Entry {
     path: PathBuf,
     hash: String,
     url: String,
+    format: String,
+    bytes: u64,
+    license: String,
+    tier: String,
+    notes: String,
+    local: bool,
 }
 
 fn entries() -> Vec<Entry> {
@@ -77,15 +128,31 @@ fn entries() -> Vec<Entry> {
             if line.is_empty() || line.starts_with('#') {
                 return None;
             }
-            let mut fields = line.split('\t');
-            let name = fields.next()?.to_owned();
-            let hash = fields.next()?.to_owned();
-            let url = fields.next()?.to_owned();
+            let fields: Vec<&str> = line.split('\t').collect();
+            assert_eq!(
+                fields.len(),
+                COLUMNS,
+                "the manifest needs {COLUMNS} columns: {line}"
+            );
+            let name = fields[0].to_owned();
+            let url = fields[2].to_owned();
+            let local = url.starts_with("local:");
+            let path = if local {
+                root().join(url.strip_prefix("local:").unwrap_or_default())
+            } else {
+                directory.join(&name)
+            };
             Some(Entry {
-                path: directory.join(&name),
                 name,
-                hash,
+                path,
+                hash: fields[1].to_owned(),
                 url,
+                format: fields[3].to_owned(),
+                bytes: fields[4].parse().expect("manifest bytes"),
+                license: fields[5].to_owned(),
+                tier: fields[6].to_owned(),
+                notes: fields[7].to_owned(),
+                local,
             })
         })
         .collect()
@@ -106,8 +173,8 @@ fn assert_importable(entry: &Entry) {
     let outcome = match beamburin::import::format::import_with_report(&entry.path) {
         Ok(outcome) => outcome,
         Err(error)
-            if extension.eq_ignore_ascii_case("pdf")
-                && error.to_string().contains("no vector paths") =>
+            if expected_rejection(entry.name.as_str())
+                .is_some_and(|text| error.to_string().contains(text)) =>
         {
             println!("{}: clearly rejected ({error})", entry.name);
             return;
@@ -137,7 +204,7 @@ fn assert_importable(entry: &Entry) {
         outcome.document.layers.len(),
         outcome.warnings.len()
     );
-    if let Some(minimum) = minimum_objects(&entry.name) {
+    if let Some(minimum) = minimum_objects(entry.name.as_str()) {
         assert!(
             outcome.document.objects.len() >= minimum,
             "{} imported {} object(s), expected at least {minimum}",
@@ -145,12 +212,7 @@ fn assert_importable(entry: &Entry) {
             outcome.document.objects.len()
         );
     }
-    if extension.eq_ignore_ascii_case("svg")
-        || extension.eq_ignore_ascii_case("dxf")
-        || extension.eq_ignore_ascii_case("plt")
-        || extension.eq_ignore_ascii_case("hpgl")
-        || extension.eq_ignore_ascii_case("pdf")
-    {
+    if matches!(extension, "svg" | "dxf" | "plt" | "hpgl" | "pdf") {
         assert!(
             !outcome.document.objects.is_empty(),
             "{} imported no objects",
@@ -169,6 +231,7 @@ fn the_corpus_manifest_is_well_formed() {
     );
     let mut names = std::collections::HashSet::new();
     let mut hashes = std::collections::HashSet::new();
+    let mut local = 0usize;
     for entry in &entries {
         assert!(
             names.insert(entry.name.clone()),
@@ -190,14 +253,140 @@ fn the_corpus_manifest_is_well_formed() {
             entry.name
         );
         assert!(
-            entry.url.starts_with("https://"),
-            "{}: the source URL is not HTTPS",
-            entry.name
-        );
-        assert!(
             hashes.insert(entry.hash.clone()),
             "duplicate corpus hash: {}",
             entry.name
+        );
+        assert!(
+            entry.url.starts_with("https://")
+                || entry.url.starts_with("local:tests/fixtures/corpus/"),
+            "{}: unsupported source URL",
+            entry.name
+        );
+        assert!(
+            FORMATS.contains(&entry.format.as_str()),
+            "{}: unknown format {}",
+            entry.name,
+            entry.format
+        );
+        assert_eq!(
+            entry
+                .name
+                .rsplit('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+            entry.format,
+            "{}: format does not match the extension",
+            entry.name
+        );
+        assert!(entry.bytes > 0, "{}: bytes must be positive", entry.name);
+        assert!(
+            LICENSES.contains(&entry.license.as_str()),
+            "{}: unknown licence {}",
+            entry.name,
+            entry.license
+        );
+        assert!(
+            TIERS.contains(&entry.tier.as_str()),
+            "{}: unknown tier {}",
+            entry.name,
+            entry.tier
+        );
+        assert!(
+            !entry.notes.trim().is_empty(),
+            "{}: notes are empty",
+            entry.name
+        );
+        if entry.local {
+            local += 1;
+            assert_eq!(
+                entry.tier, "smoke",
+                "{}: local fixtures are smoke",
+                entry.name
+            );
+            assert!(
+                entry.path.is_file(),
+                "{}: local fixture is missing",
+                entry.name
+            );
+        }
+    }
+    assert!(
+        local >= 11,
+        "the local Tier A corpus shrank to {local} file(s)"
+    );
+}
+
+#[test]
+fn the_manifest_matches_the_files_on_disk() {
+    let entries = entries();
+    let local: Vec<&Entry> = entries.iter().filter(|entry| entry.local).collect();
+    for entry in &local {
+        let metadata = std::fs::metadata(&entry.path)
+            .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+        assert_eq!(
+            metadata.len(),
+            entry.bytes,
+            "{}: manifest bytes do not match the file",
+            entry.name
+        );
+    }
+
+    let fixture_directory = root().join("tests/fixtures/corpus");
+    let listing = std::fs::read_dir(&fixture_directory)
+        .unwrap_or_else(|error| panic!("read {}: {error}", fixture_directory.display()));
+    let mut unlisted: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for entry in listing.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !local.iter().any(|entry| entry.path == path) {
+            unlisted.insert(
+                path.file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            );
+        }
+    }
+    assert!(
+        unlisted.is_empty(),
+        "tests/fixtures/corpus has files outside the manifest: {unlisted:?}"
+    );
+
+    let external = root().join("assets/external/files");
+    if external.is_dir() {
+        let listing = std::fs::read_dir(&external)
+            .unwrap_or_else(|error| panic!("read {}: {error}", external.display()));
+        let mut orphans: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for entry in listing.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if let Some(entry) = entries
+                .iter()
+                .find(|entry| entry.name == name && !entry.local)
+            {
+                assert_eq!(
+                    path.metadata().map_or(0, |meta| meta.len()),
+                    entry.bytes,
+                    "{name}: manifest bytes do not match the file"
+                );
+            } else {
+                orphans.insert(name);
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "assets/external/files has files outside the manifest: {orphans:?}"
         );
     }
 }
@@ -208,6 +397,9 @@ fn the_external_corpus_imports() {
     let entries = entries();
     assert!(!entries.is_empty(), "the external corpus manifest is empty");
     for entry in &entries {
+        if entry.local {
+            continue;
+        }
         assert_importable(entry);
     }
 }
@@ -244,9 +436,20 @@ fn the_bundled_corpus_imports_and_reports_each_file() {
             .unwrap_or_default()
             .to_string();
         let started = Instant::now();
-        let outcome = beamburin::import::format::import_with_report(&path)
-            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let imported = beamburin::import::format::import_with_report(&path);
         let elapsed = started.elapsed();
+        if let Some(expected) = expected_rejection(name.as_str()) {
+            let error = imported
+                .err()
+                .unwrap_or_else(|| panic!("{name}: expected a rejection"));
+            assert!(
+                error.to_string().contains(expected),
+                "{name}: unexpected rejection: {error}"
+            );
+            println!("{name}: clearly rejected ({error}), {elapsed:?}");
+            continue;
+        }
+        let outcome = imported.unwrap_or_else(|error| panic!("{name}: {error}"));
         assert!(
             outcome.document.width_mm.is_finite() && outcome.document.width_mm > 0.0,
             "{name}: invalid page width"
@@ -259,6 +462,13 @@ fn the_bundled_corpus_imports_and_reports_each_file() {
             !outcome.document.objects.is_empty(),
             "{name} imported no objects"
         );
+        if let Some(minimum) = minimum_objects(name.as_str()) {
+            assert!(
+                outcome.document.objects.len() >= minimum,
+                "{name} imported {} object(s), expected at least {minimum}",
+                outcome.document.objects.len()
+            );
+        }
         assert!(elapsed < Duration::from_secs(10), "{name} took {elapsed:?}");
         println!(
             "{name}: {} object(s), {} layer(s), {} warning(s), {elapsed:?}",
