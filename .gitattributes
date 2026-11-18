@@ -1,0 +1,7 @@
+# Keep the committed text fixtures byte-identical on every platform: the
+# manifest records their LF sizes and SHA-256 digests.
+tests/fixtures/corpus/*.dxf text eol=lf
+tests/fixtures/corpus/*.svg text eol=lf
+tests/fixtures/corpus/*.hpgl text eol=lf
+tests/fixtures/corpus/*.plt text eol=lf
+tests/fixtures/corpus/*.bwp text eol=lf
