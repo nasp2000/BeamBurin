@@ -199,6 +199,20 @@ fn object_json(document: &Document, object: &Object) -> Value {
         "hole_of": object.hole_of,
         "array_id": object.array_id,
         "array_cell": object.array_cell,
+        "mask": match &object.shape {
+            crate::document::Shape::Image(image) => Some(json!({
+                "vector": !image.mask_paths.is_empty() || image.mask_invert,
+                "paths": image.mask_paths.len(),
+                "inverted": image.mask_invert,
+                "colours": image.mask_colours.len(),
+                "alpha": image.mask_alpha,
+            })),
+            _ => None,
+        },
+        "crop": match &object.shape {
+            crate::document::Shape::Image(image) => image.crop,
+            _ => None,
+        },
         "transform": {
             "a": object.transform.a,
             "b": object.transform.b,

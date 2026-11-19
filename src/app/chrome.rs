@@ -627,6 +627,83 @@ impl BeamBurinApp {
                     self.editor.ungroup_selection();
                     ui.close();
                 }
+                ui.separator();
+                ui.menu_button("Image", |ui| {
+                    let image_id = self.editor.selection.ids().iter().find_map(|id| {
+                        self.editor
+                            .document
+                            .object(id)
+                            .filter(|object| {
+                                matches!(object.shape, crate::document::Shape::Image(_))
+                            })
+                            .map(|_| id.clone())
+                    });
+                    let shapes = self.editor.selection.ids().to_vec();
+                    if ui
+                        .add_enabled(
+                            image_id.is_some() && shapes.len() >= 2,
+                            egui::Button::new("Apply Mask to Image"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(id) = &image_id {
+                            match self.editor.apply_image_mask(id, &shapes, true, false) {
+                                Ok(report) => {
+                                    self.status = format!(
+                                        "Applied the mask to the image from {} shape(s)",
+                                        report.paths
+                                    );
+                                }
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(image_id.is_some(), egui::Button::new("Remove Mask from Image"))
+                        .clicked()
+                    {
+                        if let Some(id) = &image_id {
+                            match self.editor.remove_image_mask(id) {
+                                Ok(_) => self.status = "Removed the image mask".to_string(),
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            image_id.is_some() && shapes.len() >= 2,
+                            egui::Button::new("Crop Image"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(id) = &image_id {
+                            match self.editor.crop_image_to_shapes(id, &shapes) {
+                                Ok(report) => {
+                                    self.status = format!(
+                                        "Cropped to {:.1} x {:.1} mm",
+                                        report.width_mm, report.height_mm
+                                    );
+                                }
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(image_id.is_some(), egui::Button::new("Remove Crop from Image"))
+                        .clicked()
+                    {
+                        if let Some(id) = &image_id {
+                            match self.editor.remove_image_crop(id) {
+                                Ok(_) => self.status = "Removed the crop".to_string(),
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                });
             }).response.on_hover_text(crate::ui::icons::description("Edit"));
             ui.menu_button(icons::menu_label(ui, Icon::Draw, "Draw"), |ui| {
                 for (tool, icon, label) in [

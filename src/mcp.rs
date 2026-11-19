@@ -1075,6 +1075,56 @@ impl McpServer {
                     "converted_text": report.converted_text
                 }))
             }
+            "apply_image_mask" => {
+                let image = string(arguments, "image").ok_or_else(|| missing("image"))?;
+                let shapes = string_list(arguments, "shapes")?;
+                let keep = arguments
+                    .get("keep_shapes")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                let invert = arguments
+                    .get("invert")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let report = self
+                    .editor
+                    .apply_image_mask(&image, &shapes, keep, invert)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "mask_paths": report.paths,
+                    "kept": keep,
+                    "shapes_removed": report.shapes_removed
+                }))
+            }
+            "remove_image_mask" => {
+                let image = string(arguments, "image").ok_or_else(|| missing("image"))?;
+                let removed = self
+                    .editor
+                    .remove_image_mask(&image)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"removed": removed}))
+            }
+            "crop_image" => {
+                let image = string(arguments, "image").ok_or_else(|| missing("image"))?;
+                let shapes = string_list(arguments, "shapes")?;
+                let report = self
+                    .editor
+                    .crop_image_to_shapes(&image, &shapes)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "crop": report.crop,
+                    "width_mm": report.width_mm,
+                    "height_mm": report.height_mm
+                }))
+            }
+            "remove_image_crop" => {
+                let image = string(arguments, "image").ok_or_else(|| missing("image"))?;
+                let removed = self
+                    .editor
+                    .remove_image_crop(&image)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"removed": removed}))
+            }
             "set_start_point" => {
                 let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
                 let x = number(arguments, "x").ok_or_else(|| missing("x"))?;
@@ -2076,6 +2126,34 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
             }}),
+        ),
+        tool_with(
+            "apply_image_mask",
+            "Use closed shapes as a vector mask for one image.",
+            json!({"type": "object", "properties": {
+                "image": {"type": "string"},
+                "shapes": {"type": "array", "items": {"type": "string"}},
+                "keep_shapes": {"type": "boolean"},
+                "invert": {"type": "boolean"}
+            }, "required": ["image", "shapes"]}),
+        ),
+        tool_with(
+            "remove_image_mask",
+            "Clear an image's vector mask.",
+            json!({"type": "object", "properties": {"image": {"type": "string"}}, "required": ["image"]}),
+        ),
+        tool_with(
+            "crop_image",
+            "Crop one image to the bounding box of closed shapes.",
+            json!({"type": "object", "properties": {
+                "image": {"type": "string"},
+                "shapes": {"type": "array", "items": {"type": "string"}}
+            }, "required": ["image", "shapes"]}),
+        ),
+        tool_with(
+            "remove_image_crop",
+            "Clear an image's crop.",
+            json!({"type": "object", "properties": {"image": {"type": "string"}}, "required": ["image"]}),
         ),
         tool_with(
             "mirror_across_line",
