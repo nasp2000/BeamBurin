@@ -155,13 +155,16 @@ impl EditorState {
         let mut max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
         for (_, path) in &shapes {
             let local = path.transform(&inverse);
-            let Some((low, high)) = local.bounds() else {
+            let points = local.flatten(0.2);
+            if points.is_empty() {
                 continue;
-            };
-            min.x = min.x.min(low.x);
-            min.y = min.y.min(low.y);
-            max.x = max.x.max(high.x);
-            max.y = max.y.max(high.y);
+            }
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+            }
         }
         if !min.x.is_finite() || !min.y.is_finite() {
             return Err("The selection is too small to crop".to_string());
@@ -288,7 +291,7 @@ fn source_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::Document;
+    use crate::document::{Document, Object};
     use crate::objects::{ImageCrop, ImageObject};
 
     fn editor_with_image() -> (EditorState, String) {
@@ -377,6 +380,10 @@ mod tests {
         {
             image.mask_invert = true;
         }
-        assert!(editor.crop_image_to_shapes(&image, &[shape]).is_err());
+        assert!(
+            editor
+                .crop_image_to_shapes(&image, std::slice::from_ref(&shape))
+                .is_err()
+        );
     }
 }
