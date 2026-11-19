@@ -2720,25 +2720,25 @@ fn recent_projects_respect_the_unsaved_guard() {
     let mut harness = ui_harness(app);
     harness.step();
     harness.get_by_label("File").click();
-    harness.run();
+    harness.step();
     harness.get_by_label("Recent projects").click();
-    harness.run();
+    harness.step();
     harness.get_by_label("recent.bwp").click();
-    harness.run();
+    harness.step();
     assert!(
         harness.query_by_label("Unsaved changes").is_some(),
         "Recent projects opened without asking about unsaved changes"
     );
     harness.get_by_label("Cancel").click_accesskit();
-    harness.run();
+    harness.step();
     assert_eq!(harness.state().editor.document.objects.len(), 2);
 
     harness.get_by_label("File").click();
-    harness.run();
+    harness.step();
     harness.get_by_label("Recent projects").click();
-    harness.run();
+    harness.step();
     harness.get_by_label("recent.bwp").click();
-    harness.run();
+    harness.step();
     harness.get_by_label("Discard").click_accesskit();
     harness.step();
     wait_for_task(&mut harness);
