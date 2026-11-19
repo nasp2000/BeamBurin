@@ -233,6 +233,89 @@ fn assert_importable(entry: &Entry) {
     }
 }
 
+fn check_manifest_entry(
+    entry: &Entry,
+    names: &mut std::collections::HashSet<String>,
+    hashes: &mut std::collections::HashSet<String>,
+) {
+    assert!(
+        names.insert(entry.name.clone()),
+        "duplicate corpus name: {}",
+        entry.name
+    );
+    assert_eq!(
+        entry.hash.len(),
+        64,
+        "{}: the hash is not a SHA-256 digest",
+        entry.name
+    );
+    assert!(
+        entry
+            .hash
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()),
+        "{}: the hash contains non-hexadecimal characters",
+        entry.name
+    );
+    assert!(
+        hashes.insert(entry.hash.clone()),
+        "duplicate corpus hash: {}",
+        entry.name
+    );
+    assert!(
+        entry.url.starts_with("https://") || entry.url.starts_with("local:tests/fixtures/corpus/"),
+        "{}: unsupported source URL",
+        entry.name
+    );
+    assert!(
+        FORMATS.contains(&entry.format.as_str()),
+        "{}: unknown format {}",
+        entry.name,
+        entry.format
+    );
+    assert_eq!(
+        entry
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
+        entry.format,
+        "{}: format does not match the extension",
+        entry.name
+    );
+    assert!(entry.bytes > 0, "{}: bytes must be positive", entry.name);
+    assert!(
+        LICENSES.contains(&entry.license.as_str()),
+        "{}: unknown licence {}",
+        entry.name,
+        entry.license
+    );
+    assert!(
+        TIERS.contains(&entry.tier.as_str()),
+        "{}: unknown tier {}",
+        entry.name,
+        entry.tier
+    );
+    assert!(
+        !entry.notes.trim().is_empty(),
+        "{}: notes are empty",
+        entry.name
+    );
+    if entry.local {
+        assert_eq!(
+            entry.tier, "smoke",
+            "{}: local fixtures are smoke",
+            entry.name
+        );
+        assert!(
+            entry.path.is_file(),
+            "{}: local fixture is missing",
+            entry.name
+        );
+    }
+}
+
 #[test]
 fn the_corpus_manifest_is_well_formed() {
     let manifest = std::fs::read_to_string(root().join("assets/external/corpus.tsv"))
@@ -253,83 +336,9 @@ fn the_corpus_manifest_is_well_formed() {
     let mut hashes = std::collections::HashSet::new();
     let mut local = 0usize;
     for entry in &entries {
-        assert!(
-            names.insert(entry.name.clone()),
-            "duplicate corpus name: {}",
-            entry.name
-        );
-        assert_eq!(
-            entry.hash.len(),
-            64,
-            "{}: the hash is not a SHA-256 digest",
-            entry.name
-        );
-        assert!(
-            entry
-                .hash
-                .chars()
-                .all(|character| character.is_ascii_hexdigit()),
-            "{}: the hash contains non-hexadecimal characters",
-            entry.name
-        );
-        assert!(
-            hashes.insert(entry.hash.clone()),
-            "duplicate corpus hash: {}",
-            entry.name
-        );
-        assert!(
-            entry.url.starts_with("https://")
-                || entry.url.starts_with("local:tests/fixtures/corpus/"),
-            "{}: unsupported source URL",
-            entry.name
-        );
-        assert!(
-            FORMATS.contains(&entry.format.as_str()),
-            "{}: unknown format {}",
-            entry.name,
-            entry.format
-        );
-        assert_eq!(
-            entry
-                .name
-                .rsplit('.')
-                .next()
-                .unwrap_or_default()
-                .to_ascii_lowercase(),
-            entry.format,
-            "{}: format does not match the extension",
-            entry.name
-        );
-        assert!(entry.bytes > 0, "{}: bytes must be positive", entry.name);
-        assert!(
-            LICENSES.contains(&entry.license.as_str()),
-            "{}: unknown licence {}",
-            entry.name,
-            entry.license
-        );
-        assert!(
-            TIERS.contains(&entry.tier.as_str()),
-            "{}: unknown tier {}",
-            entry.name,
-            entry.tier
-        );
-        assert!(
-            !entry.notes.trim().is_empty(),
-            "{}: notes are empty",
-            entry.name
-        );
+        check_manifest_entry(entry, &mut names, &mut hashes);
         if entry.local {
             local += 1;
-            assert_eq!(
-                entry.tier, "smoke",
-                "{}: local fixtures are smoke",
-                entry.name
-            );
-            assert!(
-                entry.path.is_file(),
-                "{}: local fixture is missing",
-                entry.name
-            );
         }
     }
     assert!(
