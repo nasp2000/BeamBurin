@@ -2720,9 +2720,9 @@ fn recent_projects_respect_the_unsaved_guard() {
     let mut harness = ui_harness(app);
     harness.step();
     harness.get_by_label("File").click();
-    harness.step();
+    harness.run_steps(2);
     harness.get_by_label("Recent projects").click();
-    harness.step();
+    harness.run_steps(2);
     harness.get_by_label("recent.bwp").click();
     harness.step();
     assert!(
@@ -2734,9 +2734,9 @@ fn recent_projects_respect_the_unsaved_guard() {
     assert_eq!(harness.state().editor.document.objects.len(), 2);
 
     harness.get_by_label("File").click();
-    harness.step();
+    harness.run_steps(2);
     harness.get_by_label("Recent projects").click();
-    harness.step();
+    harness.run_steps(2);
     harness.get_by_label("recent.bwp").click();
     harness.step();
     harness.get_by_label("Discard").click_accesskit();
