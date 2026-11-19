@@ -15,6 +15,7 @@ pub struct WarpReport {
 }
 
 impl EditorState {
+    #[allow(clippy::type_complexity)]
     fn warp_targets(
         &self,
         ids: &[String],
