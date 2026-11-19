@@ -966,6 +966,33 @@ impl McpServer {
                     "objects": self.editor.document.objects.len()
                 }))
             }
+            "paste_in_place" => {
+                let report = self.editor.paste_objects_in_place(&self.clipboard);
+                let message = if report.pasted == 0 {
+                    "Nothing to paste in place"
+                } else if report.cleared_holes > 0 {
+                    "Pasted; some hole links were cleared"
+                } else {
+                    "Pasted in place"
+                };
+                Ok(json!({
+                    "pasted": report.pasted,
+                    "cleared_holes": report.cleared_holes,
+                    "objects": self.editor.document.objects.len(),
+                    "message": message
+                }))
+            }
+            "select_smaller_than_selected" => {
+                let selected = self
+                    .editor
+                    .select_smaller_than_selected()
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"selected": selected}))
+            }
+            "select_open_shapes_with_fill" => {
+                let selected = self.editor.select_open_shapes_with_fill();
+                Ok(json!({"selected": selected}))
+            }
             "invert_selection" => {
                 let count = self.editor.invert_selection();
                 Ok(json!({"selected": count}))
@@ -2416,6 +2443,18 @@ fn tool_definitions() -> Vec<Value> {
         tool(
             "paste_objects",
             "Paste the in-app clipboard, offset by 5 mm.",
+        ),
+        tool(
+            "paste_in_place",
+            "Paste the in-app clipboard at its stored coordinates.",
+        ),
+        tool(
+            "select_smaller_than_selected",
+            "Select the shapes with a smaller bounding-box area than the single selected shape.",
+        ),
+        tool(
+            "select_open_shapes_with_fill",
+            "Select open paths that still have a fill set.",
         ),
         tool(
             "invert_selection",
@@ -4355,6 +4394,61 @@ mod tests {
         let object = &server.editor.document.objects[1];
         let (min, _) = object.bounds().unwrap();
         assert!((min.x - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn paste_in_place_and_selection_tools() {
+        let mut server = McpServer::new();
+        let reference = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 10.0, "y": 10.0, "width": 30.0, "height": 30.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let small = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 50.0, "width": 5.0, "height": 5.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        call(&mut server, "copy_objects", json!({"ids": [reference]}));
+
+        let pasted = call(&mut server, "paste_in_place", json!({}));
+        assert_eq!(pasted["result"]["pasted"], 1);
+        assert_eq!(pasted["result"]["cleared_holes"], 0);
+        assert_eq!(server.editor.document.objects.len(), 3);
+        let pasted_id = server.editor.selection.ids()[0].clone();
+        let (original_min, original_max) = server
+            .editor
+            .document
+            .object(&reference)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let (pasted_min, pasted_max) = server
+            .editor
+            .document
+            .object(&pasted_id)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((pasted_min.x - original_min.x).abs() < 1e-9);
+        assert!((pasted_max.y - original_max.y).abs() < 1e-9);
+
+        call(&mut server, "copy_objects", json!({"ids": [reference]}));
+        let smaller = call(&mut server, "select_smaller_than_selected", json!({}));
+        assert_eq!(smaller["result"]["selected"], 1);
+        assert!(server.editor.selection.contains(&small));
+
+        let open = call(&mut server, "select_open_shapes_with_fill", json!({}));
+        assert_eq!(open["result"]["selected"], 0);
+
+        let empty = call(&mut server, "paste_in_place", json!({}));
+        assert_eq!(empty.get("error"), None);
     }
 
     #[test]

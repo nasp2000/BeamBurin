@@ -143,6 +143,13 @@ struct Outlined {
 
 /// One crossing between the outlines of two objects.
 #[derive(Debug, Clone, PartialEq)]
+/// What a paste added, plus the hole links it had to clear.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PasteReport {
+    pub pasted: usize,
+    pub cleared_holes: usize,
+}
+
 pub struct PathIntersection {
     pub first: String,
     pub second: String,
@@ -2893,12 +2900,31 @@ impl EditorState {
     /// The pasted objects become the selection. Groups are not recreated, so a
     /// pasted copy cannot silently link back to the original group.
     pub fn paste_objects(&mut self, objects: &[Object]) -> usize {
+        self.paste_objects_with(objects, (5.0, -5.0), "Paste")
+            .pasted
+    }
+
+    /// Paste copied objects at their stored coordinates with fresh identifiers.
+    ///
+    /// `hole_of` is remapped to the copied parent when that parent is in the
+    /// same clipboard batch; a link whose parent is absent is cleared and
+    /// counted in the report.
+    pub fn paste_objects_in_place(&mut self, objects: &[Object]) -> PasteReport {
+        self.paste_objects_with(objects, (0.0, 0.0), "Paste in place")
+    }
+
+    fn paste_objects_with(
+        &mut self,
+        objects: &[Object],
+        offset: (f64, f64),
+        action: &str,
+    ) -> PasteReport {
         if objects.is_empty() {
-            return 0;
+            return PasteReport::default();
         }
-        self.record_action("Paste");
         let fallback_layer = self.document.layers.first().map(|layer| layer.id.clone());
-        let mut pasted = Vec::new();
+        let mut copies = Vec::with_capacity(objects.len());
+        let mut ids = std::collections::HashMap::with_capacity(objects.len());
         for source in objects {
             let mut object = source.clone();
             object.id = uuid::Uuid::new_v4().to_string();
@@ -2910,15 +2936,104 @@ impl EditorState {
                 };
                 object.layer_id = layer;
             }
-            object.translate(5.0, -5.0);
-            pasted.push(object.id.clone());
+            object.translate(offset.0, offset.1);
+            ids.insert(source.id.clone(), object.id.clone());
+            copies.push(object);
+        }
+        if copies.is_empty() {
+            return PasteReport::default();
+        }
+        let mut cleared_holes = 0;
+        for copy in &mut copies {
+            let Some(parent) = copy.hole_of.clone() else {
+                continue;
+            };
+            match ids.get(&parent) {
+                Some(new_parent) => copy.hole_of = Some(new_parent.clone()),
+                None => {
+                    copy.hole_of = None;
+                    cleared_holes += 1;
+                }
+            }
+        }
+        self.record_action(action);
+        self.selection.clear();
+        let pasted = copies.len();
+        for object in copies {
+            self.selection.add(object.id.clone());
             self.document.add_object(object);
         }
+        PasteReport {
+            pasted,
+            cleared_holes,
+        }
+    }
+
+    /// Replace the selection with the visible shapes whose bounding-box area is
+    /// strictly smaller than the single selected reference shape.
+    pub fn select_smaller_than_selected(&mut self) -> std::result::Result<usize, String> {
+        let ids = self.selection.ids().to_vec();
+        if ids.len() != 1 {
+            return Err("Select one reference shape".to_string());
+        }
+        let reference_id = ids[0].clone();
+        let Some(reference) = self.document.object(&reference_id) else {
+            return Err("Select one reference shape".to_string());
+        };
+        let Some((min, max)) = reference.bounds() else {
+            return Err("The reference shape has no area".to_string());
+        };
+        let reference_area = (max.x - min.x) * (max.y - min.y);
+        if !reference_area.is_finite() || reference_area <= 0.0 {
+            return Err("The reference shape has no area".to_string());
+        }
+        let smaller: Vec<String> = self
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.id != reference_id)
+            .filter(|object| object.visible && !object.locked)
+            .filter(|object| {
+                self.document
+                    .layer(&object.layer_id)
+                    .is_none_or(|layer| layer.visible && !layer.locked)
+            })
+            .filter(|object| {
+                object.bounds().is_some_and(|(low, high)| {
+                    (high.x - low.x) * (high.y - low.y) < reference_area - 1e-9
+                })
+            })
+            .map(|object| object.id.clone())
+            .collect();
         self.selection.clear();
-        for id in &pasted {
+        for id in &smaller {
             self.selection.add(id.clone());
         }
-        pasted.len()
+        Ok(smaller.len())
+    }
+
+    /// Select visible, unlocked open paths that still have a fill set.
+    pub fn select_open_shapes_with_fill(&mut self) -> usize {
+        self.selection.clear();
+        for object in &self.document.objects {
+            if !object.visible || object.locked {
+                continue;
+            }
+            if self
+                .document
+                .layer(&object.layer_id)
+                .is_some_and(|layer| !layer.visible || layer.locked)
+            {
+                continue;
+            }
+            let Shape::Path(path) = &object.shape else {
+                continue;
+            };
+            if !path.is_empty() && !path.is_closed() && object.style.fill.is_some() {
+                self.selection.add(object.id.clone());
+            }
+        }
+        self.selection.len()
     }
 
     /// Select every unselected visible, unlocked object.
@@ -6371,6 +6486,353 @@ mod tests {
         let mut editor = editor();
         assert_eq!(editor.paste_objects(&[]), 0);
         assert_eq!(editor.document.objects.len(), 0);
+    }
+
+    #[test]
+    fn paste_in_place_keeps_coordinates() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(10.0, 20.0), Point2::new(30.0, 40.0))
+            .unwrap();
+        let before = editor.document.object(&id).unwrap().bounds().unwrap();
+        editor.selection.clear();
+        editor.selection.add(id.clone());
+        let clipboard = editor.copy_selection();
+
+        let report = editor.paste_objects_in_place(&clipboard);
+
+        assert_eq!(report.pasted, 1);
+        let pasted = editor.document.objects.last().unwrap();
+        let after = pasted.bounds().unwrap();
+        assert!((after.0.x - before.0.x).abs() < 1e-9);
+        assert!((after.0.y - before.0.y).abs() < 1e-9);
+        assert!((after.1.x - before.1.x).abs() < 1e-9);
+        assert!((after.1.y - before.1.y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn normal_paste_still_offsets_by_five() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(10.0, 20.0), Point2::new(30.0, 40.0))
+            .unwrap();
+        let before = editor.document.object(&id).unwrap().bounds().unwrap();
+        editor.selection.clear();
+        editor.selection.add(id);
+        let clipboard = editor.copy_selection();
+
+        editor.paste_objects(&clipboard);
+
+        let after = editor.document.objects.last().unwrap().bounds().unwrap();
+        assert!((after.0.x - (before.0.x + 5.0)).abs() < 1e-9);
+        assert!((after.0.y - (before.0.y - 5.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pasted_objects_get_new_ids_and_names() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(id.clone());
+        let clipboard = editor.copy_selection();
+
+        editor.paste_objects_in_place(&clipboard);
+
+        let original = editor.document.object(&id).unwrap();
+        let pasted = editor.document.objects.last().unwrap();
+        assert_ne!(pasted.id, original.id);
+        assert_eq!(pasted.name, format!("{} copy", original.name));
+    }
+
+    #[test]
+    fn pasted_group_id_is_cleared() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.document.object_mut(&id).unwrap().group_id = Some("group".to_string());
+        editor.selection.clear();
+        editor.selection.add(id);
+        let clipboard = editor.copy_selection();
+
+        editor.paste_objects_in_place(&clipboard);
+
+        assert!(editor.document.objects.last().unwrap().group_id.is_none());
+    }
+
+    #[test]
+    fn hole_of_is_remapped_within_the_clipboard() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut outer = Object::new(
+            layer.clone(),
+            Shape::Rect {
+                width: 20.0,
+                height: 20.0,
+                corner_radius: 0.0,
+            },
+        );
+        let outer_id = outer.id.clone();
+        let mut hole = Object::new(
+            layer,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.hole_of = Some(outer_id.clone());
+        outer.name = "Outer".to_string();
+        hole.name = "Hole".to_string();
+
+        let report = editor.paste_objects_in_place(&[outer, hole]);
+
+        assert_eq!(report.pasted, 2);
+        assert_eq!(report.cleared_holes, 0);
+        let pasted_outer = editor
+            .document
+            .objects
+            .iter()
+            .find(|object| object.name == "Outer copy")
+            .unwrap();
+        let pasted_hole = editor
+            .document
+            .objects
+            .iter()
+            .find(|object| object.name == "Hole copy")
+            .unwrap();
+        assert_eq!(
+            pasted_hole.hole_of.as_deref(),
+            Some(pasted_outer.id.as_str())
+        );
+        assert_ne!(pasted_hole.hole_of.as_deref(), Some(outer_id.as_str()));
+    }
+
+    #[test]
+    fn a_hole_without_its_parent_clears_the_link_with_a_warning() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut hole = Object::new(
+            layer,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.hole_of = Some("missing-parent".to_string());
+
+        let report = editor.paste_objects_in_place(&[hole]);
+
+        assert_eq!(report.cleared_holes, 1);
+        assert!(editor.document.objects.last().unwrap().hole_of.is_none());
+    }
+
+    #[test]
+    fn an_empty_clipboard_is_a_no_op_without_undo() {
+        let mut editor = editor();
+        let report = editor.paste_objects_in_place(&[]);
+        assert_eq!(report.pasted, 0);
+        assert_eq!(report.cleared_holes, 0);
+        assert!(editor.undo().is_none());
+    }
+
+    #[test]
+    fn paste_in_place_is_one_undo_step() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(id);
+        let clipboard = editor.copy_selection();
+        let before = editor.document.objects.len();
+
+        editor.paste_objects_in_place(&clipboard);
+        assert_eq!(editor.document.objects.len(), before + 1);
+        assert_eq!(editor.undo().as_deref(), Some("Paste in place"));
+        assert_eq!(editor.document.objects.len(), before);
+    }
+
+    #[test]
+    fn source_layer_is_preserved_or_falls_back() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut object = Object::new(
+            "missing-layer",
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        object.layer_id = "missing-layer".to_string();
+
+        editor.paste_objects_in_place(&[object]);
+
+        assert_eq!(editor.document.objects.last().unwrap().layer_id, layer);
+    }
+
+    #[test]
+    fn paste_in_place_selects_the_pasted_objects() {
+        let mut editor = editor();
+        let id = editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+            .unwrap();
+        editor.selection.clear();
+        editor.selection.add(id);
+        let clipboard = editor.copy_selection();
+
+        editor.paste_objects_in_place(&clipboard);
+
+        assert_eq!(editor.selection.len(), 1);
+        assert_eq!(
+            editor.selection.ids()[0],
+            editor.document.objects.last().unwrap().id
+        );
+    }
+
+    fn add_rect(editor: &mut EditorState, size: f64, at: f64) -> String {
+        editor
+            .add_rectangle(Point2::new(at, at), Point2::new(at + size, at + size))
+            .unwrap()
+    }
+
+    #[test]
+    fn select_smaller_than_selected_uses_the_bounds_area() {
+        let mut editor = editor();
+        let reference = add_rect(&mut editor, 20.0, 0.0);
+        let small = add_rect(&mut editor, 5.0, 30.0);
+        let equal = add_rect(&mut editor, 20.0, 40.0);
+        let bigger = add_rect(&mut editor, 30.0, 70.0);
+        editor.selection.clear();
+        editor.selection.add(reference.clone());
+
+        let selected = editor.select_smaller_than_selected().unwrap();
+
+        assert_eq!(selected, 1);
+        assert!(editor.selection.contains(&small));
+        assert!(!editor.selection.contains(&equal));
+        assert!(!editor.selection.contains(&bigger));
+        assert!(!editor.selection.contains(&reference));
+    }
+
+    #[test]
+    fn select_smaller_requires_exactly_one_reference() {
+        let mut editor = editor();
+        let first = add_rect(&mut editor, 20.0, 0.0);
+        let second = add_rect(&mut editor, 10.0, 30.0);
+        editor.selection.clear();
+        assert!(editor.select_smaller_than_selected().is_err());
+        editor.selection.add(first);
+        editor.selection.add(second);
+        assert!(editor.select_smaller_than_selected().is_err());
+    }
+
+    #[test]
+    fn locked_and_hidden_objects_are_ignored_by_the_smaller_selection() {
+        let mut editor = editor();
+        let reference = add_rect(&mut editor, 30.0, 0.0);
+        let visible = add_rect(&mut editor, 5.0, 40.0);
+        let locked = add_rect(&mut editor, 5.0, 50.0);
+        let hidden = add_rect(&mut editor, 5.0, 60.0);
+        editor.document.object_mut(&locked).unwrap().locked = true;
+        editor.document.object_mut(&hidden).unwrap().visible = false;
+        let hidden_layer = editor.document.add_layer("Hidden").id.clone();
+        editor.document.layer_mut(&hidden_layer).unwrap().visible = false;
+        let on_hidden_layer = add_rect(&mut editor, 5.0, 70.0);
+        editor
+            .document
+            .object_mut(&on_hidden_layer)
+            .unwrap()
+            .layer_id = hidden_layer;
+        editor.selection.clear();
+        editor.selection.add(reference);
+
+        let selected = editor.select_smaller_than_selected().unwrap();
+
+        assert_eq!(selected, 1);
+        assert!(editor.selection.contains(&visible));
+        assert!(!editor.selection.contains(&locked));
+        assert!(!editor.selection.contains(&hidden));
+        assert!(!editor.selection.contains(&on_hidden_layer));
+    }
+
+    #[test]
+    fn text_and_images_count_by_bounds() {
+        let mut editor = editor();
+        let reference = add_rect(&mut editor, 100.0, 0.0);
+        let layer = editor.document.layers[0].id.clone();
+        let text = Object::new(
+            layer.clone(),
+            Shape::Text(crate::objects::TextObject::default()),
+        );
+        let text_id = text.id.clone();
+        editor.document.add_object(text);
+        let image = Object::new(
+            layer,
+            Shape::Image(crate::objects::ImageObject::new("missing.png", 4, 4, 25.4)),
+        );
+        let image_id = image.id.clone();
+        editor.document.add_object(image);
+        editor.selection.clear();
+        editor.selection.add(reference);
+
+        let selected = editor.select_smaller_than_selected().unwrap();
+
+        assert_eq!(selected, 2);
+        assert!(editor.selection.contains(&text_id));
+        assert!(editor.selection.contains(&image_id));
+    }
+
+    #[test]
+    fn select_open_shapes_with_fill_selects_only_open_paths() {
+        let mut editor = editor();
+        let open_filled = editor
+            .add_polyline(&[Point2::new(0.0, 0.0), Point2::new(10.0, 10.0)], false)
+            .unwrap();
+        let open_empty = editor
+            .add_polyline(&[Point2::new(20.0, 0.0), Point2::new(30.0, 10.0)], false)
+            .unwrap();
+        let closed_filled = editor
+            .add_polyline(
+                &[
+                    Point2::new(40.0, 0.0),
+                    Point2::new(50.0, 0.0),
+                    Point2::new(45.0, 10.0),
+                ],
+                true,
+            )
+            .unwrap();
+        let rect = add_rect(&mut editor, 5.0, 60.0);
+        for id in [&open_filled, &closed_filled, &rect] {
+            editor.document.object_mut(id).unwrap().style.fill = Some("#ff0000".to_string());
+        }
+
+        let selected = editor.select_open_shapes_with_fill();
+
+        assert_eq!(selected, 1);
+        assert!(editor.selection.contains(&open_filled));
+        assert!(!editor.selection.contains(&open_empty));
+        assert!(!editor.selection.contains(&closed_filled));
+        assert!(!editor.selection.contains(&rect));
+    }
+
+    #[test]
+    fn selections_do_not_create_undo_steps() {
+        let mut editor = editor();
+        let reference = add_rect(&mut editor, 20.0, 0.0);
+        let _small = add_rect(&mut editor, 5.0, 30.0);
+        editor.selection.clear();
+        editor.selection.add(reference);
+        let history = editor.history.undo_len();
+
+        editor.select_smaller_than_selected().unwrap();
+        editor.select_open_shapes_with_fill();
+
+        assert_eq!(editor.history.undo_len(), history);
     }
 
     #[test]
