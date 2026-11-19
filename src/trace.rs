@@ -256,7 +256,7 @@ mod tests {
             ..TraceOptions::default()
         };
         let outcome = trace_bitmap(&raster, 32.0, 32.0, &placement(), &options).unwrap();
-        assert!(!outcome.objects.is_empty());
+        assert_ne!(outcome.objects.len(), 0);
         assert!(
             outcome
                 .objects

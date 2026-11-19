@@ -124,7 +124,6 @@ impl EditorState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::Document;
 
     fn write_square(name: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(name);
