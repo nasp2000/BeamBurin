@@ -94,7 +94,7 @@ jobs:
         run: cargo check --workspace --lib --bins --locked
 
   test:
-    name: Tests ${{ matrix.name }} (${{ matrix.shard }}/2)
+    name: Tests ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -104,19 +104,9 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x86_64
-            shard: 1
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            name: windows-x86_64
-            shard: 2
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             name: linux-aarch64
-            shard: 1
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            name: linux-aarch64
-            shard: 2
     steps:
       - uses: actions/checkout@v4
 
@@ -167,9 +157,7 @@ jobs:
       - name: Tests on the target platform
         env:
           RUSTFLAGS: ${{ startsWith(matrix.os, 'windows') && '-C target-feature=+crt-static' || '' }}
-        run: >-
-          cargo nextest run --workspace --locked --target ${{ matrix.target }}
-          --partition count:${{ matrix.shard }}/2
+        run: cargo nextest run --workspace --locked --target ${{ matrix.target }}
 
   build:
     name: ${{ matrix.name }}

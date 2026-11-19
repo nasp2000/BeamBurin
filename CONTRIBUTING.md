@@ -50,10 +50,13 @@ tests the project; nothing is built on a developer machine by policy.
 - **Locally**, if you have nextest installed
   (`cargo install cargo-nextest --locked`), `cargo nextest run --workspace`
   matches CI. It is not required: `cargo test` still works.
-- **If the suite outgrows the job budget**, the recorded next step is to shard
-  it in the existing matrix with `--partition count:<i>/<n>` rather than
-  splitting the tests by hand. It has not been necessary so far: the whole
-  suite stays around two minutes per platform.
+- **If the suite outgrows the job budget**, sharding is the recorded next step,
+  but it must be measured first. A two-shard experiment is documented in
+  `docs/ci-sharding.md`: compilation and setup are repeated per shard, so a
+  suite that runs in about 30 s gains nothing and the Windows test phase grew by
+  38 s. Revisit when the nextest execution summary exceeds 90 s (or the test job
+  exceeds four minutes); the document has the archive-based design, the
+  balance rule and the acceptance thresholds.
 
 ## Developer Certificate of Origin
 
