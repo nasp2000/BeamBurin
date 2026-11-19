@@ -1790,22 +1790,20 @@ impl BeamBurinApp {
                 Some(bounds) => match crate::regmarks::marks(bounds, &self.regmarks_options) {
                     Ok(outlines) => {
                         self.editor.record_action("Registration marks");
-                        let layer_id = self
+                        let existing_layer = self
                             .editor
                             .document
                             .layers
                             .iter()
                             .find(|layer| layer.name == "Registration marks")
-                            .map_or_else(
-                                || {
-                                    self.editor
-                                        .document
-                                        .add_layer("Registration marks")
-                                        .id
-                                        .clone()
-                                },
-                                |layer| layer.id.clone(),
-                            );
+                            .map(|layer| layer.id.clone());
+                        let layer_id = existing_layer.unwrap_or_else(|| {
+                            self.editor
+                                .document
+                                .add_layer("Registration marks")
+                                .id
+                                .clone()
+                        });
                         let operation = self.active_operation.clone();
                         let mut added = 0;
                         for outline in &outlines {
