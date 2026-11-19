@@ -2659,7 +2659,7 @@ fn saving_clears_the_dirty_marker_and_updates_recent() {
         .find(|node| node.rect().min.y > 40.0)
         .expect("the Save menu entry is missing")
         .click_accesskit();
-    harness.run();
+    harness.step();
     assert!(path.is_file());
     let state = harness.state();
     assert_eq!(state.saved_snapshot.as_ref(), Some(&state.editor.document));
@@ -2688,7 +2688,7 @@ fn the_unsaved_changes_dialog_saves_before_continuing() {
     harness.get_by_label("New").click();
     harness.run();
     assert!(harness.query_by_label("Unsaved changes").is_some());
-    assert!(harness.query_by_label("Save").is_some());
+    assert!(harness.query_all_by_label("Save").next().is_some());
     assert!(harness.query_by_label("Discard").is_some());
     assert!(harness.query_by_label("Cancel").is_some());
     harness
@@ -2696,7 +2696,7 @@ fn the_unsaved_changes_dialog_saves_before_continuing() {
         .find(|node| node.rect().min.y > 100.0)
         .expect("the dialog Save button is missing")
         .click_accesskit();
-    harness.run();
+    harness.step();
     assert!(path.is_file(), "Save did not write the project");
     assert_eq!(harness.state().editor.document.objects.len(), 0);
     assert!(harness.state().current_path.is_none());
@@ -2718,7 +2718,7 @@ fn recent_projects_respect_the_unsaved_guard() {
     app.editor
         .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0));
     let mut harness = ui_harness(app);
-    harness.run();
+    harness.step();
     harness.get_by_label("File").click();
     harness.run();
     harness.get_by_label("Recent projects").click();
@@ -2773,6 +2773,7 @@ fn saving_a_project_archive_round_trips() {
     let directory = ui_temp_path("archive_dir");
     std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
     let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
     app.editor
         .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
     let mut harness = ui_harness(app);
