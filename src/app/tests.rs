@@ -2639,6 +2639,169 @@ fn save_as_adds_the_project_extension() {
 }
 
 #[test]
+fn saving_clears_the_dirty_marker_and_updates_recent() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("save_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("saved.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(path.clone());
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    assert!(app.title().ends_with('*'));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness
+        .get_all_by_label("Save")
+        .find(|node| node.rect().min.y > 40.0)
+        .expect("the Save menu entry is missing")
+        .click_accesskit();
+    harness.run();
+    assert!(path.is_file());
+    let state = harness.state();
+    assert_eq!(state.saved_snapshot.as_ref(), Some(&state.editor.document));
+    assert!(!state.title().ends_with('*'));
+    assert_eq!(
+        state.preferences.general.recent_projects.first(),
+        Some(&path.display().to_string())
+    );
+}
+
+#[test]
+fn the_unsaved_changes_dialog_saves_before_continuing() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("unsaved_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("dirty.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(path.clone());
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("New").click();
+    harness.run();
+    assert!(harness.query_by_label("Unsaved changes").is_some());
+    assert!(harness.query_by_label("Save").is_some());
+    assert!(harness.query_by_label("Discard").is_some());
+    assert!(harness.query_by_label("Cancel").is_some());
+    harness
+        .get_all_by_label("Save")
+        .find(|node| node.rect().min.y > 100.0)
+        .expect("the dialog Save button is missing")
+        .click_accesskit();
+    harness.run();
+    assert!(path.is_file(), "Save did not write the project");
+    assert_eq!(harness.state().editor.document.objects.len(), 0);
+    assert!(harness.state().current_path.is_none());
+    assert!(harness.state().confirm.is_none());
+}
+
+#[test]
+fn recent_projects_respect_the_unsaved_guard() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("recent_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("recent.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(path.clone());
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    assert!(app.save());
+    app.editor
+        .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Recent projects").click();
+    harness.run();
+    harness.get_by_label("recent.bwp").click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Unsaved changes").is_some(),
+        "Recent projects opened without asking about unsaved changes"
+    );
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert_eq!(harness.state().editor.document.objects.len(), 2);
+
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Recent projects").click();
+    harness.run();
+    harness.get_by_label("recent.bwp").click();
+    harness.run();
+    harness.get_by_label("Discard").click_accesskit();
+    harness.step();
+    wait_for_task(&mut harness);
+    assert_eq!(harness.state().editor.document.objects.len(), 1);
+    assert_eq!(
+        harness.state().current_path.as_deref(),
+        Some(path.as_path())
+    );
+}
+
+#[test]
+fn opening_a_corrupt_project_keeps_the_current_document() {
+    let directory = ui_temp_path("corrupt_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("broken.bwp");
+    std::fs::write(&path, "{ not a project").expect("cannot write the broken fixture");
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let before = app.editor.document.clone();
+
+    app.open_path(&path);
+
+    assert_eq!(app.editor.document, before);
+    assert!(app.status.starts_with("Open failed"), "{}", app.status);
+}
+
+#[test]
+fn saving_a_project_archive_round_trips() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("archive_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Save project with images...").click();
+    harness.run();
+    harness
+        .state_mut()
+        .dialog
+        .as_mut()
+        .expect("the archive dialog did not open")
+        .file_name = "roundtrip".to_string();
+    harness
+        .get_all_by_label("Save")
+        .find(|node| node.rect().min.y > 90.0)
+        .expect("the dialog Save button is missing")
+        .click_accesskit();
+    harness.step();
+    wait_for_task(&mut harness);
+    let path = directory.join("roundtrip.bwpz");
+    assert!(path.is_file(), "the archive was not written");
+    let document = crate::project_archive::read_archive(&path, &directory)
+        .expect("the archive could not be read back");
+    assert_eq!(document.objects.len(), 1);
+}
+
+#[test]
 fn the_import_dialog_rejects_an_unknown_extension() {
     use egui_kittest::kittest::Queryable as _;
 

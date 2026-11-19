@@ -72,6 +72,7 @@ enum TaskResult {
 enum PendingAction {
     New,
     Open,
+    OpenRecent,
     Quit,
 }
 
@@ -399,6 +400,10 @@ pub struct BeamBurinApp {
     status: String,
     dialog: Option<FileDialog>,
     confirm: Option<PendingAction>,
+    /// Action to run after a Save chosen from the unsaved-changes dialog.
+    after_save: Option<PendingAction>,
+    /// Path chosen from Recent projects while the unsaved guard was pending.
+    recent_target: Option<PathBuf>,
     about_open: bool,
     licenses_open: bool,
     drag: Option<DragState>,

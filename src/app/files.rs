@@ -230,7 +230,9 @@ impl BeamBurinApp {
                 }
                 Err(error) => self.status = format!("Machine export failed: {error}"),
             },
-            FileMode::SaveProject => self.save_to(path),
+            FileMode::SaveProject => {
+                self.save_to(path);
+            }
             FileMode::SaveArchive => self.save_archive(path),
             FileMode::ExportImage
             | FileMode::ExportDxf
@@ -610,15 +612,16 @@ impl BeamBurinApp {
         self.show_report(report);
     }
 
-    pub(super) fn save(&mut self) {
+    pub(super) fn save(&mut self) -> bool {
         if let Some(path) = self.current_path.clone() {
-            self.save_to(&path);
+            self.save_to(&path)
         } else {
             self.open_dialog(FileMode::SaveProject);
+            false
         }
     }
 
-    pub(super) fn save_to(&mut self, path: &Path) {
+    pub(super) fn save_to(&mut self, path: &Path) -> bool {
         if self.editor.document.name.trim().is_empty()
             || self.editor.document.name.eq_ignore_ascii_case("untitled")
         {
@@ -638,8 +641,15 @@ impl BeamBurinApp {
                 self.last_autosave = std::time::Instant::now();
                 self.status = format!("Saved {}", path.display());
                 self.toast(self.status.clone());
+                if let Some(action) = self.after_save.take() {
+                    self.perform(action);
+                }
+                true
             }
-            Err(error) => self.status = format!("Save failed: {error}"),
+            Err(error) => {
+                self.status = format!("Save failed: {error}");
+                false
+            }
         }
     }
 

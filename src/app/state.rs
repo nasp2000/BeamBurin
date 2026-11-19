@@ -83,6 +83,8 @@ impl BeamBurinApp {
             status: "Ready".to_string(),
             dialog: None,
             confirm: None,
+            after_save: None,
+            recent_target: None,
             about_open: false,
             licenses_open: false,
             drag: None,
@@ -412,6 +414,11 @@ impl BeamBurinApp {
         match action {
             PendingAction::New => self.new_document(),
             PendingAction::Open => self.open_dialog(FileMode::OpenProject),
+            PendingAction::OpenRecent => {
+                if let Some(path) = self.recent_target.take() {
+                    self.start_import(&path);
+                }
+            }
             PendingAction::Quit => self.quit_requested = true,
         }
     }

@@ -229,7 +229,8 @@ impl BeamBurinApp {
                                 .and_then(|name| name.to_str())
                                 .unwrap_or(entry);
                             if ui.button(label).on_hover_text(entry).clicked() {
-                                self.start_import(&path);
+                                self.recent_target = Some(path);
+                                self.request(PendingAction::OpenRecent);
                                 ui.close();
                             }
                         }

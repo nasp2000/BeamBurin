@@ -78,7 +78,16 @@ impl BeamBurinApp {
             let result = dialog.show(ctx);
             match result {
                 DialogResult::Pending => {}
-                DialogResult::Cancelled => self.dialog = None,
+                DialogResult::Cancelled => {
+                    if self
+                        .dialog
+                        .as_ref()
+                        .is_some_and(|dialog| dialog.mode == FileMode::SaveProject)
+                    {
+                        self.after_save = None;
+                    }
+                    self.dialog = None;
+                }
                 DialogResult::Accepted(path) => {
                     let mode = dialog.mode;
                     self.dialog = None;
@@ -188,11 +197,19 @@ impl BeamBurinApp {
                 self.pending_file = None;
                 self.handle_file(mode, &path);
             } else if cancel {
+                if self
+                    .pending_file
+                    .as_ref()
+                    .is_some_and(|(mode, _)| *mode == FileMode::SaveProject)
+                {
+                    self.after_save = None;
+                }
                 self.pending_file = None;
             }
         }
         if self.confirm.is_some() {
             let mut action = None;
+            let mut save_first = false;
             let mut cancel = false;
             egui::Window::new("Unsaved changes")
                 .pivot(egui::Align2::CENTER_CENTER)
@@ -211,6 +228,13 @@ impl BeamBurinApp {
                             action = self.confirm;
                         }
                         if ui
+                            .button("Save")
+                            .on_hover_text("Save the project, then continue")
+                            .clicked()
+                        {
+                            save_first = true;
+                        }
+                        if ui
                             .button("Cancel")
                             .on_hover_text("Keep the project open")
                             .clicked()
@@ -219,11 +243,23 @@ impl BeamBurinApp {
                         }
                     });
                 });
-            if let Some(action) = action {
+            if save_first {
+                if let Some(action) = self.confirm.take() {
+                    if self.current_path.is_some() {
+                        if self.save() {
+                            self.perform(action);
+                        }
+                    } else {
+                        self.after_save = Some(action);
+                        self.open_dialog(FileMode::SaveProject);
+                    }
+                }
+            } else if let Some(action) = action {
                 self.confirm = None;
                 self.perform(action);
             } else if cancel {
                 self.confirm = None;
+                self.recent_target = None;
             }
         }
         if self.profiles_open {

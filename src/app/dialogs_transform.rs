@@ -908,7 +908,9 @@ impl BeamBurinApp {
         match action {
             Action::New => self.request(PendingAction::New),
             Action::Open => self.request(PendingAction::Open),
-            Action::Save => self.save(),
+            Action::Save => {
+                self.save();
+            }
             Action::SaveAs => self.open_dialog(FileMode::SaveProject),
             Action::SaveArchive => self.open_dialog(FileMode::SaveArchive),
             Action::Undo => self.undo(),
