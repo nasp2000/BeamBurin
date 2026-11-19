@@ -2948,12 +2948,11 @@ impl EditorState {
             let Some(parent) = copy.hole_of.clone() else {
                 continue;
             };
-            match ids.get(&parent) {
-                Some(new_parent) => copy.hole_of = Some(new_parent.clone()),
-                None => {
-                    copy.hole_of = None;
-                    cleared_holes += 1;
-                }
+            if let Some(new_parent) = ids.get(&parent) {
+                copy.hole_of = Some(new_parent.clone());
+            } else {
+                copy.hole_of = None;
+                cleared_holes += 1;
             }
         }
         self.record_action(action);
