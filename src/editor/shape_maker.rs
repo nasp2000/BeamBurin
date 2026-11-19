@@ -47,50 +47,7 @@ impl EditorState {
             return Err("Select at least one path".to_string());
         }
 
-        let mut chains = Vec::new();
-        let mut template: Option<Object> = None;
-        for id in &ids {
-            let object = self
-                .document
-                .object(id)
-                .ok_or_else(|| format!("unknown object: {id}"))?;
-            if object.locked {
-                return Err(format!("'{}' is locked; unlock it first", object.name));
-            }
-            if self
-                .document
-                .layer(&object.layer_id)
-                .is_some_and(|layer| layer.locked)
-            {
-                return Err(format!("'{}' is locked; unlock it first", object.name));
-            }
-            if object.array_id.is_some() {
-                return Err("Flatten the array first".to_string());
-            }
-            if template.is_none() {
-                template = Some(object.clone());
-            }
-            match &object.shape {
-                Shape::Image(_) => {
-                    return Err(
-                        "Images have no vector outline; trace or convert them first".to_string()
-                    );
-                }
-                Shape::Text(text) => {
-                    for path in crate::objects::text_to_paths(text)? {
-                        let path = path.transform(&object.transform);
-                        push_chain(&mut chains, &path);
-                    }
-                }
-                _ => push_chain(&mut chains, &object.world_path()),
-            }
-        }
-        let template = template.ok_or_else(|| "Select at least one path".to_string())?;
-        if chains.len() > MAX_CONTOURS {
-            return Err(format!(
-                "Shape maker accepts at most {MAX_CONTOURS} contours"
-            ));
-        }
+        let (chains, template) = collect_chains(&self.document, &ids)?;
 
         let (loops, open_chains_ignored) = close_chains(chains, tolerance);
         if loops.is_empty() {
@@ -146,6 +103,56 @@ impl EditorState {
             open_chains_ignored,
         })
     }
+}
+
+/// Validate the selection and flatten it into chains plus a style template.
+fn collect_chains(
+    document: &crate::document::Document,
+    ids: &[String],
+) -> Result<(Vec<Chain>, Object), String> {
+    let mut chains = Vec::new();
+    let mut template: Option<Object> = None;
+    for id in ids {
+        let object = document
+            .object(id)
+            .ok_or_else(|| format!("unknown object: {id}"))?;
+        if object.locked {
+            return Err(format!("'{}' is locked; unlock it first", object.name));
+        }
+        if document
+            .layer(&object.layer_id)
+            .is_some_and(|layer| layer.locked)
+        {
+            return Err(format!("'{}' is locked; unlock it first", object.name));
+        }
+        if object.array_id.is_some() {
+            return Err("Flatten the array first".to_string());
+        }
+        if template.is_none() {
+            template = Some(object.clone());
+        }
+        match &object.shape {
+            Shape::Image(_) => {
+                return Err(
+                    "Images have no vector outline; trace or convert them first".to_string()
+                );
+            }
+            Shape::Text(text) => {
+                for path in crate::objects::text_to_paths(text)? {
+                    let path = path.transform(&object.transform);
+                    push_chain(&mut chains, &path);
+                }
+            }
+            _ => push_chain(&mut chains, &object.world_path()),
+        }
+    }
+    let template = template.ok_or_else(|| "Select at least one path".to_string())?;
+    if chains.len() > MAX_CONTOURS {
+        return Err(format!(
+            "Shape maker accepts at most {MAX_CONTOURS} contours"
+        ));
+    }
+    Ok((chains, template))
 }
 
 fn push_chain(chains: &mut Vec<Chain>, path: &Path) {
@@ -258,7 +265,11 @@ fn append(target: &mut Vec<(f64, f64)>, source: Vec<(f64, f64)>) {
         .last()
         .zip(source.first())
         .is_some_and(|(last, first)| distance(*last, *first) <= 1e-9);
-    target.extend(source.into_iter().skip(if skip { 1 } else { 0 }));
+    if skip {
+        target.extend(source.into_iter().skip(1));
+    } else {
+        target.extend(source);
+    }
 }
 
 /// Union every pair of loops that overlaps, sharing an edge or encloses a new
@@ -340,7 +351,7 @@ mod tests {
     use crate::document::Document;
     use crate::geometry::Point2;
 
-    fn editor() -> EditorState {
+    fn new_editor() -> EditorState {
         EditorState::new(Document::new("Shape maker", 300.0, 200.0))
     }
 
@@ -362,7 +373,7 @@ mod tests {
 
     #[test]
     fn three_open_lines_form_a_triangle() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_line(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0))
             .unwrap();
@@ -386,7 +397,7 @@ mod tests {
 
     #[test]
     fn adjacent_rectangles_are_unioned() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(12.0, 10.0))
             .unwrap();
@@ -404,7 +415,7 @@ mod tests {
 
     #[test]
     fn overlapping_circles_are_unioned() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_ellipse(Point2::new(0.0, 0.0), Point2::new(20.0, 20.0))
             .unwrap();
@@ -421,7 +432,7 @@ mod tests {
 
     #[test]
     fn an_open_chain_is_ignored_with_a_warning() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let closed = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
             .unwrap();
@@ -438,7 +449,7 @@ mod tests {
 
     #[test]
     fn endpoints_within_tolerance_are_welded() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_line(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0))
             .unwrap();
@@ -452,7 +463,7 @@ mod tests {
 
         assert_eq!(editor.shape_maker(None).unwrap().shapes, 1);
 
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_line(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0))
             .unwrap();
@@ -469,7 +480,7 @@ mod tests {
 
     #[test]
     fn a_ring_links_its_hole() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let outer = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(30.0, 30.0))
             .unwrap();
@@ -500,7 +511,7 @@ mod tests {
 
     #[test]
     fn images_are_refused() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let image = Object::new(
             editor.document.layers[0].id.clone(),
             Shape::Image(crate::objects::ImageObject::new(
@@ -522,7 +533,7 @@ mod tests {
 
     #[test]
     fn no_closed_region_is_an_error_without_undo() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let line = editor
             .add_line(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0))
             .unwrap();
@@ -534,7 +545,7 @@ mod tests {
 
     #[test]
     fn sources_are_kept_and_results_are_selected() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
             .unwrap();
@@ -554,7 +565,7 @@ mod tests {
 
     #[test]
     fn style_layer_and_operation_are_inherited() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
             .unwrap();
@@ -582,7 +593,7 @@ mod tests {
 
     #[test]
     fn shape_maker_is_one_undo_step() {
-        let mut editor = editor();
+        let mut editor = new_editor();
         let first = editor
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
             .unwrap();
