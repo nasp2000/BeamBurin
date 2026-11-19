@@ -14,6 +14,7 @@ pub mod polygon;
 pub mod spiral;
 pub mod tracing;
 pub mod transform;
+pub mod warp;
 
 #[allow(unused_imports)]
 pub use bezier::CubicBezier;

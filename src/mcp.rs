@@ -1075,6 +1075,84 @@ impl McpServer {
                     "converted_text": report.converted_text
                 }))
             }
+            "warp_selection" => {
+                self.select_scope(arguments)?;
+                let points = point_list(arguments, "points")?;
+                if points.len() != 4 {
+                    return Err(BeamError::InvalidInput(
+                        "points needs exactly four corners".to_string(),
+                    ));
+                }
+                let report = self
+                    .editor
+                    .warp_selection([points[0], points[1], points[2], points[3]])
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "objects": report.objects,
+                    "segments": report.segments,
+                    "bounds": report.bounds.map(|(low, high)| json!({
+                        "min_x": low.x, "min_y": low.y,
+                        "max_x": high.x, "max_y": high.y
+                    }))
+                }))
+            }
+            "deform_selection" => {
+                self.select_scope(arguments)?;
+                let points = point_list(arguments, "points")?;
+                if points.len() != 16 {
+                    return Err(BeamError::InvalidInput(
+                        "points needs exactly sixteen nodes".to_string(),
+                    ));
+                }
+                let mut nodes = [[crate::geometry::Point2::origin(); 4]; 4];
+                for (index, point) in points.iter().enumerate() {
+                    nodes[index / 4][index % 4] = *point;
+                }
+                let report = self
+                    .editor
+                    .deform_selection(nodes)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "objects": report.objects,
+                    "segments": report.segments,
+                    "bounds": report.bounds.map(|(low, high)| json!({
+                        "min_x": low.x, "min_y": low.y,
+                        "max_x": high.x, "max_y": high.y
+                    }))
+                }))
+            }
+            "taper_warp" => {
+                self.select_scope(arguments)?;
+                let orientation = match string(arguments, "orientation").as_deref() {
+                    Some("bottom") => crate::geometry::warp::TaperOrientation::Bottom,
+                    Some("left") => crate::geometry::warp::TaperOrientation::Left,
+                    Some("right") => crate::geometry::warp::TaperOrientation::Right,
+                    _ => crate::geometry::warp::TaperOrientation::Top,
+                };
+                let spec = crate::geometry::warp::TaperSpec {
+                    top_width: number(arguments, "top_width").unwrap_or(20.0),
+                    bottom_width: number(arguments, "bottom_width").unwrap_or(40.0),
+                    length: number(arguments, "length").unwrap_or(50.0),
+                    orientation,
+                    diameters: arguments
+                        .get("diameters")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    wrap_fraction: number(arguments, "wrap_fraction").unwrap_or(100.0),
+                };
+                let report = self
+                    .editor
+                    .taper_warp(spec)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "objects": report.objects,
+                    "segments": report.segments,
+                    "bounds": report.bounds.map(|(low, high)| json!({
+                        "min_x": low.x, "min_y": low.y,
+                        "max_x": high.x, "max_y": high.y
+                    }))
+                }))
+            }
             "apply_image_mask" => {
                 let image = string(arguments, "image").ok_or_else(|| missing("image"))?;
                 let shapes = string_list(arguments, "shapes")?;
@@ -2128,6 +2206,43 @@ fn tool_definitions() -> Vec<Value> {
             }}),
         ),
         tool_with(
+            "warp_selection",
+            "Warp the selection into a quadrilateral given by four corners (BL, BR, TL, TR).",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "points": {"type": "array", "minItems": 4, "maxItems": 4, "items": {
+                    "type": "object",
+                    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+                    "required": ["x", "y"]
+                }}
+            }, "required": ["points"]}),
+        ),
+        tool_with(
+            "deform_selection",
+            "Deform the selection through a 4x4 lattice given row by row.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "points": {"type": "array", "minItems": 16, "maxItems": 16, "items": {
+                    "type": "object",
+                    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+                    "required": ["x", "y"]
+                }}
+            }, "required": ["points"]}),
+        ),
+        tool_with(
+            "taper_warp",
+            "Apply a taper warp with top and bottom widths.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "top_width": {"type": "number"},
+                "bottom_width": {"type": "number"},
+                "length": {"type": "number"},
+                "orientation": {"type": "string", "enum": ["top", "bottom", "left", "right"]},
+                "diameters": {"type": "boolean"},
+                "wrap_fraction": {"type": "number"}
+            }}),
+        ),
+        tool_with(
             "apply_image_mask",
             "Use closed shapes as a vector mask for one image.",
             json!({"type": "object", "properties": {
@@ -2592,6 +2707,27 @@ fn tool(name: &str, description: &str) -> Value {
 #[allow(clippy::needless_pass_by_value)]
 fn tool_with(name: &str, description: &str, schema: Value) -> Value {
     json!({"name": name, "description": description, "inputSchema": schema})
+}
+
+fn point_list(arguments: &Value, key: &str) -> Result<Vec<crate::geometry::Point2>> {
+    let values = arguments
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| missing(key))?;
+    values
+        .iter()
+        .map(|value| {
+            let x = value
+                .get("x")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| missing("x"))?;
+            let y = value
+                .get("y")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| missing("y"))?;
+            Ok(crate::geometry::Point2::new(x, y))
+        })
+        .collect()
 }
 
 fn string_list(arguments: &Value, key: &str) -> Result<Vec<String>> {
