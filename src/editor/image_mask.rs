@@ -317,7 +317,7 @@ mod tests {
         let (mut editor, image) = editor_with_image();
         let shape = shape(&mut editor, 10.0, 10.0, 40.0, 30.0);
         let report = editor
-            .apply_image_mask(&image, &[shape], true, false)
+            .apply_image_mask(&image, std::slice::from_ref(&shape), true, false)
             .unwrap();
         assert_eq!(report.paths, 1);
         assert!(editor.document.object(&shape).is_some());
