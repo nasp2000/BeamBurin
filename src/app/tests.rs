@@ -4496,6 +4496,45 @@ fn the_material_test_and_registration_windows_open() {
 }
 
 #[test]
+fn registration_marks_reuse_their_layer() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(30.0, 25.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    for _ in 0..2 {
+        harness.get_by_label("Operations").click();
+        harness.run();
+        harness.get_by_label("Registration marks...").click();
+        harness.run();
+        harness.get_by_label("Add marks").click_accesskit();
+        harness.run();
+    }
+    let layers: Vec<&str> = harness
+        .state()
+        .editor
+        .document
+        .layers
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect();
+    assert_eq!(
+        layers
+            .iter()
+            .filter(|name| **name == "Registration marks")
+            .count(),
+        1,
+        "a second registration layer was created"
+    );
+    assert!(
+        harness.state().editor.document.objects.len() > 1,
+        "the marks were not added"
+    );
+}
+
+#[test]
 fn the_drawing_colour_strip_colours_the_selected_layer() {
     use egui_kittest::kittest::Queryable as _;
 
@@ -4731,6 +4770,32 @@ fn the_import_preview_reports_conflicts_and_keeps_both() {
     assert_eq!(preferences.image_export_presets.saved[1].name, "Same (2)");
     assert!((preferences.image_export_presets.saved[1].dpi - 600.0).abs() < f64::EPSILON);
     assert!(!harness.state().preset_import_open);
+}
+
+#[test]
+fn applying_a_vector_preset_without_layers_uses_all_layers() {
+    let mut app = ui_test_app();
+    let first = app.editor.document.layers[0].id.clone();
+    let second = app.editor.document.add_layer("Second").id.clone();
+    app.export_svg_layer_ids = vec![first.clone()];
+    let preset = crate::config::preferences::VectorExportPreset {
+        name: "All layers".to_string(),
+        format: "svg".to_string(),
+        text_as_paths: false,
+        arcs: false,
+        margin_mm: 0.0,
+        dxf_unit: "mm".to_string(),
+        embed_images: false,
+        area: "page".to_string(),
+        layers: Vec::new(),
+        allow_outside_page: false,
+    };
+
+    app.apply_vector_export_preset(&preset);
+
+    assert_eq!(app.export_svg_layer_ids.len(), 2);
+    assert!(app.export_svg_layer_ids.contains(&first));
+    assert!(app.export_svg_layer_ids.contains(&second));
 }
 
 #[test]
