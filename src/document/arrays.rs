@@ -400,12 +400,9 @@ impl Document {
                 }
                 generated.extend(cell_copies);
             }
-            if last_index + 1 <= self.objects.len() {
-                self.objects
-                    .splice(last_index + 1..last_index + 1, generated);
-            } else {
-                self.objects.extend(generated);
-            }
+            let mut tail = self.objects.split_off(last_index + 1);
+            self.objects.extend(generated);
+            self.objects.append(&mut tail);
         }
     }
 
@@ -444,7 +441,7 @@ impl Document {
             match array.validate(self) {
                 Ok(()) => self.arrays.push(array),
                 Err(error) => {
-                    warnings.push(format!("array '{}' was repaired: {error}", array.name))
+                    warnings.push(format!("array '{}' was repaired: {error}", array.name));
                 }
             }
         }
@@ -691,7 +688,7 @@ mod tests {
         });
         let warnings = document.repair_arrays();
         assert_eq!(document.arrays.len(), 0);
-        assert!(!warnings.is_empty());
+        assert_ne!(warnings.len(), 0);
         assert_eq!(document.objects.len(), 1);
     }
 }

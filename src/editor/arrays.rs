@@ -1,7 +1,7 @@
 //! Editor commands that create and maintain virtual arrays.
 
 use crate::document::Object;
-use crate::document::arrays::{ArrayLayout, ArraySpec, Spacing};
+use crate::document::arrays::{ArrayLayout, ArraySpec};
 use crate::geometry::Transform2;
 
 use super::state::EditorState;
@@ -273,6 +273,7 @@ impl EditorState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::arrays::Spacing;
     use crate::document::{Document, Object, Shape};
 
     fn editor_with_rect() -> (EditorState, String) {
@@ -318,7 +319,7 @@ mod tests {
         assert_eq!(editor.document.array_members(&id).len(), 4);
         assert!(editor.undo().is_some());
         assert_eq!(editor.document.objects.len(), 1);
-        assert!(editor.document.arrays.is_empty());
+        assert_eq!(editor.document.arrays.len(), 0);
     }
 
     #[test]
@@ -358,7 +359,12 @@ mod tests {
         let id = editor.create_array(grid(2, 2, 5.0), &[]).unwrap();
         editor.selection.clear();
         editor.selection.add(second.clone());
-        assert_eq!(editor.add_to_array(&id, &[second.clone()]).unwrap(), 1);
+        assert_eq!(
+            editor
+                .add_to_array(&id, std::slice::from_ref(&second))
+                .unwrap(),
+            1
+        );
         assert_eq!(editor.document.objects.len(), 8);
         assert_eq!(editor.remove_from_array(&id, &[second]).unwrap(), 1);
         assert_eq!(editor.document.objects.len(), 4);
@@ -377,7 +383,7 @@ mod tests {
         let (mut editor, _) = editor_with_rect();
         let id = editor.create_array(grid(2, 2, 5.0), &[]).unwrap();
         assert_eq!(editor.flatten_array(&id).unwrap(), 4);
-        assert!(editor.document.arrays.is_empty());
+        assert_eq!(editor.document.arrays.len(), 0);
         assert_eq!(editor.document.objects.len(), 4);
         assert!(editor.undo().is_some());
         assert_eq!(editor.document.objects.len(), 4);
@@ -393,6 +399,6 @@ mod tests {
         }
         editor.delete_selection();
         assert_eq!(editor.document.objects.len(), 0);
-        assert!(editor.document.arrays.is_empty());
+        assert_eq!(editor.document.arrays.len(), 0);
     }
 }
