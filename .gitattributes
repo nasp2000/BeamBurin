@@ -5,3 +5,4 @@ tests/fixtures/corpus/*.svg text eol=lf
 tests/fixtures/corpus/*.hpgl text eol=lf
 tests/fixtures/corpus/*.plt text eol=lf
 tests/fixtures/corpus/*.bwp text eol=lf
+tests/fixtures/corpus/*.pdf -text
