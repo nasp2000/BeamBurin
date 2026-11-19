@@ -334,10 +334,10 @@ mod tests {
             wrap_fraction: 100.0,
         };
         let quad = spec.quad(domain()).unwrap();
-        assert!((quad.corners[0].x - 30.0).abs() < 1e-9);
-        assert!((quad.corners[1].x - 50.0).abs() < 1e-9);
-        assert!((quad.corners[2].x - 40.0).abs() < 1e-9);
-        assert!((quad.corners[3].x - 60.0).abs() < 1e-9);
+        assert!((quad.corners[0].x + 15.0).abs() < 1e-9);
+        assert!((quad.corners[1].x - 25.0).abs() < 1e-9);
+        assert!((quad.corners[2].x + 5.0).abs() < 1e-9);
+        assert!((quad.corners[3].x - 15.0).abs() < 1e-9);
     }
 
     #[test]

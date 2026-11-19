@@ -323,7 +323,10 @@ mod tests {
                 96.0,
             )),
         );
+        let image_id = image.id.clone();
         editor.document.add_object(image);
+        editor.selection.clear();
+        editor.selection.add(image_id);
         assert!(
             editor
                 .warp_selection([
