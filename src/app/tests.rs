@@ -4773,32 +4773,6 @@ fn the_import_preview_reports_conflicts_and_keeps_both() {
 }
 
 #[test]
-fn applying_a_vector_preset_without_layers_uses_all_layers() {
-    let mut app = ui_test_app();
-    let first = app.editor.document.layers[0].id.clone();
-    let second = app.editor.document.add_layer("Second").id.clone();
-    app.export_svg_layer_ids = vec![first.clone()];
-    let preset = crate::config::preferences::VectorExportPreset {
-        name: "All layers".to_string(),
-        format: "svg".to_string(),
-        text_as_paths: false,
-        arcs: false,
-        margin_mm: 0.0,
-        dxf_unit: "mm".to_string(),
-        embed_images: false,
-        area: "page".to_string(),
-        layers: Vec::new(),
-        allow_outside_page: false,
-    };
-
-    app.apply_vector_export_preset(&preset);
-
-    assert_eq!(app.export_svg_layer_ids.len(), 2);
-    assert!(app.export_svg_layer_ids.contains(&first));
-    assert!(app.export_svg_layer_ids.contains(&second));
-}
-
-#[test]
 fn the_vector_preset_picker_only_lists_the_open_format() {
     use egui_kittest::kittest::Queryable as _;
 

@@ -671,13 +671,6 @@ impl BeamBurinApp {
             .cloned()
             .collect();
         let restore_layers = !preset.layers.is_empty() && !saved_layers.is_empty();
-        let all_layers: Vec<String> = self
-            .editor
-            .document
-            .layers
-            .iter()
-            .map(|layer| layer.id.clone())
-            .collect();
         self.export_vector_drawing = preset.area == "drawing";
         let selection = preset.area == "selection";
         self.export_svg_selection = selection && preset.format == "svg";
@@ -695,8 +688,6 @@ impl BeamBurinApp {
                 self.export_svg_embed_images = preset.embed_images;
                 if restore_layers {
                     self.export_svg_layer_ids.clone_from(&saved_layers);
-                } else {
-                    self.export_svg_layer_ids.clone_from(&all_layers);
                 }
             }
             "dxf" => {
@@ -706,16 +697,12 @@ impl BeamBurinApp {
                     crate::export::DxfUnit::from_id(&preset.dxf_unit).unwrap_or_default();
                 if restore_layers {
                     self.export_dxf_layer_ids.clone_from(&saved_layers);
-                } else {
-                    self.export_dxf_layer_ids.clone_from(&all_layers);
                 }
             }
             _ => {
                 self.export_vector_text_paths = preset.text_as_paths;
                 if restore_layers {
                     self.export_vector_layer_ids.clone_from(&saved_layers);
-                } else {
-                    self.export_vector_layer_ids.clone_from(&all_layers);
                 }
             }
         }
@@ -1809,14 +1796,16 @@ impl BeamBurinApp {
                             .layers
                             .iter()
                             .find(|layer| layer.name == "Registration marks")
-                            .map(|layer| layer.id.clone())
-                            .unwrap_or_else(|| {
-                                self.editor
-                                    .document
-                                    .add_layer("Registration marks")
-                                    .id
-                                    .clone()
-                            });
+                            .map_or_else(
+                                || {
+                                    self.editor
+                                        .document
+                                        .add_layer("Registration marks")
+                                        .id
+                                        .clone()
+                                },
+                                |layer| layer.id.clone(),
+                            );
                         let operation = self.active_operation.clone();
                         let mut added = 0;
                         for outline in &outlines {
