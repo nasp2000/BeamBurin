@@ -1,7 +1,7 @@
 //! Editor commands that create and maintain virtual arrays.
 
-use crate::document::arrays::{ArrayLayout, ArraySpec};
-use crate::document::{Document, Object};
+use crate::document::Object;
+use crate::document::arrays::{ArrayLayout, ArraySpec, Spacing};
 use crate::geometry::Transform2;
 
 use super::state::EditorState;

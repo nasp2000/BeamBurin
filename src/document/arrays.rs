@@ -121,7 +121,7 @@ impl ArrayLayout {
                 if !(1..=100).contains(copies) {
                     return Err("copies must be between 1 and 100".to_string());
                 }
-                if !step_degrees.is_finite() || step_degrees == 0.0 || step_degrees.abs() > 360.0 {
+                if !step_degrees.is_finite() || *step_degrees == 0.0 || step_degrees.abs() > 360.0 {
                     return Err(
                         "the step must be finite, non-zero and at most 360 degrees".to_string()
                     );

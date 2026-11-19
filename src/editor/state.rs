@@ -208,9 +208,9 @@ pub struct EditorState {
     /// Array whose base shapes are being edited, if any.
     pub array_edit: Option<String>,
     /// Incremented whenever the document may have changed.
-    geometry_revision: u64,
+    pub(super) geometry_revision: u64,
     /// Revision at which the derived copies were last regenerated.
-    array_synced_revision: u64,
+    pub(super) array_synced_revision: u64,
 }
 
 impl EditorState {
@@ -5285,6 +5285,7 @@ mod tests {
             margin_x: 5.0,
             margin_y: 3.0,
             column_major: true,
+            virtual_array: false,
         };
         assert_eq!(editor.duplicate_grid_with(&options), 3);
         let mut mins: Vec<(f64, f64)> = editor
