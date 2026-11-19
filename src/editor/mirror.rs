@@ -265,7 +265,7 @@ fn axis_points(object: &Object) -> Option<(Point2, Point2)> {
     let Shape::Path(path) = &object.shape else {
         return None;
     };
-    if path.closed || path.segments.len() < 1 {
+    if path.closed || path.segments.is_empty() {
         return None;
     }
     let mut points = Vec::new();
