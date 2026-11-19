@@ -475,6 +475,9 @@ impl ExportPresetPrefs {
 pub struct ImageExportPreset {
     pub name: String,
     pub dpi: f64,
+    /// The resolution was entered as a custom value instead of a preset.
+    #[serde(default)]
+    pub dpi_custom: bool,
     pub transparent: bool,
     pub margin_mm: f64,
     pub offset_x_mm: f64,
@@ -1119,6 +1122,7 @@ mod tests {
         ImageExportPreset {
             name: name.to_string(),
             dpi: 300.0,
+            dpi_custom: false,
             transparent: false,
             margin_mm: 5.0,
             offset_x_mm: 0.0,
@@ -1137,9 +1141,11 @@ mod tests {
     fn the_outside_page_flag_is_optional_and_round_trips() {
         let mut image = sample_image("Outside");
         image.allow_outside_page = true;
+        image.dpi_custom = true;
         let json = serde_json::to_string(&image).unwrap();
         let loaded: ImageExportPreset = serde_json::from_str(&json).unwrap();
         assert!(loaded.allow_outside_page);
+        assert!(loaded.dpi_custom);
 
         let mut vector = sample_vector("Outside vector");
         vector.allow_outside_page = true;

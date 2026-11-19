@@ -4470,6 +4470,7 @@ fn the_image_export_dialog_applies_a_saved_preset() {
         crate::config::preferences::ImageExportPreset {
             name: "Print".to_string(),
             dpi: 300.0,
+            dpi_custom: false,
             transparent: true,
             margin_mm: 3.0,
             offset_x_mm: 0.0,

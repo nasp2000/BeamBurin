@@ -571,6 +571,7 @@ impl BeamBurinApp {
         preset: &crate::config::preferences::ImageExportPreset,
     ) {
         self.export_image_dpi = preset.dpi;
+        self.export_image_dpi_custom = preset.dpi_custom;
         self.export_image_transparent = preset.transparent;
         self.export_image_margin_mm = preset.margin_mm;
         self.export_image_offset_x_mm = preset.offset_x_mm;
@@ -1381,6 +1382,7 @@ impl BeamBurinApp {
             let preset = crate::config::preferences::ImageExportPreset {
                 name: name.clone(),
                 dpi: self.export_image_dpi,
+                dpi_custom: self.export_image_dpi_custom,
                 transparent: self.export_image_transparent,
                 margin_mm: self.export_image_margin_mm,
                 offset_x_mm: self.export_image_offset_x_mm,
