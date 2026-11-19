@@ -401,6 +401,11 @@ impl BeamBurinApp {
         };
         let origin = self.gcode_origin;
         let smooth_mm = self.gcode_smooth_mm;
+        let allow_outside_page = if vector_mode {
+            self.export_vector_allow_outside_page
+        } else {
+            self.export_image_allow_outside_page
+        };
         let label = format!("Exporting {}", path.display());
         let worker_path = path.clone();
         self.task = Some(crate::task::BackgroundTask::spawn(label, move |cancel| {
@@ -422,6 +427,7 @@ impl BeamBurinApp {
                 dxf_unit,
                 vector_text_as_paths,
                 layer_ids,
+                allow_outside_page,
                 gcode,
                 smooth_mm,
             )))

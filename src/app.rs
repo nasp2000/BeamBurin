@@ -663,6 +663,7 @@ fn run_export(
     dxf_unit: crate::export::DxfUnit,
     vector_text_as_paths: bool,
     layer_ids: Vec<String>,
+    allow_outside_page: bool,
     gcode: crate::gcode::GCodeOptions,
     smooth_mm: f64,
 ) -> std::result::Result<FileReport, String> {
@@ -702,7 +703,7 @@ fn run_export(
             let (dxf, report) = crate::export::export_dxf_with_report_options(
                 document,
                 &crate::export::DxfOptions {
-                    allow_outside_page: self.export_vector_allow_outside_page,
+                    allow_outside_page,
                     area: vector_area,
                     text_as_paths: dxf_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -722,7 +723,7 @@ fn run_export(
             let eps = crate::export::export_eps_with_options(
                 document,
                 &crate::export::EpsOptions {
-                    allow_outside_page: self.export_vector_allow_outside_page,
+                    allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -741,7 +742,7 @@ fn run_export(
             let pdf = crate::export::export_pdf_with_options(
                 document,
                 &crate::export::PdfOptions {
-                    allow_outside_page: self.export_vector_allow_outside_page,
+                    allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -760,7 +761,7 @@ fn run_export(
             let hpgl = crate::export::export_hpgl_with_options(
                 document,
                 &crate::export::HpglOptions {
-                    allow_outside_page: self.export_vector_allow_outside_page,
+                    allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),
