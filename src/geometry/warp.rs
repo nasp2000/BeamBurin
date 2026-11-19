@@ -73,7 +73,11 @@ impl LatticeWarp {
 }
 
 /// Catmull-Rom through four uniformly spaced values, with secant end tangents.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
 fn interp4(values: [f64; 4], t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     let scaled = t * 3.0;
@@ -304,17 +308,17 @@ mod tests {
     #[allow(clippy::cast_precision_loss)]
     fn lattice_identity_and_nodes() {
         let mut nodes = [[Point2::origin(); 4]; 4];
-        for row in 0..4 {
-            for col in 0..4 {
-                nodes[row][col] = Point2::new(col as f64 * 10.0 / 3.0, row as f64 * 10.0 / 3.0);
+        for (row, row_nodes) in nodes.iter_mut().enumerate() {
+            for (col, node) in row_nodes.iter_mut().enumerate() {
+                *node = Point2::new(col as f64 * 10.0 / 3.0, row as f64 * 10.0 / 3.0);
             }
         }
         let lattice = LatticeWarp::new(nodes).unwrap();
-        for row in 0..4 {
-            for col in 0..4 {
+        for (row, row_nodes) in nodes.iter().enumerate() {
+            for (col, node) in row_nodes.iter().enumerate() {
                 let point = lattice.map(col as f64 / 3.0, row as f64 / 3.0);
-                assert!((point.x - nodes[row][col].x).abs() < 1e-9);
-                assert!((point.y - nodes[row][col].y).abs() < 1e-9);
+                assert!((point.x - node.x).abs() < 1e-9);
+                assert!((point.y - node.y).abs() < 1e-9);
             }
         }
     }
