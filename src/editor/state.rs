@@ -881,7 +881,7 @@ impl EditorState {
                 .hole_of
                 .as_ref()
                 .and_then(|parent| id_map.get(parent).cloned());
-            object.id = id_map[&object.id].clone();
+            object.id.clone_from(&id_map[&object.id]);
             object.layer_id.clone_from(&new_id);
             object.group_id = None;
             self.document.add_object(object);
@@ -3150,7 +3150,7 @@ impl EditorState {
         let mut new_ids = Vec::new();
         for source in &sources {
             let mut copy = source.clone();
-            copy.id = id_map[&source.id].clone();
+            copy.id.clone_from(&id_map[&source.id]);
             copy.name = format!("{} copy", source.name);
             copy.translate(5.0, -5.0);
             copy.group_id = source.group_id.as_ref().and_then(|group| {
@@ -7633,7 +7633,7 @@ mod tests {
     fn deleting_an_outer_shape_clears_orphan_hole_links() {
         let mut editor = editor();
         let layer = editor.document.layers[0].id.clone();
-        let mut outer = Object::new(
+        let outer = Object::new(
             layer.clone(),
             Shape::Rect {
                 width: 20.0,
