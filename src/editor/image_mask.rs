@@ -344,7 +344,7 @@ mod tests {
         let Shape::Image(image) = &editor.document.object(&image).unwrap().shape else {
             panic!("not an image");
         };
-        assert!(image.mask_paths.is_empty());
+        assert_eq!(image.mask_paths.len(), 0);
         assert!(!image.mask_invert);
         assert_eq!(image.mask_colours.len(), 1);
         assert!(image.mask_alpha);
