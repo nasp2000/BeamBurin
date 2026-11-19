@@ -659,9 +659,8 @@ impl Path {
         } else if t >= 1.0 - epsilon {
             (segment + 1) % count
         } else {
-            let (first, second) = match split_segment(self.segments[segment], t) {
-                Some(parts) => parts,
-                None => return false,
+            let Some((first, second)) = split_segment(self.segments[segment], t) else {
+                return false;
             };
             let mut rotated = Vec::with_capacity(count + 1);
             rotated.push(second);
