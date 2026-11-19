@@ -60,6 +60,8 @@ impl DxfUnit {
 pub struct DxfOptions {
     /// Region whose origin becomes the drawing origin; `None` keeps page zero.
     pub area: Option<Area>,
+    /// Let the frame extend past the page edge.
+    pub allow_outside_page: bool,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
@@ -118,7 +120,7 @@ pub fn export_dxf_with_report_options(
     document: &Document,
     options: &DxfOptions,
 ) -> Result<(String, DxfReport)> {
-    let area = super::export_area(document, options.area, "DXF")?;
+    let area = super::export_area_with(document, options.area, "DXF", options.allow_outside_page)?;
     let scale = options.unit.scale();
     let mut out = String::new();
     let mut report = DxfReport::default();
@@ -420,6 +422,38 @@ mod tests {
     }
 
     #[test]
+    fn an_extended_area_is_refused_without_the_flag() {
+        let document = Document::default();
+        let area = Area {
+            x: -5.0,
+            y: -5.0,
+            width: 320.0,
+            height: 220.0,
+        };
+        assert!(
+            export_dxf_with_options(
+                &document,
+                &DxfOptions {
+                    area: Some(area),
+                    ..DxfOptions::default()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            export_dxf_with_options(
+                &document,
+                &DxfOptions {
+                    area: Some(area),
+                    allow_outside_page: true,
+                    ..DxfOptions::default()
+                }
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn an_area_moves_the_drawing_to_the_origin() {
         let mut document = Document::default();
         let layer_id = document.layers[0].id.clone();
@@ -436,6 +470,7 @@ mod tests {
         let text = export_dxf_with_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: Some(crate::export::Area {
                     x: 5.0,
                     y: 4.0,
@@ -469,6 +504,7 @@ mod tests {
         let (plain, plain_report) = export_dxf_with_report_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: None,
@@ -482,6 +518,7 @@ mod tests {
         let (outlined, report) = export_dxf_with_report_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,
@@ -506,6 +543,7 @@ mod tests {
         let text = export_dxf_with_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: None,
@@ -524,6 +562,7 @@ mod tests {
         let text = export_dxf_with_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: None,
@@ -546,6 +585,7 @@ mod tests {
         let (text, report) = export_dxf_with_report_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: None,
@@ -590,6 +630,7 @@ mod tests {
         let text = export_dxf_with_options(
             &document,
             &DxfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![second]),

@@ -281,6 +281,36 @@ impl McpServer {
         }))
     }
 
+    /// Resolve the optional `area`/`margin_mm` pair of the vector exports.
+    fn export_area_argument(&self, arguments: &Value) -> Result<Option<crate::export::Area>> {
+        let Some(value) = arguments.get("area") else {
+            if arguments.get("margin_mm").is_some() {
+                return Err(BeamError::InvalidInput(
+                    "margin_mm needs an area".to_string(),
+                ));
+            }
+            return Ok(None);
+        };
+        let area = crate::export::Area {
+            x: number(value, "x_mm").ok_or_else(|| missing("x_mm"))?,
+            y: number(value, "y_mm").ok_or_else(|| missing("y_mm"))?,
+            width: number(value, "width_mm").ok_or_else(|| missing("width_mm"))?,
+            height: number(value, "height_mm").ok_or_else(|| missing("height_mm"))?,
+        };
+        let margin = number(arguments, "margin_mm").unwrap_or(0.0);
+        let allow = arguments
+            .get("allow_outside_page")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        Ok(Some(crate::export::expand_area_with(
+            area,
+            margin,
+            self.editor.document.width_mm,
+            self.editor.document.height_mm,
+            allow,
+        )))
+    }
+
     /// Resolve the optional `area` argument of `export_print`.
     fn print_area(&self, arguments: &Value) -> Result<Option<crate::export::Area>> {
         let Some(value) = arguments.get("area") else {
@@ -1724,13 +1754,31 @@ impl McpServer {
             }
             "export_svg" => {
                 let path = self.required_path(arguments, "path")?;
-                let text = crate::export::export_svg(&self.editor.document)?;
+                let area = self.export_area_argument(arguments)?;
+                let options = crate::export::SvgOptions {
+                    area,
+                    allow_outside_page: arguments
+                        .get("allow_outside_page")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    ..crate::export::SvgOptions::default()
+                };
+                let text = crate::export::export_svg_with_options(&self.editor.document, &options)?;
                 std::fs::write(&path, text)?;
                 Ok(json!({"path": path.display().to_string()}))
             }
             "export_dxf" => {
                 let path = self.required_path(arguments, "path")?;
-                let text = crate::export::export_dxf(&self.editor.document)?;
+                let area = self.export_area_argument(arguments)?;
+                let options = crate::export::DxfOptions {
+                    area,
+                    allow_outside_page: arguments
+                        .get("allow_outside_page")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    ..crate::export::DxfOptions::default()
+                };
+                let text = crate::export::export_dxf_with_options(&self.editor.document, &options)?;
                 std::fs::write(&path, text)?;
                 Ok(json!({"path": path.display().to_string()}))
             }
@@ -2910,13 +2958,33 @@ fn tool_definitions() -> Vec<Value> {
         ),
         tool_with(
             "export_svg",
-            "Export the current document as SVG.",
-            json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
+            "Export the current document as SVG, optionally framed by an area and margin.",
+            json!({"type": "object", "properties": {
+                "path": {"type": "string"},
+                "area": {"type": "object", "properties": {
+                    "x_mm": {"type": "number"},
+                    "y_mm": {"type": "number"},
+                    "width_mm": {"type": "number"},
+                    "height_mm": {"type": "number"}
+                }, "required": ["x_mm", "y_mm", "width_mm", "height_mm"]},
+                "margin_mm": {"type": "number"},
+                "allow_outside_page": {"type": "boolean"}
+            }, "required": ["path"]}),
         ),
         tool_with(
             "export_dxf",
-            "Export the current document as DXF.",
-            json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
+            "Export the current document as DXF, optionally framed by an area and margin.",
+            json!({"type": "object", "properties": {
+                "path": {"type": "string"},
+                "area": {"type": "object", "properties": {
+                    "x_mm": {"type": "number"},
+                    "y_mm": {"type": "number"},
+                    "width_mm": {"type": "number"},
+                    "height_mm": {"type": "number"}
+                }, "required": ["x_mm", "y_mm", "width_mm", "height_mm"]},
+                "margin_mm": {"type": "number"},
+                "allow_outside_page": {"type": "boolean"}
+            }, "required": ["path"]}),
         ),
         tool_with(
             "export_gcode",
@@ -3836,6 +3904,41 @@ mod tests {
         );
         assert!(refused.get("error").is_some(), "{refused}");
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn export_svg_honours_an_extended_area_and_margin() {
+        let mut server = McpServer::new();
+        call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let path =
+            std::env::temp_dir().join(format!("beamburin_mcp_area_{}.svg", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let exported = call(
+            &mut server,
+            "export_svg",
+            json!({
+                "path": path.to_string_lossy(),
+                "area": {"x_mm": -5.0, "y_mm": -5.0, "width_mm": 20.0, "height_mm": 15.0},
+                "margin_mm": 2.0,
+                "allow_outside_page": true
+            }),
+        );
+        assert!(exported.get("error").is_none(), "{exported}");
+        let svg = std::fs::read_to_string(&path).unwrap();
+        assert!(svg.contains("width=\"24mm\" height=\"19mm\""), "{svg}");
+        assert!(svg.contains("viewBox=\"0 0 24 19\""), "{svg}");
+        let _ = std::fs::remove_file(&path);
+
+        let missing_area = call(
+            &mut server,
+            "export_svg",
+            json!({"path": path.to_string_lossy(), "margin_mm": 2.0}),
+        );
+        assert!(missing_area.get("error").is_some(), "{missing_area}");
     }
 
     #[test]

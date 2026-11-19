@@ -234,6 +234,7 @@ pub fn render_print_raster(document: &Document, options: &PrintOptions) -> Resul
         }
     }
     let png = PngOptions {
+        allow_outside_page: false,
         monochrome: options.colour == PrintColour::BlackOnly,
         dpi: f64::from(options.dpi),
         transparent: false,

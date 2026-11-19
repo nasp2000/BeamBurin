@@ -17,6 +17,8 @@ use crate::geometry::Point2;
 pub struct PngOptions {
     /// Render vectors, fills and text black and images in grayscale.
     pub monochrome: bool,
+    /// Let the chosen area extend past the page edge.
+    pub allow_outside_page: bool,
     /// Output resolution in dots per inch.
     pub dpi: f64,
     /// Transparent background instead of white.
@@ -52,6 +54,7 @@ impl Default for PngOptions {
     fn default() -> Self {
         Self {
             monochrome: false,
+            allow_outside_page: false,
             dpi: 96.0,
             transparent: false,
             width_px: None,
@@ -135,10 +138,11 @@ impl Canvas {
         let (origin_x, origin_y, width_mm, height_mm) = match options.area {
             Some(area) => {
                 let epsilon = 1e-6;
-                if area.x < -epsilon
-                    || area.y < -epsilon
-                    || area.x + area.width > document.width_mm + epsilon
-                    || area.y + area.height > document.height_mm + epsilon
+                if !options.allow_outside_page
+                    && (area.x < -epsilon
+                        || area.y < -epsilon
+                        || area.x + area.width > document.width_mm + epsilon
+                        || area.y + area.height > document.height_mm + epsilon)
                 {
                     return Err(crate::errors::BeamError::InvalidInput(
                         "the PNG area must lie inside the page".to_string(),
@@ -619,6 +623,7 @@ mod tests {
     fn filled_rectangle_covers_the_page() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: false,
@@ -675,6 +680,7 @@ mod tests {
         document.add_object(hole);
 
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 25.4,
             transparent: false,
@@ -700,6 +706,7 @@ mod tests {
     fn transparent_background_keeps_alpha_zero() {
         let document = document_with_rect(None, false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -718,6 +725,7 @@ mod tests {
     fn explicit_dimensions_set_the_output_size() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -746,6 +754,7 @@ mod tests {
             ..Document::default()
         };
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 96.0,
             transparent: false,
@@ -772,6 +781,7 @@ mod tests {
             ..Document::default()
         };
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 96.0,
             transparent: false,
@@ -793,6 +803,7 @@ mod tests {
     fn one_explicit_side_keeps_the_aspect_ratio() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -815,6 +826,7 @@ mod tests {
     fn a_zero_explicit_size_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -833,6 +845,7 @@ mod tests {
     fn a_margin_adds_blank_space_around_the_page() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 25.4,
             transparent: true,
@@ -855,6 +868,7 @@ mod tests {
     fn an_offset_moves_the_region() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 25.4,
             transparent: true,
@@ -875,6 +889,7 @@ mod tests {
     fn a_non_finite_offset_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: false,
@@ -893,6 +908,7 @@ mod tests {
     fn a_negative_margin_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: false,
@@ -912,6 +928,7 @@ mod tests {
         let mut document = document_with_rect(Some("#000000"), false);
         document.layers[0].visible = false;
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -930,6 +947,7 @@ mod tests {
     fn stroke_is_drawn_without_fill() {
         let document = document_with_rect(None, true);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -949,6 +967,7 @@ mod tests {
     fn invalid_options_are_rejected() {
         let document = Document::default();
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 0.0,
             transparent: false,
@@ -967,6 +986,7 @@ mod tests {
         let mut document = document_with_rect(Some("#ff0000"), false);
         document.objects[0].transform = Transform2::translate(5.0, 0.0);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -987,6 +1007,7 @@ mod tests {
     fn an_area_renders_only_that_region() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -1018,6 +1039,7 @@ mod tests {
         };
         document.objects[0].transform = Transform2::translate(5.0, 5.0);
         let inside = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -1036,6 +1058,7 @@ mod tests {
         let (pixels, ..) = render_rgba(&document, &inside).unwrap();
         assert_eq!(&pixels[0..4], &[255, 0, 0, 255]);
         let outside = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: true,
@@ -1056,9 +1079,34 @@ mod tests {
     }
 
     #[test]
+    fn an_outside_area_is_accepted_with_the_flag() {
+        let document = document_with_rect(Some("#ff0000"), false);
+        let options = PngOptions {
+            allow_outside_page: true,
+            monochrome: false,
+            dpi: 25.4,
+            transparent: false,
+            width_px: None,
+            height_px: None,
+            margin_mm: 0.0,
+            offset_x_mm: 0.0,
+            offset_y_mm: 0.0,
+            area: Some(PngArea {
+                x: -2.0,
+                y: -1.0,
+                width: 14.0,
+                height: 12.0,
+            }),
+        };
+        let (_, width, height, _) = render_rgba(&document, &options).unwrap();
+        assert_eq!((width, height), (14, 12));
+    }
+
+    #[test]
     fn an_area_outside_the_page_is_refused() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: false,
@@ -1077,6 +1125,7 @@ mod tests {
         let error = render_rgba(&document, &options).unwrap_err();
         assert!(error.to_string().contains("inside the page"), "{error}");
         let empty = PngOptions {
+            allow_outside_page: false,
             monochrome: false,
             dpi: 10.0,
             transparent: false,
@@ -1191,6 +1240,7 @@ mod tests {
         for (dpi, expected_width, expected_height) in [(96.0, 794u32, 1123u32), (300.0, 2480, 3508)]
         {
             let options = PngOptions {
+                allow_outside_page: false,
                 monochrome: false,
                 dpi,
                 transparent: false,

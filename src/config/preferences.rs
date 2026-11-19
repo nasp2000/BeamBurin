@@ -491,6 +491,9 @@ pub struct ImageExportPreset {
     /// Frame the current selection instead of the page or drawing.
     #[serde(default)]
     pub selection: bool,
+    /// Let the margin extend past the page edge.
+    #[serde(default)]
+    pub allow_outside_page: bool,
 }
 
 impl ImageExportPreset {
@@ -552,6 +555,9 @@ pub struct VectorExportPreset {
     /// Layer ids written by this preset; empty keeps every layer.
     #[serde(default)]
     pub layers: Vec<String>,
+    /// Let the margin extend past the page edge.
+    #[serde(default)]
+    pub allow_outside_page: bool,
 }
 
 fn default_vector_area() -> String {
@@ -1123,7 +1129,30 @@ mod tests {
             keep_aspect: true,
             drawing: false,
             selection: false,
+            allow_outside_page: false,
         }
+    }
+
+    #[test]
+    fn the_outside_page_flag_is_optional_and_round_trips() {
+        let mut image = sample_image("Outside");
+        image.allow_outside_page = true;
+        let json = serde_json::to_string(&image).unwrap();
+        let loaded: ImageExportPreset = serde_json::from_str(&json).unwrap();
+        assert!(loaded.allow_outside_page);
+
+        let mut vector = sample_vector("Outside vector");
+        vector.allow_outside_page = true;
+        let json = serde_json::to_string(&vector).unwrap();
+        let loaded: VectorExportPreset = serde_json::from_str(&json).unwrap();
+        assert!(loaded.allow_outside_page);
+
+        let legacy = r#"{"name":"Old","dpi":300,"transparent":false,"margin_mm":0,"offset_x_mm":0,"offset_y_mm":0,"custom_size":true,"width_px":100,"height_px":100}"#;
+        let loaded: ImageExportPreset = serde_json::from_str(legacy).unwrap();
+        assert!(!loaded.allow_outside_page);
+        let legacy = r#"{"name":"Old","format":"svg","text_as_paths":false,"arcs":false}"#;
+        let loaded: VectorExportPreset = serde_json::from_str(legacy).unwrap();
+        assert!(!loaded.allow_outside_page);
     }
 
     #[test]
@@ -1212,6 +1241,7 @@ mod tests {
             embed_images: false,
             area: "page".to_string(),
             layers: Vec::new(),
+            allow_outside_page: false,
         }
     }
 

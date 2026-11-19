@@ -29,6 +29,19 @@ use crate::geometry::path::Segment;
 /// `None` means the whole page. A region must be finite, positive and inside
 /// the document; `label` names the format in the error message.
 pub(crate) fn export_area(document: &Document, area: Option<Area>, label: &str) -> Result<Area> {
+    export_area_with(document, area, label, false)
+}
+
+/// Validate an export region, optionally allowing it past the page edge.
+///
+/// Even when the page check is relaxed the region must stay finite and
+/// positive; only the "inside the page" rule is skipped.
+pub(crate) fn export_area_with(
+    document: &Document,
+    area: Option<Area>,
+    label: &str,
+    allow_outside_page: bool,
+) -> Result<Area> {
     let area = area.unwrap_or(Area {
         x: 0.0,
         y: 0.0,
@@ -45,10 +58,11 @@ pub(crate) fn export_area(document: &Document, area: Option<Area>, label: &str) 
         )));
     }
     let epsilon = 1e-6;
-    if area.x < -epsilon
-        || area.y < -epsilon
-        || area.x + area.width > document.width_mm + epsilon
-        || area.y + area.height > document.height_mm + epsilon
+    if !allow_outside_page
+        && (area.x < -epsilon
+            || area.y < -epsilon
+            || area.x + area.width > document.width_mm + epsilon
+            || area.y + area.height > document.height_mm + epsilon)
     {
         return Err(BeamError::InvalidInput(format!(
             "the {label} area must lie inside the page"
@@ -64,8 +78,31 @@ pub(crate) fn export_area(document: &Document, area: Option<Area>, label: &str) 
 /// unchanged, so the exporter still reports its own error instead of silently
 /// framing different content. A non-finite or non-positive margin is ignored.
 pub fn expand_area(area: Area, margin_mm: f64, page_width_mm: f64, page_height_mm: f64) -> Area {
+    expand_area_with(area, margin_mm, page_width_mm, page_height_mm, false)
+}
+
+/// Add a margin around an export region.
+///
+/// With `allow_outside_page` the frame grows past the page edge (negative
+/// origins are possible); otherwise the margin is clipped exactly as before.
+/// A non-finite or non-positive margin is ignored in both modes.
+pub fn expand_area_with(
+    area: Area,
+    margin_mm: f64,
+    page_width_mm: f64,
+    page_height_mm: f64,
+    allow_outside_page: bool,
+) -> Area {
     if !margin_mm.is_finite() || margin_mm <= 0.0 {
         return area;
+    }
+    if allow_outside_page {
+        return Area {
+            x: area.x - margin_mm,
+            y: area.y - margin_mm,
+            width: (area.width + margin_mm * 2.0).max(0.01),
+            height: (area.height + margin_mm * 2.0).max(0.01),
+        };
     }
     let epsilon = 1e-6;
     let inside = area.x >= -epsilon
@@ -238,6 +275,90 @@ mod tests {
         assert!((framed.width - area.width).abs() < 1e-9);
         assert_eq!(expand_area(area, 0.0, 200.0, 100.0), Area { ..area });
         assert_eq!(expand_area(area, f64::NAN, 200.0, 100.0), Area { ..area });
+    }
+
+    #[test]
+    fn the_flag_extends_the_margin_past_the_page() {
+        let area = Area {
+            x: 0.0,
+            y: 0.0,
+            width: 20.0,
+            height: 10.0,
+        };
+        let framed = expand_area_with(area, 5.0, 20.0, 10.0, true);
+        assert!((framed.x + 5.0).abs() < 1e-9);
+        assert!((framed.y + 5.0).abs() < 1e-9);
+        assert!((framed.width - 30.0).abs() < 1e-9);
+        assert!((framed.height - 20.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_flag_keeps_a_margin_wider_than_the_page() {
+        let area = Area {
+            x: 2.0,
+            y: 3.0,
+            width: 4.0,
+            height: 5.0,
+        };
+        let framed = expand_area_with(area, 100.0, 10.0, 10.0, true);
+        assert!((framed.x + 98.0).abs() < 1e-9);
+        assert!((framed.y + 97.0).abs() < 1e-9);
+        assert!((framed.width - 204.0).abs() < 1e-9);
+        assert!((framed.height - 205.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn non_finite_and_zero_margins_are_ignored_in_both_modes() {
+        let area = Area {
+            x: -5.0,
+            y: -6.0,
+            width: 10.0,
+            height: 12.0,
+        };
+        for allow in [false, true] {
+            assert_eq!(
+                expand_area_with(area, f64::NAN, 100.0, 100.0, allow),
+                Area { ..area }
+            );
+            assert_eq!(
+                expand_area_with(area, -5.0, 100.0, 100.0, allow),
+                Area { ..area }
+            );
+            assert_eq!(
+                expand_area_with(area, 0.0, 100.0, 100.0, allow),
+                Area { ..area }
+            );
+        }
+    }
+
+    #[test]
+    fn export_area_accepts_a_negative_origin_only_with_the_flag() {
+        let document = Document::new("Area", 20.0, 10.0);
+        let area = Area {
+            x: -5.0,
+            y: -2.0,
+            width: 30.0,
+            height: 14.0,
+        };
+        assert!(export_area_with(&document, Some(area), "test", false).is_err());
+        assert_eq!(
+            export_area_with(&document, Some(area), "test", true).unwrap(),
+            area
+        );
+        assert!(
+            export_area_with(
+                &document,
+                Some(Area {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 10.0
+                }),
+                "test",
+                true
+            )
+            .is_err()
+        );
     }
 
     #[test]

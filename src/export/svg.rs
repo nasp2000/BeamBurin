@@ -11,6 +11,8 @@ use super::png::Area;
 pub struct SvgOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Let the frame extend past the page edge.
+    pub allow_outside_page: bool,
     /// Convert text to outline paths instead of writing `<text>` elements.
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
@@ -29,7 +31,7 @@ pub fn export_svg(doc: &Document) -> Result<String> {
 
 /// Export visible document content as SVG, optionally cropped to a page region.
 pub fn export_svg_with_options(doc: &Document, options: &SvgOptions) -> Result<String> {
-    let area = super::export_area(doc, options.area, "SVG")?;
+    let area = super::export_area_with(doc, options.area, "SVG", options.allow_outside_page)?;
     let view = View {
         x: area.x,
         y: area.y,
@@ -455,6 +457,27 @@ mod tests {
     }
 
     #[test]
+    fn an_extended_area_widens_the_view_box() {
+        let document = Document::default();
+        let svg = export_svg_with_options(
+            &document,
+            &SvgOptions {
+                area: Some(Area {
+                    x: -5.0,
+                    y: -5.0,
+                    width: 310.0,
+                    height: 210.0,
+                }),
+                allow_outside_page: true,
+                ..SvgOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(svg.contains("width=\"310mm\" height=\"210mm\""), "{svg}");
+        assert!(svg.contains("viewBox=\"0 0 310 210\""), "{svg}");
+    }
+
+    #[test]
     fn base64_matches_the_reference_encoding() {
         assert_eq!(base64(b""), "");
         assert_eq!(base64(b"f"), "Zg==");
@@ -592,6 +615,7 @@ mod tests {
         let svg = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 5.0,
                     y: 4.0,
@@ -630,6 +654,7 @@ mod tests {
         let svg = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 5.0,
                     y: 4.0,
@@ -663,6 +688,7 @@ mod tests {
         let outlined = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,
@@ -680,6 +706,7 @@ mod tests {
         let error = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 299.0,
                     y: 199.0,
@@ -694,6 +721,7 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("inside the page"), "{error}");
         let empty = SvgOptions {
+            allow_outside_page: false,
             area: Some(Area {
                 x: 0.0,
                 y: 0.0,
@@ -731,6 +759,7 @@ mod tests {
         let svg = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![second.clone()]),
@@ -776,6 +805,7 @@ mod tests {
         let svg = export_svg_with_options(
             &doc,
             &SvgOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![first.clone(), second.clone()]),

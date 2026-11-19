@@ -14,6 +14,8 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 pub struct EpsOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Let the frame extend past the page edge.
+    pub allow_outside_page: bool,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
@@ -36,7 +38,7 @@ pub fn export_eps(document: &Document) -> Result<String> {
 /// origin.
 #[allow(clippy::cast_possible_truncation)]
 pub fn export_eps_with_options(document: &Document, options: &EpsOptions) -> Result<String> {
-    let area = super::export_area(document, options.area, "EPS")?;
+    let area = super::export_area_with(document, options.area, "EPS", options.allow_outside_page)?;
     let width = (area.width / MM_PER_POINT).ceil().max(1.0) as i64;
     let height = (area.height / MM_PER_POINT).ceil().max(1.0) as i64;
     let mut out = String::new();
@@ -132,6 +134,25 @@ mod tests {
     }
 
     #[test]
+    fn an_extended_area_changes_the_bounding_box() {
+        let eps = export_eps_with_options(
+            &Document::default(),
+            &EpsOptions {
+                area: Some(Area {
+                    x: -5.0,
+                    y: -5.0,
+                    width: 310.0,
+                    height: 210.0,
+                }),
+                allow_outside_page: true,
+                ..EpsOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(eps.contains("%%BoundingBox: 0 0 879 596"), "{eps}");
+    }
+
+    #[test]
     fn an_area_changes_the_bounding_box_and_shifts_the_path() {
         let mut document = Document {
             width_mm: 20.0,
@@ -145,6 +166,7 @@ mod tests {
         let text = export_eps_with_options(
             &document,
             &EpsOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 5.0,
                     y: 4.0,
@@ -179,6 +201,7 @@ mod tests {
         let outlined = export_eps_with_options(
             &document,
             &EpsOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,

@@ -616,6 +616,7 @@ pub struct BeamBurinApp {
     export_image_height_px: u32,
     export_image_keep_aspect: bool,
     export_image_margin_mm: f64,
+    export_image_allow_outside_page: bool,
     export_image_offset_x_mm: f64,
     export_image_offset_y_mm: f64,
     export_svg_open: bool,
@@ -634,6 +635,7 @@ pub struct BeamBurinApp {
     export_vector_selection: bool,
     export_vector_text_paths: bool,
     export_vector_margin_mm: f64,
+    export_vector_allow_outside_page: bool,
     export_vector_drawing: bool,
     export_vector_layer_ids: Vec<String>,
     recover_next: bool,
@@ -700,6 +702,7 @@ fn run_export(
             let (dxf, report) = crate::export::export_dxf_with_report_options(
                 document,
                 &crate::export::DxfOptions {
+                    allow_outside_page: self.export_vector_allow_outside_page,
                     area: vector_area,
                     text_as_paths: dxf_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -719,6 +722,7 @@ fn run_export(
             let eps = crate::export::export_eps_with_options(
                 document,
                 &crate::export::EpsOptions {
+                    allow_outside_page: self.export_vector_allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -737,6 +741,7 @@ fn run_export(
             let pdf = crate::export::export_pdf_with_options(
                 document,
                 &crate::export::PdfOptions {
+                    allow_outside_page: self.export_vector_allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),
@@ -755,6 +760,7 @@ fn run_export(
             let hpgl = crate::export::export_hpgl_with_options(
                 document,
                 &crate::export::HpglOptions {
+                    allow_outside_page: self.export_vector_allow_outside_page,
                     area: vector_area,
                     text_as_paths: vector_text_as_paths,
                     layer_ids: layer_ids.clone(),

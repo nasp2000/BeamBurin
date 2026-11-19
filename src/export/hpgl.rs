@@ -14,6 +14,8 @@ const UNITS_PER_MM: f64 = 40.0;
 pub struct HpglOptions {
     /// Region whose origin becomes the plot origin; `None` keeps page zero.
     pub area: Option<Area>,
+    /// Let the frame extend past the page edge.
+    pub allow_outside_page: bool,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
@@ -36,7 +38,7 @@ pub fn export_hpgl(document: &Document) -> Result<String> {
 /// selection export begins at the plotter origin instead of its page position.
 #[allow(clippy::cast_possible_truncation)]
 pub fn export_hpgl_with_options(document: &Document, options: &HpglOptions) -> Result<String> {
-    let area = super::export_area(document, options.area, "HPGL")?;
+    let area = super::export_area_with(document, options.area, "HPGL", options.allow_outside_page)?;
     let mut out = String::from("IN;PA;SP1;");
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -136,6 +138,7 @@ mod tests {
         let text = export_hpgl_with_options(
             &document,
             &HpglOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 5.0,
                     y: 4.0,
@@ -169,6 +172,7 @@ mod tests {
         let outlined = export_hpgl_with_options(
             &document,
             &HpglOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,

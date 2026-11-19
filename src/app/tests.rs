@@ -4480,6 +4480,7 @@ fn the_image_export_dialog_applies_a_saved_preset() {
             keep_aspect: true,
             drawing: true,
             selection: false,
+            allow_outside_page: true,
         },
     );
     app.editor
@@ -4496,6 +4497,12 @@ fn the_image_export_dialog_applies_a_saved_preset() {
     harness.run();
     harness.get_by_label("Print").click();
     harness.run();
+    assert!(
+        harness
+            .query_by_label("Allow margin outside the page")
+            .is_some(),
+        "the outside-page checkbox is missing"
+    );
     let state = harness.state();
     assert_eq!(state.export_image_dpi, 300.0);
     assert!((state.export_image_margin_mm - 3.0).abs() < f64::EPSILON);
@@ -4504,6 +4511,10 @@ fn the_image_export_dialog_applies_a_saved_preset() {
         "transparency was not applied"
     );
     assert!(state.export_image_drawing, "the framing was not applied");
+    assert!(
+        state.export_image_allow_outside_page,
+        "the outside-page flag was not applied"
+    );
 }
 
 #[test]
@@ -4520,6 +4531,7 @@ fn the_vector_preset_picker_only_lists_the_open_format() {
         embed_images: false,
         area: "page".to_string(),
         layers: Vec::new(),
+        allow_outside_page: false,
     };
     let mut app = ui_test_app();
     app.preferences

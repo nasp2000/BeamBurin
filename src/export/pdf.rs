@@ -14,6 +14,8 @@ const MM_PER_POINT: f64 = 25.4 / 72.0;
 pub struct PdfOptions {
     /// Page region to write; `None` writes the whole page.
     pub area: Option<Area>,
+    /// Let the frame extend past the page edge.
+    pub allow_outside_page: bool,
     /// Convert text to outline paths instead of omitting it.
     pub text_as_paths: bool,
     /// Write only these layers; `None` writes every visible layer.
@@ -37,7 +39,7 @@ pub fn export_pdf(document: &Document) -> Result<String> {
 /// origin, so the page shows exactly the requested part of the drawing.
 #[allow(clippy::cast_precision_loss)]
 pub fn export_pdf_with_options(document: &Document, options: &PdfOptions) -> Result<String> {
-    let area = super::export_area(document, options.area, "PDF")?;
+    let area = super::export_area_with(document, options.area, "PDF", options.allow_outside_page)?;
     let mut content = String::new();
     let mut layers: Vec<_> = document.layers.iter().collect();
     layers.sort_by_key(|layer| layer.order);
@@ -160,6 +162,28 @@ mod tests {
     }
 
     #[test]
+    fn an_extended_area_sets_a_larger_media_box() {
+        let text = export_pdf_with_options(
+            &Document::default(),
+            &PdfOptions {
+                area: Some(Area {
+                    x: -5.0,
+                    y: -5.0,
+                    width: 310.0,
+                    height: 210.0,
+                }),
+                allow_outside_page: true,
+                ..PdfOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            text.contains("/MediaBox [0 0 878.740157 595.275591]"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn an_area_changes_the_media_box_and_shifts_the_path() {
         let mut document = Document {
             width_mm: 20.0,
@@ -173,6 +197,7 @@ mod tests {
         let text = export_pdf_with_options(
             &document,
             &PdfOptions {
+                allow_outside_page: false,
                 area: Some(Area {
                     x: 5.0,
                     y: 4.0,
@@ -206,6 +231,7 @@ mod tests {
         let text = export_pdf_with_options(
             &document,
             &PdfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: false,
                 layer_ids: Some(vec![second]),
@@ -234,6 +260,7 @@ mod tests {
         let outlined = export_pdf_with_options(
             &document,
             &PdfOptions {
+                allow_outside_page: false,
                 area: None,
                 text_as_paths: true,
                 layer_ids: None,

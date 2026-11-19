@@ -581,6 +581,7 @@ impl BeamBurinApp {
         self.export_image_keep_aspect = preset.keep_aspect;
         self.export_image_drawing = preset.drawing;
         self.export_image_selection = preset.selection && !preset.drawing;
+        self.export_image_allow_outside_page = preset.allow_outside_page;
     }
 
     /// Region a vector export writes, including the selection margin.
@@ -615,10 +616,19 @@ impl BeamBurinApp {
         } else if drawing {
             match self.editor.visible_bounds() {
                 Some((min, max)) => {
-                    let x = min.x.max(0.0);
-                    let y = min.y.max(0.0);
-                    let max_x = max.x.min(document.width_mm);
-                    let max_y = max.y.min(document.height_mm);
+                    let allow = self.export_vector_allow_outside_page;
+                    let x = if allow { min.x } else { min.x.max(0.0) };
+                    let y = if allow { min.y } else { min.y.max(0.0) };
+                    let max_x = if allow {
+                        max.x
+                    } else {
+                        max.x.min(document.width_mm)
+                    };
+                    let max_y = if allow {
+                        max.y
+                    } else {
+                        max.y.min(document.height_mm)
+                    };
                     if max_x > x && max_y > y {
                         (
                             Area {
@@ -638,7 +648,13 @@ impl BeamBurinApp {
         } else {
             (page, 0.0)
         };
-        crate::export::expand_area(area, margin, document.width_mm, document.height_mm)
+        crate::export::expand_area_with(
+            area,
+            margin,
+            document.width_mm,
+            document.height_mm,
+            self.export_vector_allow_outside_page,
+        )
     }
 
     pub(super) fn apply_vector_export_preset(
@@ -646,6 +662,7 @@ impl BeamBurinApp {
         preset: &crate::config::preferences::VectorExportPreset,
     ) {
         self.export_vector_margin_mm = preset.margin_mm;
+        self.export_vector_allow_outside_page = preset.allow_outside_page;
         let saved_layers: Vec<String> = preset
             .layers
             .iter()
@@ -833,6 +850,7 @@ impl BeamBurinApp {
                     ui,
                     (self.export_dxf_selection && has_selection) || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
+                    &mut self.export_vector_allow_outside_page,
                 );
                 ui.checkbox(&mut self.export_dxf_text_paths, "Text as paths")
                     .on_hover_text(crate::ui::icons::description("Text as paths"));
@@ -971,6 +989,7 @@ impl BeamBurinApp {
                     (self.export_vector_selection && has_selection)
                         || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
+                    &mut self.export_vector_allow_outside_page,
                 );
                 ui.checkbox(&mut self.export_vector_text_paths, "Text as paths").on_hover_text(crate::ui::icons::description("Text as paths"));
                 ui.label("Layers");
@@ -1088,6 +1107,7 @@ impl BeamBurinApp {
                     ui,
                     (self.export_svg_selection && has_selection) || self.export_vector_drawing,
                     &mut self.export_vector_margin_mm,
+                    &mut self.export_vector_allow_outside_page,
                 );
                 ui.label("Layers");
                 layer_picker(
@@ -1371,6 +1391,7 @@ impl BeamBurinApp {
                 keep_aspect: self.export_image_keep_aspect,
                 drawing: self.export_image_drawing,
                 selection: self.export_image_selection,
+                allow_outside_page: self.export_image_allow_outside_page,
             };
             match self.preferences.image_export_presets.upsert(preset) {
                 Ok(()) => {
@@ -1535,6 +1556,7 @@ impl BeamBurinApp {
                 embed_images,
                 area,
                 layers,
+                allow_outside_page: self.export_vector_allow_outside_page,
             };
             match self.preferences.vector_export_presets.upsert(preset) {
                 Ok(()) => {
@@ -1702,7 +1724,12 @@ impl BeamBurinApp {
 }
 
 /// Vector export margin control; only meaningful for a selection export.
-fn vector_margin_row(ui: &mut egui::Ui, enabled: bool, margin: &mut f64) {
+fn vector_margin_row(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    margin: &mut f64,
+    allow_outside_page: &mut bool,
+) {
     ui.add_enabled_ui(enabled, |ui| {
         ui.horizontal(|ui| {
             let label = ui.label("Margin");
@@ -1714,7 +1741,14 @@ fn vector_margin_row(ui: &mut egui::Ui, enabled: bool, margin: &mut f64) {
             )
             .labelled_by(label.id)
             .on_hover_text(crate::ui::icons::field("Margin"));
-            ui.weak("blank space around the selection, up to the page edge");
+            ui.weak("blank space around the selection");
         });
+        ui.add_enabled(
+            enabled,
+            egui::Checkbox::new(allow_outside_page, "Allow margin outside the page"),
+        )
+        .on_hover_text(
+            "Lets the exported margin extend past the page edge; the page itself does not change.",
+        );
     });
 }

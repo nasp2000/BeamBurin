@@ -152,6 +152,18 @@ impl BeamBurinApp {
                         )
                         .labelled_by(margin_label.id).on_hover_text(crate::ui::icons::field("Margin"));
                         ui.end_row();
+                        ui.label("");
+                        ui.add_enabled(
+                            self.export_image_selection || self.export_image_drawing,
+                            egui::Checkbox::new(
+                                &mut self.export_image_allow_outside_page,
+                                "Allow margin outside the page",
+                            ),
+                        )
+                        .on_hover_text(
+                            "Lets the exported margin extend past the page edge; the page itself does not change.",
+                        );
+                        ui.end_row();
                         let offset_label = ui.label("Offset");
                         ui.horizontal(|ui| {
                             ui.add(

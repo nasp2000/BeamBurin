@@ -69,11 +69,32 @@ impl BeamBurinApp {
                 width: (max.x - min.x).max(0.01),
                 height: (max.y - min.y).max(0.01),
             });
+        let vector_mode = matches!(
+            mode,
+            FileMode::ExportSvg
+                | FileMode::ExportDxf
+                | FileMode::ExportPdf
+                | FileMode::ExportEps
+                | FileMode::ExportHpgl
+        );
+        let allow_outside = if vector_mode {
+            self.export_vector_allow_outside_page
+        } else {
+            self.export_image_allow_outside_page
+        };
         let drawing_area = self.editor.visible_bounds().and_then(|(min, max)| {
-            let x = min.x.max(0.0);
-            let y = min.y.max(0.0);
-            let max_x = max.x.min(self.editor.document.width_mm);
-            let max_y = max.y.min(self.editor.document.height_mm);
+            let x = if allow_outside { min.x } else { min.x.max(0.0) };
+            let y = if allow_outside { min.y } else { min.y.max(0.0) };
+            let max_x = if allow_outside {
+                max.x
+            } else {
+                max.x.min(self.editor.document.width_mm)
+            };
+            let max_y = if allow_outside {
+                max.y
+            } else {
+                max.y.min(self.editor.document.height_mm)
+            };
             (max_x > x && max_y > y).then_some(crate::export::Area {
                 x,
                 y,
@@ -88,14 +109,6 @@ impl BeamBurinApp {
         } else {
             None
         };
-        let vector_mode = matches!(
-            mode,
-            FileMode::ExportSvg
-                | FileMode::ExportDxf
-                | FileMode::ExportPdf
-                | FileMode::ExportEps
-                | FileMode::ExportHpgl
-        );
         let vector_area = if vector_mode && (selection_only || self.export_vector_drawing) {
             let area = if selection_only {
                 selection_area
@@ -103,17 +116,19 @@ impl BeamBurinApp {
                 drawing_area
             };
             area.map(|area| {
-                crate::export::expand_area(
+                crate::export::expand_area_with(
                     area,
                     self.export_vector_margin_mm,
                     self.editor.document.width_mm,
                     self.editor.document.height_mm,
+                    self.export_vector_allow_outside_page,
                 )
             })
         } else {
             None
         };
         let png_options = crate::export::PngOptions {
+            allow_outside_page: self.export_image_allow_outside_page,
             monochrome: false,
             dpi: self.export_image_dpi,
             transparent: self.export_image_transparent,
@@ -129,6 +144,7 @@ impl BeamBurinApp {
             offset_y_mm: self.export_image_offset_y_mm,
         };
         let svg_options = crate::export::SvgOptions {
+            allow_outside_page: self.export_vector_allow_outside_page,
             area: vector_area,
             text_as_paths: self.export_svg_text_paths,
             embed_images: self.export_svg_embed_images,
