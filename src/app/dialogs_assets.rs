@@ -1204,6 +1204,112 @@ impl BeamBurinApp {
         self.export_presets_open = open;
     }
 
+    pub(super) fn preset_import_window(&mut self, ctx: &egui::Context) {
+        use crate::config::presets_file::{ConflictPolicy, preview};
+
+        let Some(file) = self.pending_preset_import.clone() else {
+            self.preset_import_open = false;
+            return;
+        };
+        let existing = match file.kind {
+            crate::config::presets_file::PresetKind::Gcode => {
+                crate::config::presets_file::gcode_names(&self.preferences.export_presets)
+            }
+            crate::config::presets_file::PresetKind::Image => {
+                crate::config::presets_file::image_names(&self.preferences.image_export_presets)
+            }
+            crate::config::presets_file::PresetKind::Vector => {
+                crate::config::presets_file::vector_names(&self.preferences.vector_export_presets)
+            }
+        };
+        let preview = preview(&file, &existing);
+        let label = self.preset_import_label.clone();
+        let error = self.preset_import_error.clone();
+        let mut open = self.preset_import_open;
+        let mut policy = self.preset_conflict;
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new(format!("Import {} presets", file.kind.label()))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "{label}: {} preset(s), {} conflict(s).",
+                    preview.names.len(),
+                    preview.conflicts.len()
+                ));
+                if !preview.conflicts.is_empty() {
+                    ui.label(format!("Conflicts: {}", preview.conflicts.join(", ")));
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(150.0)
+                    .show(ui, |ui| {
+                        for name in &preview.names {
+                            ui.weak(name);
+                        }
+                    });
+                ui.separator();
+                ui.label("On a name conflict:");
+                for candidate in ConflictPolicy::all() {
+                    ui.radio_value(&mut policy, candidate, candidate.label())
+                        .on_hover_text(match candidate {
+                            ConflictPolicy::Skip => "Keep the existing preset",
+                            ConflictPolicy::Replace => "Overwrite the existing preset",
+                            ConflictPolicy::KeepBoth => "Rename the imported preset with a suffix",
+                        });
+                }
+                if let Some(message) = &error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, message);
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Import")
+                        .on_hover_text("Apply the imported presets")
+                        .clicked()
+                    {
+                        confirm = true;
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Discard the imported presets")
+                        .clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+        self.preset_conflict = policy;
+        if confirm {
+            self.apply_preset_import();
+        } else if cancel {
+            self.pending_preset_import = None;
+            self.preset_import_open = false;
+            self.preset_import_error = None;
+        } else if self.pending_preset_import.is_some() {
+            self.preset_import_open = open;
+        }
+    }
+
+    fn preset_file_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        kind: crate::config::presets_file::PresetKind,
+        count: usize,
+    ) {
+        let (import, export) = preset_file_actions_row(ui, count);
+        if import {
+            self.preset_file_kind = kind;
+            self.open_dialog(FileMode::ImportPresets);
+        }
+        if export {
+            self.preset_file_kind = kind;
+            self.open_dialog(FileMode::ExportPresets);
+        }
+    }
+
     fn gcode_presets_section(&mut self, ui: &mut egui::Ui) -> bool {
         let mut save = false;
         let mut apply: Option<String> = None;
@@ -1211,6 +1317,11 @@ impl BeamBurinApp {
         ui.label(
             "Dialect, decimals, comments, travel moves, line endings, arcs, smoothing \
              and the job origin.",
+        );
+        self.preset_file_actions(
+            ui,
+            crate::config::presets_file::PresetKind::Gcode,
+            self.preferences.export_presets.saved.len(),
         );
         ui.horizontal(|ui| {
             let name_label = ui.label("G-code preset name");
@@ -1305,6 +1416,11 @@ impl BeamBurinApp {
         ui.label(
             "Resolution, transparency, margin, offset, a custom pixel size and \
              page, selection or drawing framing are saved with the preset.",
+        );
+        self.preset_file_actions(
+            ui,
+            crate::config::presets_file::PresetKind::Image,
+            self.preferences.image_export_presets.saved.len(),
         );
         ui.horizontal(|ui| {
             let name_label = ui.label("Image preset name");
@@ -1425,6 +1541,11 @@ impl BeamBurinApp {
         ui.label(
             "Text as paths, SVG image embedding, DXF curves and unit, margin, \
              framing and the layer set are saved with the preset.",
+        );
+        self.preset_file_actions(
+            ui,
+            crate::config::presets_file::PresetKind::Vector,
+            self.preferences.vector_export_presets.saved.len(),
         );
         ui.horizontal(|ui| {
             let format_label = ui.label("Format");
@@ -1723,6 +1844,33 @@ impl BeamBurinApp {
         self.editor = app_editor;
         response.to_string()
     }
+}
+
+/// Import/Export buttons for one preset family.
+fn preset_file_actions_row(ui: &mut egui::Ui, count: usize) -> (bool, bool) {
+    let mut import = false;
+    let mut export = false;
+    ui.horizontal(|ui| {
+        ui.weak(format!(
+            "{count} of {}",
+            crate::config::preferences::MAX_EXPORT_PRESETS
+        ));
+        if ui
+            .button("Import...")
+            .on_hover_text("Read a .bwp-presets file and preview its conflicts")
+            .clicked()
+        {
+            import = true;
+        }
+        if ui
+            .add_enabled(count > 0, egui::Button::new("Export..."))
+            .on_hover_text("Write this family to a .bwp-presets file")
+            .clicked()
+        {
+            export = true;
+        }
+    });
+    (import, export)
 }
 
 /// Vector export margin control; only meaningful for a selection export.

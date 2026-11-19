@@ -23,6 +23,8 @@ pub enum FileMode {
     ExportMachines,
     ImportMaterialsCsv,
     ExportMaterialsCsv,
+    ImportPresets,
+    ExportPresets,
     PreviewGcode,
 }
 
@@ -48,6 +50,8 @@ impl FileMode {
             FileMode::ExportMachines => "Export machine profiles",
             FileMode::ImportMaterialsCsv => "Import materials CSV",
             FileMode::ExportMaterialsCsv => "Export materials CSV",
+            FileMode::ImportPresets => "Import presets",
+            FileMode::ExportPresets => "Export presets",
             FileMode::PreviewGcode => "Preview external G-code",
         }
     }
@@ -68,11 +72,13 @@ impl FileMode {
             | FileMode::ExportGcode
             | FileMode::ExportProfiles
             | FileMode::ExportMachines
-            | FileMode::ExportMaterialsCsv => "Export",
+            | FileMode::ExportMaterialsCsv
+            | FileMode::ExportPresets => "Export",
             FileMode::RelinkImage => "Relink",
-            FileMode::ImportProfiles | FileMode::ImportMachines | FileMode::ImportMaterialsCsv => {
-                "Import"
-            }
+            FileMode::ImportProfiles
+            | FileMode::ImportMachines
+            | FileMode::ImportMaterialsCsv
+            | FileMode::ImportPresets => "Import",
         }
     }
 
@@ -92,6 +98,7 @@ impl FileMode {
             | FileMode::ImportMachines
             | FileMode::ExportMachines => "json",
             FileMode::ImportMaterialsCsv | FileMode::ExportMaterialsCsv => "csv",
+            FileMode::ImportPresets | FileMode::ExportPresets => "bwp-presets",
         }
     }
 
@@ -104,6 +111,8 @@ impl FileMode {
             FileMode::ImportMaterialsCsv | FileMode::ExportMaterialsCsv => {
                 "Shows .csv material lists"
             }
+            FileMode::ImportPresets => "Shows .bwp-presets and .json preset files",
+            FileMode::ExportPresets => "Saves .bwp-presets files",
             FileMode::SaveProject => "Saves .bwp files",
             FileMode::SaveArchive => "Saves .bwpz files with the images inside",
             FileMode::ImportFile => {
@@ -190,6 +199,8 @@ impl FileMode {
             | FileMode::ImportMachines
             | FileMode::ExportMachines => extension == "json",
             FileMode::ImportMaterialsCsv | FileMode::ExportMaterialsCsv => extension == "csv",
+            FileMode::ImportPresets => extension == "bwp-presets" || extension == "json",
+            FileMode::ExportPresets => extension == "bwp-presets",
         }
     }
 }
@@ -690,6 +701,7 @@ impl FileDialog {
                     | FileMode::ExportProfiles
                     | FileMode::ExportMachines
                     | FileMode::ExportMaterialsCsv
+                    | FileMode::ExportPresets
             ) {
                 path.set_extension(self.mode.default_extension());
             } else {

@@ -4519,6 +4519,74 @@ fn the_image_export_dialog_applies_a_saved_preset() {
 }
 
 #[test]
+fn the_import_preview_reports_conflicts_and_keeps_both() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let mut existing = crate::config::preferences::ImageExportPreset {
+        name: "Same".to_string(),
+        dpi: 300.0,
+        dpi_custom: false,
+        transparent: false,
+        margin_mm: 0.0,
+        offset_x_mm: 0.0,
+        offset_y_mm: 0.0,
+        custom_size: false,
+        width_px: 100,
+        height_px: 100,
+        keep_aspect: true,
+        drawing: false,
+        selection: false,
+        allow_outside_page: false,
+    };
+    app.preferences
+        .image_export_presets
+        .saved
+        .push(existing.clone());
+    let mut imported = existing.clone();
+    imported.dpi = 600.0;
+    let path = ui_temp_path("presets_import.bwp-presets");
+    crate::config::presets_file::export_image(
+        &crate::config::preferences::ImageExportPresetPrefs {
+            saved: vec![imported],
+        },
+        &path,
+    )
+    .unwrap();
+    let file = crate::config::presets_file::read_file(
+        &path,
+        crate::config::presets_file::PresetKind::Image,
+    )
+    .unwrap();
+    let _ = std::fs::remove_file(&path);
+    app.preset_file_kind = crate::config::presets_file::PresetKind::Image;
+    app.pending_preset_import = Some(file);
+    app.preset_import_label = "image-presets.bwp-presets".to_string();
+    app.preset_import_open = true;
+    app.preset_import_error = None;
+    app.preset_conflict = crate::config::presets_file::ConflictPolicy::Skip;
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("Import image presets").is_some(),
+        "the import preview did not open"
+    );
+    assert!(
+        harness.query_by_label("Conflicts: Same").is_some(),
+        "the conflict list is missing"
+    );
+    harness.get_by_label("Keep both").click_accesskit();
+    harness.run();
+    harness.get_by_label("Import").click_accesskit();
+    harness.run();
+    let preferences = &harness.state().preferences;
+    assert_eq!(preferences.image_export_presets.saved.len(), 2);
+    assert_eq!(preferences.image_export_presets.saved[1].name, "Same (2)");
+    assert!((preferences.image_export_presets.saved[1].dpi - 600.0).abs() < f64::EPSILON);
+    assert!(!harness.state().preset_import_open);
+}
+
+#[test]
 fn the_vector_preset_picker_only_lists_the_open_format() {
     use egui_kittest::kittest::Queryable as _;
 

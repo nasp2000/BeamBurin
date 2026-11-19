@@ -492,6 +492,13 @@ pub struct BeamBurinApp {
     gcode_crlf: bool,
     gcode_arcs: bool,
     export_presets_open: bool,
+    /// Family used by the preset file import/export dialogs.
+    preset_file_kind: crate::config::presets_file::PresetKind,
+    pending_preset_import: Option<crate::config::presets_file::PresetFile>,
+    preset_import_label: String,
+    preset_import_open: bool,
+    preset_import_error: Option<String>,
+    preset_conflict: crate::config::presets_file::ConflictPolicy,
     export_preset_name: String,
     image_export_preset_name: String,
     vector_export_preset_name: String,

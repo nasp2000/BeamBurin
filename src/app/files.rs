@@ -35,6 +35,9 @@ impl BeamBurinApp {
             FileMode::ImportMaterialsCsv | FileMode::ExportMaterialsCsv => {
                 "materials.csv".to_string()
             }
+            FileMode::ImportPresets | FileMode::ExportPresets => {
+                format!("{}-presets.bwp-presets", self.preset_file_kind.id())
+            }
             FileMode::ImportMachines | FileMode::ExportMachines => "machines.json".to_string(),
             FileMode::OpenProject | FileMode::SaveProject => format!("{stem}.bwp"),
             FileMode::SaveArchive => format!("{stem}.bwpz"),
@@ -57,6 +60,14 @@ impl BeamBurinApp {
         if self.recover_next && matches!(mode, FileMode::OpenProject) {
             self.recover_next = false;
             self.recover_project(path);
+            return;
+        }
+        if matches!(mode, FileMode::ImportPresets | FileMode::ExportPresets) {
+            if mode == FileMode::ImportPresets {
+                self.import_presets_file(path);
+            } else {
+                self.export_presets_file(path);
+            }
             return;
         }
         let selection_only = self.export_subset && !self.editor.selection.is_empty();
@@ -178,6 +189,7 @@ impl BeamBurinApp {
             FileMode::PreviewGcode => self.preview_external_gcode(path),
             FileMode::ImportMaterialsCsv => self.import_materials_csv(path),
             FileMode::ExportMaterialsCsv => self.export_materials_csv(path),
+            FileMode::ImportPresets | FileMode::ExportPresets => {}
             FileMode::ImportProfiles => {
                 match crate::profiles::library::import_into(&mut self.profiles, path) {
                     Ok(count) => {
@@ -440,6 +452,116 @@ impl BeamBurinApp {
             )))
         }));
         self.status = "Exporting...".to_string();
+    }
+
+    /// Read a `.bwp-presets` file and open its preview.
+    pub(super) fn import_presets_file(&mut self, path: &Path) {
+        match crate::config::presets_file::read_file(path, self.preset_file_kind) {
+            Ok(file) => {
+                self.preset_import_label = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                self.pending_preset_import = Some(file);
+                self.preset_import_error = None;
+                self.preset_conflict = crate::config::presets_file::ConflictPolicy::Skip;
+                self.preset_import_open = true;
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    /// Write the chosen family to a `.bwp-presets` file.
+    pub(super) fn export_presets_file(&mut self, path: &Path) {
+        use crate::config::presets_file::{PresetKind, export_gcode, export_image, export_vector};
+        let outcome = match self.preset_file_kind {
+            PresetKind::Gcode => export_gcode(&self.preferences.export_presets, path),
+            PresetKind::Image => export_image(&self.preferences.image_export_presets, path),
+            PresetKind::Vector => export_vector(&self.preferences.vector_export_presets, path),
+        };
+        match outcome {
+            Ok(outcome) => {
+                let mut message = format!(
+                    "Exported {} {} preset(s) to {}",
+                    outcome.count,
+                    self.preset_file_kind.label(),
+                    path.display()
+                );
+                if !outcome.warnings.is_empty() {
+                    message.push_str(" · ");
+                    message.push_str(&outcome.warnings.join(" · "));
+                }
+                self.status = message;
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    /// Merge the pending file into a copy of the preferences and save it.
+    pub(super) fn apply_preset_import(&mut self) {
+        use crate::config::presets_file::{
+            ImportOutcome, PresetKind, merge_gcode, merge_image, merge_vector,
+        };
+        let Some(file) = self.pending_preset_import.clone() else {
+            return;
+        };
+        let policy = self.preset_conflict;
+        let mut preferences = self.preferences.clone();
+        let result: std::result::Result<ImportOutcome, String> = match file.kind {
+            PresetKind::Gcode => {
+                merge_gcode(&preferences.export_presets, &file, policy).map(|(merged, outcome)| {
+                    preferences.export_presets = merged;
+                    outcome
+                })
+            }
+            PresetKind::Image => merge_image(&preferences.image_export_presets, &file, policy).map(
+                |(merged, outcome)| {
+                    preferences.image_export_presets = merged;
+                    outcome
+                },
+            ),
+            PresetKind::Vector => merge_vector(&preferences.vector_export_presets, &file, policy)
+                .map(|(merged, outcome)| {
+                    preferences.vector_export_presets = merged;
+                    outcome
+                }),
+        };
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.preset_import_error = Some(error.clone());
+                self.status = error;
+                return;
+            }
+        };
+        match preferences.save(&self.preferences_path) {
+            Ok(()) => {
+                self.preferences = preferences;
+                let mut message = format!("Imported {} preset(s)", outcome.applied());
+                if outcome.replaced > 0 {
+                    message.push_str(&format!(" · replaced {}", outcome.replaced));
+                }
+                if outcome.skipped > 0 {
+                    message.push_str(&format!(" · skipped {}", outcome.skipped));
+                }
+                if !outcome.renamed.is_empty() {
+                    message.push_str(&format!(" · renamed {}", outcome.renamed.len()));
+                }
+                if !outcome.warnings.is_empty() {
+                    message.push_str(" · ");
+                    message.push_str(&outcome.warnings.join(" · "));
+                }
+                self.status = message;
+                self.pending_preset_import = None;
+                self.preset_import_open = false;
+                self.preset_import_error = None;
+            }
+            Err(error) => {
+                let message = format!("Cannot save preferences: {error}");
+                self.preset_import_error = Some(message.clone());
+                self.status = message;
+            }
+        }
     }
 
     pub(super) fn apply_import(
