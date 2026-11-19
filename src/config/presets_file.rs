@@ -593,10 +593,10 @@ fn write_file(kind: PresetKind, presets: &[Value], path: &Path) -> Result<Export
     });
     let text = serde_json::to_string_pretty(&envelope)
         .map_err(|error| format!("Cannot write the preset file: {error}."))?;
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "presets".to_string());
+    let file_name = path.file_name().map_or_else(
+        || "presets".to_string(),
+        |name| name.to_string_lossy().to_string(),
+    );
     let temporary = path.with_file_name(format!("{file_name}.tmp"));
     if let Err(error) = std::fs::write(&temporary, text) {
         let _ = std::fs::remove_file(&temporary);
@@ -700,16 +700,16 @@ mod tests {
         assert!((merged.saved[0].dpi - 300.0).abs() < f64::EPSILON);
 
         let exported = export_vector(&vector_prefs, &path).unwrap();
-        assert!(!exported.warnings.is_empty());
+        assert_ne!(exported.warnings.len(), 0);
         let file = read_file(&path, PresetKind::Vector).unwrap();
-        assert!(file.warnings.is_empty());
+        assert_eq!(file.warnings.len(), 0);
         let (merged, _) = merge_vector(
             &VectorExportPresetPrefs::default(),
             &file,
             ConflictPolicy::Skip,
         )
         .unwrap();
-        assert!(merged.saved[0].layers.is_empty());
+        assert_eq!(merged.saved[0].layers.len(), 0);
         assert!(merged.saved[0].allow_outside_page);
         let _ = std::fs::remove_file(path);
     }
@@ -928,7 +928,11 @@ mod tests {
     #[test]
     fn a_large_file_is_rejected_before_parsing() {
         let path = temp_path("large.bwp-presets");
-        std::fs::write(&path, vec![b' '; (MAX_PRESET_FILE_BYTES + 1) as usize]).unwrap();
+        std::fs::write(
+            &path,
+            vec![b' '; usize::try_from(MAX_PRESET_FILE_BYTES + 1).unwrap()],
+        )
+        .unwrap();
         assert!(
             read_file(&path, PresetKind::Gcode)
                 .unwrap_err()
