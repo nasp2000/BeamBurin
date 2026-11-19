@@ -402,7 +402,7 @@ mod tests {
             .add_rectangle(Point2::new(0.0, 0.0), Point2::new(12.0, 10.0))
             .unwrap();
         let second = editor
-            .add_rectangle(Point2::new(10.0, 0.0), Point2::new(20.0, 10.0))
+            .add_rectangle(Point2::new(10.0, 4.0), Point2::new(20.0, 14.0))
             .unwrap();
         select(&mut editor, &[&first, &second]);
 
@@ -534,10 +534,14 @@ mod tests {
     #[test]
     fn no_closed_region_is_an_error_without_undo() {
         let mut editor = new_editor();
-        let line = editor
-            .add_line(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0))
-            .unwrap();
-        select(&mut editor, &[&line]);
+        let layer = editor.document.layers[0].id.clone();
+        let line = Object::new(
+            layer,
+            Shape::Path(Path::from_points(&[(0.0, 0.0), (10.0, 0.0)], false)),
+        );
+        let id = line.id.clone();
+        editor.document.add_object(line);
+        select(&mut editor, &[&id]);
 
         assert!(editor.shape_maker(None).is_err());
         assert!(editor.undo().is_none());
