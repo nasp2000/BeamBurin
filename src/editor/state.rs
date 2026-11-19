@@ -872,8 +872,16 @@ impl EditorState {
             + 1;
         let new_id = copy.id.clone();
         self.document.layers.push(copy);
+        let id_map: std::collections::HashMap<String, String> = objects
+            .iter()
+            .map(|object| (object.id.clone(), uuid::Uuid::new_v4().to_string()))
+            .collect();
         for mut object in objects {
-            object.id = uuid::Uuid::new_v4().to_string();
+            object.hole_of = object
+                .hole_of
+                .as_ref()
+                .and_then(|parent| id_map.get(parent).cloned());
+            object.id = id_map[&object.id].clone();
             object.layer_id.clone_from(&new_id);
             object.group_id = None;
             self.document.add_object(object);
@@ -3102,6 +3110,16 @@ impl EditorState {
         for id in &ids {
             self.document.remove_object(id);
         }
+        let removed: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        for object in &mut self.document.objects {
+            if object
+                .hole_of
+                .as_deref()
+                .is_some_and(|parent| removed.contains(parent))
+            {
+                object.hole_of = None;
+            }
+        }
         self.selection.clear();
     }
 
@@ -3111,16 +3129,44 @@ impl EditorState {
         }
         self.record_action("Duplicate");
         let ids = self.selection.ids().to_vec();
-        let mut new_ids = Vec::new();
-        for id in ids {
-            if let Some(object) = self.document.object(&id) {
-                let mut copy = object.clone();
-                copy.id = uuid::Uuid::new_v4().to_string();
-                copy.name = format!("{} copy", object.name);
-                copy.translate(5.0, -5.0);
-                new_ids.push(copy.id.clone());
-                self.document.add_object(copy);
+        let sources: Vec<Object> = ids
+            .iter()
+            .filter_map(|id| self.document.object(id).cloned())
+            .collect();
+        let mut id_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut group_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for source in &sources {
+            if let Some(group) = &source.group_id {
+                *group_counts.entry(group.clone()).or_default() += 1;
             }
+        }
+        let mut group_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for source in &sources {
+            id_map.insert(source.id.clone(), uuid::Uuid::new_v4().to_string());
+        }
+        let mut new_ids = Vec::new();
+        for source in &sources {
+            let mut copy = source.clone();
+            copy.id = id_map[&source.id].clone();
+            copy.name = format!("{} copy", source.name);
+            copy.translate(5.0, -5.0);
+            copy.group_id = source.group_id.as_ref().and_then(|group| {
+                (group_counts.get(group).copied().unwrap_or(0) > 1).then(|| {
+                    group_map
+                        .entry(group.clone())
+                        .or_insert_with(|| uuid::Uuid::new_v4().to_string())
+                        .clone()
+                })
+            });
+            copy.hole_of = source
+                .hole_of
+                .as_ref()
+                .and_then(|parent| id_map.get(parent).cloned());
+            new_ids.push(copy.id.clone());
+            self.document.add_object(copy);
         }
         self.selection.clear();
         for id in new_ids {
@@ -5473,6 +5519,52 @@ mod tests {
     }
 
     #[test]
+    fn duplicating_a_layer_relinks_holes_to_the_copied_parent() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut outer = Object::new(
+            layer.clone(),
+            Shape::Rect {
+                width: 20.0,
+                height: 20.0,
+                corner_radius: 0.0,
+            },
+        );
+        outer.name = "Outer".to_string();
+        let outer_id = outer.id.clone();
+        let mut hole = Object::new(
+            layer,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.name = "Hole".to_string();
+        hole.hole_of = Some(outer_id);
+        editor.document.add_object(outer);
+        editor.document.add_object(hole);
+        let layer = editor.document.layers[0].id.clone();
+
+        let copy = editor.duplicate_layer(&layer).unwrap();
+
+        let copies: Vec<&Object> = editor
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.layer_id == copy)
+            .collect();
+        assert_eq!(copies.len(), 2);
+        let copy_outer = copies.iter().find(|object| object.name == "Outer").unwrap();
+        let copy_hole = copies.iter().find(|object| object.name == "Hole").unwrap();
+        assert_eq!(
+            copy_hole.hole_of.as_deref(),
+            Some(copy_outer.id.as_str()),
+            "the copied hole points at the original parent"
+        );
+    }
+
+    #[test]
     fn layers_can_be_reordered_for_the_cut_order() {
         let mut editor = editor();
         let first = editor.document.layers[0].id.clone();
@@ -7456,6 +7548,118 @@ mod tests {
         let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
 
         assert_eq!(report.moved, 2);
+    }
+
+    #[test]
+    fn duplicating_a_hole_relinks_the_copied_parent() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut outer = Object::new(
+            layer.clone(),
+            Shape::Rect {
+                width: 20.0,
+                height: 20.0,
+                corner_radius: 0.0,
+            },
+        );
+        outer.name = "Outer".to_string();
+        let outer_id = outer.id.clone();
+        let mut hole = Object::new(
+            layer,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.name = "Hole".to_string();
+        hole.hole_of = Some(outer_id.clone());
+        let hole_id = hole.id.clone();
+        editor.document.add_object(outer);
+        editor.document.add_object(hole);
+        editor.selection.clear();
+        editor.selection.add(outer_id.clone());
+        editor.selection.add(hole_id.clone());
+
+        editor.duplicate_selection();
+
+        let copies: Vec<&Object> = editor
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.name.ends_with(" copy"))
+            .collect();
+        assert_eq!(copies.len(), 2);
+        let copy_outer = copies
+            .iter()
+            .find(|object| object.name == "Outer copy")
+            .unwrap();
+        let copy_hole = copies
+            .iter()
+            .find(|object| object.name == "Hole copy")
+            .unwrap();
+        assert_eq!(
+            copy_hole.hole_of.as_deref(),
+            Some(copy_outer.id.as_str()),
+            "the duplicated hole points at the original parent"
+        );
+    }
+
+    #[test]
+    fn duplicating_a_group_creates_a_new_group() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 5.0, 5.0, 20.0, 0.0);
+        editor.document.object_mut(&first).unwrap().group_id = Some("group".to_string());
+        editor.document.object_mut(&second).unwrap().group_id = Some("group".to_string());
+        select_ids(&mut editor, &[&first, &second]);
+
+        editor.duplicate_selection();
+
+        let copies: Vec<&Object> = editor
+            .document
+            .objects
+            .iter()
+            .filter(|object| object.name.ends_with(" copy"))
+            .collect();
+        assert_eq!(copies.len(), 2);
+        let group = copies[0].group_id.clone();
+        assert!(group.is_some());
+        assert_ne!(group.as_deref(), Some("group"));
+        assert_eq!(copies[1].group_id, group);
+    }
+
+    #[test]
+    fn deleting_an_outer_shape_clears_orphan_hole_links() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let mut outer = Object::new(
+            layer.clone(),
+            Shape::Rect {
+                width: 20.0,
+                height: 20.0,
+                corner_radius: 0.0,
+            },
+        );
+        let outer_id = outer.id.clone();
+        let mut hole = Object::new(
+            layer,
+            Shape::Rect {
+                width: 5.0,
+                height: 5.0,
+                corner_radius: 0.0,
+            },
+        );
+        hole.hole_of = Some(outer_id.clone());
+        let hole_id = hole.id.clone();
+        editor.document.add_object(outer);
+        editor.document.add_object(hole);
+        select_ids(&mut editor, &[&outer_id]);
+
+        editor.delete_selection();
+
+        assert!(editor.document.object(&outer_id).is_none());
+        assert!(editor.document.object(&hole_id).unwrap().hole_of.is_none());
     }
 
     #[test]
