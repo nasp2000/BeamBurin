@@ -1007,6 +1007,74 @@ impl McpServer {
                     .collect();
                 Ok(json!({"arrays": arrays, "count": arrays.len()}))
             }
+            "mirror_across_line" => {
+                self.select_scope(arguments)?;
+                let line = arguments
+                    .get("line")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| missing("line"))?;
+                if line.len() != 2 {
+                    return Err(BeamError::InvalidInput(
+                        "line needs exactly two points".to_string(),
+                    ));
+                }
+                let point = |value: &Value| {
+                    let x = value
+                        .get("x")
+                        .and_then(Value::as_f64)
+                        .ok_or_else(|| missing("x"))?;
+                    let y = value
+                        .get("y")
+                        .and_then(Value::as_f64)
+                        .ok_or_else(|| missing("y"))?;
+                    Ok(crate::geometry::Point2::new(x, y))
+                };
+                let a = point(&line[0])?;
+                let b = point(&line[1])?;
+                let ids = self.editor.selection.ids().to_vec();
+                let report = self
+                    .editor
+                    .mirror_ids_across_line(&ids, a, b)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "mirrored": report.mirrored,
+                    "converted_text": report.converted_text,
+                    "axis": [[a.x, a.y], [b.x, b.y]]
+                }))
+            }
+            "two_point_rotate_scale" => {
+                self.select_scope(arguments)?;
+                let point = |key: &str| -> Result<crate::geometry::Point2> {
+                    let value = arguments.get(key).ok_or_else(|| missing(key))?;
+                    let x = value
+                        .get("x")
+                        .and_then(Value::as_f64)
+                        .ok_or_else(|| missing("x"))?;
+                    let y = value
+                        .get("y")
+                        .and_then(Value::as_f64)
+                        .ok_or_else(|| missing("y"))?;
+                    Ok(crate::geometry::Point2::new(x, y))
+                };
+                let pivot = point("pivot")?;
+                let from = point("from")?;
+                let to = point("to")?;
+                let scale = arguments
+                    .get("scale")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let ids = self.editor.selection.ids().to_vec();
+                let report = self
+                    .editor
+                    .two_point_ids(&ids, pivot, from, to, scale)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "transformed": report.transformed,
+                    "angle_degrees": report.angle_degrees,
+                    "scale": report.scale,
+                    "converted_text": report.converted_text
+                }))
+            }
             "set_start_point" => {
                 let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
                 let x = number(arguments, "x").ok_or_else(|| missing("x"))?;
@@ -2008,6 +2076,29 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
             }}),
+        ),
+        tool_with(
+            "mirror_across_line",
+            "Mirror the selected shapes across a line given by two points.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "line": {"type": "array", "minItems": 2, "maxItems": 2, "items": {
+                    "type": "object",
+                    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+                    "required": ["x", "y"]
+                }}
+            }, "required": ["line"]}),
+        ),
+        tool_with(
+            "two_point_rotate_scale",
+            "Rotate and optionally scale the selection around an explicit pivot.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "pivot": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"]},
+                "from": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"]},
+                "to": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"]},
+                "scale": {"type": "boolean"}
+            }, "required": ["pivot", "from", "to"]}),
         ),
         tool_with(
             "set_start_point",

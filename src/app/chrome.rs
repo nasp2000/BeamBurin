@@ -863,6 +863,24 @@ impl BeamBurinApp {
                         ui.close();
                     }
                     if ui
+                        .add_enabled(
+                            self.editor.selection.len() >= 2,
+                            icons::widget(ui, Icon::FlipH, "Mirror Across Line"),
+                        )
+                        .clicked()
+                    {
+                        match self.editor.mirror_across_line() {
+                            Ok(report) => {
+                                self.status = format!(
+                                    "Mirrored {} shape(s) across the line",
+                                    report.mirrored
+                                );
+                            }
+                            Err(error) => self.status = error,
+                        }
+                        ui.close();
+                    }
+                    if ui
                         .add_enabled(enabled, icons::widget(ui, Icon::ScaleUp, "Scale up 10 %"))
                         .clicked()
                     {

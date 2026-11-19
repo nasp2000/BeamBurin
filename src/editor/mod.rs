@@ -3,6 +3,7 @@ pub mod arrays;
 pub mod canvas;
 pub mod cut;
 pub mod hit_test;
+pub mod mirror;
 pub mod nesting;
 pub mod nodes;
 pub mod renderer;

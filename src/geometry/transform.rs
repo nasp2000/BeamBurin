@@ -116,6 +116,53 @@ impl Transform2 {
             ty: self.b * other.tx + self.d * other.ty + self.ty,
         }
     }
+    /// Reflection across the line through `a` and `b`.
+    ///
+    /// Returns `None` for coincident or non-finite points.
+    pub fn reflect_across_line(a: Point2, b: Point2) -> Option<Self> {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let length = dx.hypot(dy);
+        if !length.is_finite() || length < 1e-12 {
+            return None;
+        }
+        let nx = dx / length;
+        let ny = dy / length;
+        let a11 = 2.0 * nx * nx - 1.0;
+        let a12 = 2.0 * nx * ny;
+        let a22 = 2.0 * ny * ny - 1.0;
+        let transform = Self {
+            a: a11,
+            b: a12,
+            c: a12,
+            d: a22,
+            tx: a.x - (a11 * a.x + a12 * a.y),
+            ty: a.y - (a12 * a.x + a22 * a.y),
+        };
+        transform.is_finite().then_some(transform)
+    }
+
+    /// Uniform scale and rotation around `pivot`.
+    pub fn similarity_about(pivot: Point2, angle_rad: f64, scale: f64) -> Option<Self> {
+        if !angle_rad.is_finite()
+            || !scale.is_finite()
+            || scale <= 0.0
+            || !pivot.x.is_finite()
+            || !pivot.y.is_finite()
+        {
+            return None;
+        }
+        let transform = Self::translate(pivot.x, pivot.y)
+            .compose(&Self::rotate(angle_rad).compose(&Self::scale_uniform(scale)))
+            .compose(&Self::translate(-pivot.x, -pivot.y));
+        transform.is_finite().then_some(transform)
+    }
+
+    /// Linear determinant; negative after a reflection.
+    pub fn determinant(&self) -> f64 {
+        self.a * self.d - self.b * self.c
+    }
+
     pub fn invert(&self) -> Option<Self> {
         let det = self.a * self.d - self.b * self.c;
         if det.abs() < 1e-12 {
@@ -318,5 +365,65 @@ mod mirror_tests {
     fn mirror_empty() {
         assert_eq!(mirror_points_vertical(&[], 0.0), [] as [(f64, f64); 0]);
         assert_eq!(mirror_points_horizontal(&[], 0.0), [] as [(f64, f64); 0]);
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    fn point(x: f64, y: f64) -> Point2 {
+        Point2::new(x, y)
+    }
+
+    #[test]
+    fn reflect_across_vertical_line() {
+        let t = Transform2::reflect_across_line(point(5.0, 0.0), point(5.0, 10.0)).unwrap();
+        let p = t.apply(point(2.0, 3.0));
+        assert!((p.x - 8.0).abs() < 1e-9 && (p.y - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reflect_across_horizontal_line() {
+        let t = Transform2::reflect_across_line(point(0.0, 2.0), point(10.0, 2.0)).unwrap();
+        let p = t.apply(point(2.0, 3.0));
+        assert!((p.x - 2.0).abs() < 1e-9 && (p.y - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reflection_is_an_involution_and_has_determinant_minus_one() {
+        let t = Transform2::reflect_across_line(point(1.0, 1.0), point(4.0, 5.0)).unwrap();
+        let p = point(7.0, -2.0);
+        let again = t.apply(t.apply(p));
+        assert!((again.x - p.x).abs() < 1e-9 && (again.y - p.y).abs() < 1e-9);
+        assert!((t.determinant() + 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reflection_rejects_coincident_points() {
+        assert!(Transform2::reflect_across_line(point(1.0, 1.0), point(1.0, 1.0)).is_none());
+    }
+
+    #[test]
+    fn similarity_fixes_the_pivot_and_scales_by_squared_scale() {
+        let pivot = point(3.0, 4.0);
+        let t = Transform2::similarity_about(pivot, 0.7, 2.0).unwrap();
+        let fixed = t.apply(pivot);
+        assert!((fixed.x - pivot.x).abs() < 1e-9 && (fixed.y - pivot.y).abs() < 1e-9);
+        assert!((t.determinant() - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn similarity_maps_the_reference_vector_to_the_target() {
+        let pivot = point(1.0, 2.0);
+        let from = point(3.0, 2.0);
+        let to = point(1.0, 5.0);
+        let angle =
+            (to.y - pivot.y).atan2(to.x - pivot.x) - (from.y - pivot.y).atan2(from.x - pivot.x);
+        let scale =
+            ((to.x - pivot.x).hypot(to.y - pivot.y)) / ((from.x - pivot.x).hypot(from.y - pivot.y));
+        let t = Transform2::similarity_about(pivot, angle, scale).unwrap();
+        let mapped = t.apply(from);
+        assert!((mapped.x - to.x).abs() < 1e-9 && (mapped.y - to.y).abs() < 1e-9);
     }
 }
