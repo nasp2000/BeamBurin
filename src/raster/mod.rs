@@ -626,14 +626,13 @@ pub fn process_object_preview(
     )
 }
 
-/// Cached bounded source, keyed by everything that changes the decoded pixels.
-///
-/// The canvas preview, the histogram and auto levels all ask for the same
-/// bounded image within one frame, and the image dialog changes the grey mix
-/// and despeckle while the photo stays open. JPEG decoding dominates all of
-/// those calls, so the bounded RGB source is kept until the file, crop, flips,
-/// rotation or working size change; the grey conversion, despeckle, tone and
-/// dithering rerun on that buffer. Full-resolution jobs are never cached.
+/// Largest number of prepared previews kept at once.
+const PREVIEW_CACHE_ENTRIES: usize = 4;
+
+/// Largest number of bytes the prepared previews may hold.
+const PREVIEW_CACHE_BYTES: usize = 32 * 1024 * 1024;
+
+/// One bounded source and its derived luminance.
 struct PreviewCache {
     key: String,
     rgb: Arc<image::RgbImage>,
@@ -641,6 +640,113 @@ struct PreviewCache {
     luma_key: String,
     luma: Arc<image::GrayImage>,
     exclude: Option<Vec<bool>>,
+}
+
+impl PreviewCache {
+    fn bytes(&self) -> usize {
+        self.rgb.as_raw().len()
+            + self.luma.as_raw().len()
+            + self.exclude.as_ref().map_or(0, Vec::len)
+    }
+}
+
+/// A small least-recently-used cache of prepared previews.
+///
+/// The canvas preview, the histogram and auto levels all ask for the same
+/// bounded image within one frame, and the image dialog changes the grey mix
+/// and despeckle while the photo stays open. The key covers the file, crop,
+/// flips, rotation, masks, working size and preview bound; tone and dithering
+/// run after the cache. One entry is enough for a single photo, but a project
+/// with two photos switches between them, so the store keeps a few entries and
+/// returning to a photo does not decode it again. The byte budget keeps the
+/// cache bounded on low-memory machines; an entry larger than the budget is
+/// not cached at all, and full-resolution jobs are never cached.
+struct PreviewCacheStore {
+    entries: Vec<PreviewCache>,
+    capacity: usize,
+    budget_bytes: usize,
+    bytes: usize,
+}
+
+impl PreviewCacheStore {
+    const fn new() -> Self {
+        Self::with_limits(PREVIEW_CACHE_ENTRIES, PREVIEW_CACHE_BYTES)
+    }
+
+    const fn with_limits(capacity: usize, budget_bytes: usize) -> Self {
+        Self {
+            entries: Vec::new(),
+            capacity,
+            budget_bytes,
+            bytes: 0,
+        }
+    }
+
+    /// Return the entry for `key`, make it the most recent, and refresh its
+    /// luminance only when the grey settings still match.
+    #[allow(clippy::type_complexity)]
+    fn lookup(
+        &mut self,
+        key: &str,
+        luma_key: &str,
+    ) -> Option<(
+        Arc<image::RgbImage>,
+        Option<Vec<bool>>,
+        Option<Arc<image::GrayImage>>,
+    )> {
+        let index = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(index);
+        let result = (
+            Arc::clone(&entry.rgb),
+            entry.exclude.clone(),
+            (entry.luma_key == luma_key).then(|| Arc::clone(&entry.luma)),
+        );
+        self.entries.push(entry);
+        Some(result)
+    }
+
+    /// Return the RGB buffer for `key`, if it is still cached.
+    fn rgb(&mut self, key: &str) -> Option<Arc<image::RgbImage>> {
+        let index = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(index);
+        let rgb = Arc::clone(&entry.rgb);
+        self.entries.push(entry);
+        Some(rgb)
+    }
+
+    /// Store a new luminance for an entry that is still cached.
+    fn update_luma(&mut self, key: &str, luma_key: &str, luma: Arc<image::GrayImage>) {
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.key == key) {
+            entry.luma_key = luma_key.to_string();
+            entry.luma = luma;
+        }
+    }
+
+    fn insert(&mut self, entry: PreviewCache) {
+        let size = entry.bytes();
+        if size > self.budget_bytes {
+            return;
+        }
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|cached| cached.key == entry.key)
+        {
+            let old = self.entries.remove(index);
+            self.bytes = self.bytes.saturating_sub(old.bytes());
+        }
+        while self.entries.len() >= self.capacity
+            || self.bytes.saturating_add(size) > self.budget_bytes
+        {
+            if self.entries.is_empty() {
+                break;
+            }
+            let old = self.entries.remove(0);
+            self.bytes = self.bytes.saturating_sub(old.bytes());
+        }
+        self.bytes = self.bytes.saturating_add(size);
+        self.entries.push(entry);
+    }
 }
 
 /// Settings that change the luminance derived from the cached RGB.
@@ -670,10 +776,20 @@ fn decode_count() -> usize {
 }
 
 #[cfg(not(test))]
-fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Option<R> {
-    static CACHE: OnceLock<Mutex<Option<PreviewCache>>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| Mutex::new(None))
+static PREVIEW_CACHE: OnceLock<Mutex<PreviewCacheStore>> = OnceLock::new();
+
+#[cfg(test)]
+thread_local! {
+    static PREVIEW_CACHE: std::cell::RefCell<PreviewCacheStore> =
+        std::cell::RefCell::new(PreviewCacheStore::new());
+    static PREVIEW_HITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static PREVIEW_MISSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(not(test))]
+fn with_preview_cache<R>(f: impl FnOnce(&mut PreviewCacheStore) -> R) -> Option<R> {
+    PREVIEW_CACHE
+        .get_or_init(|| Mutex::new(PreviewCacheStore::new()))
         .lock()
         .ok()
         .map(|mut cache| f(&mut cache))
@@ -681,13 +797,57 @@ fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Opti
 
 #[cfg(test)]
 #[allow(clippy::unnecessary_wraps)]
-fn with_preview_cache<R>(f: impl FnOnce(&mut Option<PreviewCache>) -> R) -> Option<R> {
-    thread_local! {
-        static CACHE: std::cell::RefCell<Option<PreviewCache>> =
-            const { std::cell::RefCell::new(None) };
-    }
-    Some(CACHE.with(|cache| f(&mut cache.borrow_mut())))
+fn with_preview_cache<R>(f: impl FnOnce(&mut PreviewCacheStore) -> R) -> Option<R> {
+    Some(PREVIEW_CACHE.with(|cache| f(&mut cache.borrow_mut())))
 }
+
+#[cfg(test)]
+fn reset_preview_cache() {
+    reset_preview_cache_limits(PREVIEW_CACHE_ENTRIES, PREVIEW_CACHE_BYTES);
+}
+
+#[cfg(test)]
+fn reset_preview_cache_limits(capacity: usize, budget_bytes: usize) {
+    PREVIEW_CACHE.with(|cache| {
+        *cache.borrow_mut() = PreviewCacheStore::with_limits(capacity, budget_bytes);
+    });
+    PREVIEW_HITS.with(|count| count.set(0));
+    PREVIEW_MISSES.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn preview_cache_len() -> usize {
+    PREVIEW_CACHE.with(|cache| cache.borrow().entries.len())
+}
+
+#[cfg(test)]
+fn preview_cache_bytes() -> usize {
+    PREVIEW_CACHE.with(|cache| cache.borrow().bytes)
+}
+
+#[cfg(test)]
+fn preview_cache_stats() -> (usize, usize) {
+    (
+        PREVIEW_HITS.with(std::cell::Cell::get),
+        PREVIEW_MISSES.with(std::cell::Cell::get),
+    )
+}
+
+#[cfg(test)]
+fn note_preview_hit() {
+    PREVIEW_HITS.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(not(test))]
+const fn note_preview_hit() {}
+
+#[cfg(test)]
+fn note_preview_miss() {
+    PREVIEW_MISSES.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(not(test))]
+const fn note_preview_miss() {}
 
 /// Decoded source handed over by a raster import for the next preview.
 ///
@@ -787,9 +947,10 @@ pub fn prepared_rgb_preview(
     image: &crate::objects::ImageObject,
     max_side: u32,
 ) -> Result<Arc<image::RgbImage>> {
-    prepared_image(path, image, Some(max_side.max(1)))?;
-    let rgb =
-        with_preview_cache(|cache| cache.as_ref().map(|entry| Arc::clone(&entry.rgb))).flatten();
+    let max_side = max_side.max(1);
+    prepared_image(path, image, Some(max_side))?;
+    let key = preview_key(path, image, max_side);
+    let rgb = with_preview_cache(|cache| cache.rgb(&key)).flatten();
     rgb.ok_or_else(|| BeamError::InvalidInput("the image preview cache is unavailable".to_string()))
 }
 
@@ -914,39 +1075,31 @@ fn prepared_image(
     let key = max_side.map(|max_side| preview_key(path, image, max_side));
     let mask_colours = image.mask_rgb();
     let settings_key = derived_luma_key(&image.settings);
-    if let Some(key) = &key
-        && let Some(Some((rgb, exclude, cached_luma))) = with_preview_cache(|cache| {
-            let entry = cache.as_ref()?;
-            if &entry.key != key {
-                return None;
-            }
-            let luma = if entry.luma_key == settings_key {
-                Some(Arc::clone(&entry.luma))
+    if let Some(key) = &key {
+        let cached = with_preview_cache(|cache| cache.lookup(key, &settings_key)).flatten();
+        if let Some((rgb, exclude, cached_luma)) = cached {
+            note_preview_hit();
+            let luma = if let Some(luma) = cached_luma {
+                luma
             } else {
-                None
-            };
-            Some((Arc::clone(&entry.rgb), entry.exclude.clone(), luma))
-        })
-    {
-        let luma = if let Some(luma) = cached_luma {
-            luma
-        } else {
-            let mut luma = luma_from_rgb(&rgb, &image.settings);
-            if image.settings.despeckle {
-                luma = despeckle(&luma);
-            }
-            let luma = Arc::new(luma);
-            let _ = with_preview_cache(|cache| {
-                if let Some(entry) = cache.as_mut()
-                    && &entry.key == key
-                {
-                    entry.luma_key.clone_from(&settings_key);
-                    entry.luma = Arc::clone(&luma);
+                let mut luma = luma_from_rgb(&rgb, &image.settings);
+                if image.settings.despeckle {
+                    luma = despeckle(&luma);
                 }
-            });
-            luma
-        };
-        return Ok(PreparedImage { luma, exclude });
+                let luma = Arc::new(luma);
+                let _ = with_preview_cache(|cache| {
+                    cache.update_luma(key, &settings_key, Arc::clone(&luma));
+                });
+                luma
+            };
+            return Ok(PreparedImage { luma, exclude });
+        }
+        note_preview_miss();
+        tracing::debug!(
+            max_side = ?max_side,
+            path = %path.display(),
+            "preview cache miss"
+        );
     }
     let picture = load_prepared_picture(path, image, max_side)?;
     let alpha_exclude = alpha_mask_exclusion(&picture, image);
@@ -989,7 +1142,7 @@ fn prepared_image(
         && let Some(rgb) = cache_rgb
     {
         let _ = with_preview_cache(|cache| {
-            *cache = Some(PreviewCache {
+            cache.insert(PreviewCache {
                 key,
                 rgb,
                 luma_key: settings_key,
@@ -1453,6 +1606,7 @@ mod object_tests {
 
         let path = write_image("bw_raster_import_shared_decode.png", 200, 100);
         reset_decode_count();
+        reset_preview_cache();
         let document = crate::import::raster::import_raster(&path).unwrap();
         let Shape::Image(image) = &document.objects[0].shape else {
             panic!("the import did not create an image object");
@@ -1475,6 +1629,7 @@ mod object_tests {
         let first = write_image("bw_raster_switch_a.png", 40, 20);
         let second = write_image("bw_raster_switch_b.png", 40, 20);
         reset_decode_count();
+        reset_preview_cache();
         let first_document = crate::import::raster::import_raster(&first).unwrap();
         let second_document = crate::import::raster::import_raster(&second).unwrap();
         let Shape::Image(second_image) = &second_document.objects[0].shape else {
@@ -1496,10 +1651,164 @@ mod object_tests {
     }
 
     #[test]
+    fn switching_back_reuses_a_prepared_preview() {
+        let first = write_image("bw_raster_lru_switch_a.png", 40, 20);
+        let second = write_image("bw_raster_lru_switch_b.png", 40, 20);
+        let first_object = ImageObject::new(first.to_string_lossy(), 40, 20, 96.0);
+        let second_object = ImageObject::new(second.to_string_lossy(), 40, 20, 96.0);
+        reset_decode_count();
+        reset_preview_cache();
+        let _ = process_object_preview(&first, &first_object, 16).unwrap();
+        let after_first = decode_count();
+        let _ = process_object_preview(&second, &second_object, 16).unwrap();
+        let after_second = decode_count();
+        let _ = process_object_preview(&first, &first_object, 16).unwrap();
+        assert!(after_second > after_first, "the second image decoded again");
+        assert_eq!(
+            decode_count(),
+            after_second,
+            "switching back decoded the first image again"
+        );
+        assert_eq!(preview_cache_len(), 2);
+        let _ = std::fs::remove_file(&first);
+        let _ = std::fs::remove_file(&second);
+    }
+
+    #[test]
+    fn the_least_recently_used_entry_is_evicted_first() {
+        let paths: Vec<_> = ["a", "b", "c"]
+            .iter()
+            .map(|name| write_image(&format!("bw_raster_lru_{name}.png"), 40, 20))
+            .collect();
+        let objects: Vec<_> = paths
+            .iter()
+            .map(|path| ImageObject::new(path.to_string_lossy(), 40, 20, 96.0))
+            .collect();
+        reset_decode_count();
+        reset_preview_cache_limits(2, PREVIEW_CACHE_BYTES);
+        let _ = process_object_preview(&paths[0], &objects[0], 16).unwrap();
+        let _ = process_object_preview(&paths[1], &objects[1], 16).unwrap();
+        // Touching A must make B the least recently used entry.
+        let _ = process_object_preview(&paths[0], &objects[0], 16).unwrap();
+        let _ = process_object_preview(&paths[2], &objects[2], 16).unwrap();
+        assert_eq!(preview_cache_len(), 2);
+        assert_eq!(decode_count(), 3, "the third image should decode once");
+        // B was evicted; A survived because the hit refreshed it.
+        let _ = process_object_preview(&paths[0], &objects[0], 16).unwrap();
+        assert_eq!(decode_count(), 3, "A was evicted instead of B");
+        let _ = process_object_preview(&paths[1], &objects[1], 16).unwrap();
+        assert_eq!(decode_count(), 4, "B should be decoded again");
+        for path in &paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn the_default_cache_keeps_four_prepared_previews() {
+        let paths: Vec<_> = (0..5)
+            .map(|index| write_image(&format!("bw_raster_lru_cap_{index}.png"), 40, 20))
+            .collect();
+        let objects: Vec<_> = paths
+            .iter()
+            .map(|path| ImageObject::new(path.to_string_lossy(), 40, 20, 96.0))
+            .collect();
+        reset_decode_count();
+        reset_preview_cache();
+        for (path, object) in paths.iter().zip(&objects).take(PREVIEW_CACHE_ENTRIES) {
+            let _ = process_object_preview(path, object, 16).unwrap();
+        }
+        assert_eq!(preview_cache_len(), PREVIEW_CACHE_ENTRIES);
+        assert_eq!(decode_count(), 4);
+        for (path, object) in paths.iter().zip(&objects).take(PREVIEW_CACHE_ENTRIES) {
+            let _ = process_object_preview(path, object, 16).unwrap();
+        }
+        assert_eq!(decode_count(), 4, "a cached entry decoded again");
+        let _ = process_object_preview(&paths[4], &objects[4], 16).unwrap();
+        assert_eq!(preview_cache_len(), PREVIEW_CACHE_ENTRIES);
+        let _ = process_object_preview(&paths[0], &objects[0], 16).unwrap();
+        assert_eq!(decode_count(), 6, "the oldest entry should be evicted");
+        for path in &paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn an_entry_larger_than_the_budget_is_not_cached() {
+        let path = write_image("bw_raster_lru_too_big.png", 40, 20);
+        let object = ImageObject::new(path.to_string_lossy(), 40, 20, 96.0);
+        reset_decode_count();
+        reset_preview_cache_limits(PREVIEW_CACHE_ENTRIES, 1);
+        let _ = process_object_preview(&path, &object, 16).unwrap();
+        assert_eq!(preview_cache_len(), 0);
+        let _ = process_object_preview(&path, &object, 16).unwrap();
+        assert_eq!(decode_count(), 2, "an uncached entry decoded twice");
+        assert_eq!(preview_cache_stats(), (0, 2));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_byte_budget_evicts_before_exceeding() {
+        let first = write_image("bw_raster_lru_budget_a.png", 40, 20);
+        let second = write_image("bw_raster_lru_budget_b.png", 40, 20);
+        let first_object = ImageObject::new(first.to_string_lossy(), 40, 20, 96.0);
+        let second_object = ImageObject::new(second.to_string_lossy(), 40, 20, 96.0);
+        reset_preview_cache();
+        let _ = process_object_preview(&first, &first_object, 16).unwrap();
+        let one_entry = preview_cache_bytes();
+        assert!(one_entry > 0);
+        reset_decode_count();
+        reset_preview_cache_limits(PREVIEW_CACHE_ENTRIES, one_entry + 1);
+        let _ = process_object_preview(&first, &first_object, 16).unwrap();
+        let _ = process_object_preview(&second, &second_object, 16).unwrap();
+        assert_eq!(preview_cache_len(), 1, "the budget kept two entries");
+        assert!(preview_cache_bytes() <= one_entry + 1);
+        let _ = process_object_preview(&first, &first_object, 16).unwrap();
+        assert_eq!(
+            decode_count(),
+            3,
+            "the budget did not evict the first entry"
+        );
+        let _ = std::fs::remove_file(&first);
+        let _ = std::fs::remove_file(&second);
+    }
+
+    #[test]
+    fn cache_hits_and_misses_are_counted() {
+        let path = write_image("bw_raster_lru_stats.png", 40, 20);
+        let object = ImageObject::new(path.to_string_lossy(), 40, 20, 96.0);
+        reset_preview_cache();
+        let _ = process_object_preview(&path, &object, 16).unwrap();
+        assert_eq!(preview_cache_stats(), (0, 1));
+        let _ = process_object_preview(&path, &object, 16).unwrap();
+        assert_eq!(preview_cache_stats(), (1, 1));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_cache_hit_returns_the_same_bitmap() {
+        let path = write_image("bw_raster_lru_pixels.png", 40, 20);
+        let object = ImageObject::new(path.to_string_lossy(), 40, 20, 96.0);
+        reset_decode_count();
+        reset_preview_cache();
+        let first = process_object_preview(&path, &object, 16).unwrap();
+        let second = process_object_preview(&path, &object, 16).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(decode_count(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_default_preview_cache_limits_are_documented() {
+        assert_eq!(PREVIEW_CACHE_ENTRIES, 4);
+        assert_eq!(PREVIEW_CACHE_BYTES, 32 * 1024 * 1024);
+    }
+
+    #[test]
     fn one_decode_serves_the_preview_histogram_and_auto_levels() {
         let path = write_image("bw_raster_shared_decode.png", 200, 100);
         let mut object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
         reset_decode_count();
+        reset_preview_cache();
         let _ = process_object_preview(&path, &object, 64).unwrap();
         let _ = histogram_preview(&path, &object, 64).unwrap();
         let _ = auto_levels_preview(&path, &object, 64).unwrap();
@@ -1535,6 +1844,7 @@ mod object_tests {
         let path = write_image("bw_raster_original_shared.png", 200, 100);
         let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
         reset_decode_count();
+        reset_preview_cache();
         let _ = process_object_preview(&path, &object, 64).unwrap();
         let rgb = prepared_rgb_preview(&path, &object, 64).unwrap();
         assert_eq!((rgb.width(), rgb.height()), (64, 32));
@@ -1551,6 +1861,7 @@ mod object_tests {
         let path = write_image("bw_raster_histogram_first.png", 200, 100);
         let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
         reset_decode_count();
+        reset_preview_cache();
         let _ = histogram_preview(&path, &object, 64).unwrap();
         let _ = process_object_preview(&path, &object, 64).unwrap();
         let _ = auto_levels_preview(&path, &object, 64).unwrap();
@@ -1567,6 +1878,7 @@ mod object_tests {
         let path = write_image("bw_raster_cache_replace.png", 200, 100);
         let object = ImageObject::new(path.to_string_lossy(), 200, 100, 96.0);
         reset_decode_count();
+        reset_preview_cache();
         let _ = process_object_preview(&path, &object, 64).unwrap();
         assert_eq!(decode_count(), 1);
         let replacement = write_image("bw_raster_cache_replace.png", 120, 60);
