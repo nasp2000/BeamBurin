@@ -222,7 +222,7 @@ pub fn read_file(path: &Path, expected: PresetKind) -> Result<PresetFile, String
                 return Err(format!("Preset {number} has an unknown field \"{key}\"."));
             }
         }
-        let (name, mut value) = match kind {
+        let (name, value) = match kind {
             PresetKind::Gcode => {
                 let preset: ExportPreset = serde_json::from_value(value.clone())
                     .map_err(|error| format!("Preset {number} is invalid: {error}."))?;
@@ -252,10 +252,12 @@ pub fn read_file(path: &Path, expected: PresetKind) -> Result<PresetFile, String
                          files."
                             .to_string(),
                     );
-                    value = serde_json::to_value(&preset)
+                    let value = serde_json::to_value(&preset)
                         .map_err(|error| format!("Preset {number} is invalid: {error}."))?;
+                    (preset.name.trim().to_string(), value)
+                } else {
+                    (preset.name.trim().to_string(), value)
                 }
-                (preset.name.trim().to_string(), value)
             }
         };
         if name.is_empty() {

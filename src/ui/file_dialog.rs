@@ -716,6 +716,7 @@ impl FileDialog {
             | FileMode::ImportProfiles
             | FileMode::ImportMachines
             | FileMode::ImportMaterialsCsv
+            | FileMode::ImportPresets
             | FileMode::PreviewGcode => {
                 if !path.is_file() {
                     return Err(format!("File not found: {}", path.display()));
@@ -732,7 +733,8 @@ impl FileDialog {
             | FileMode::ExportGcode
             | FileMode::ExportProfiles
             | FileMode::ExportMachines
-            | FileMode::ExportMaterialsCsv => {
+            | FileMode::ExportMaterialsCsv
+            | FileMode::ExportPresets => {
                 if let Some(parent) = path.parent() {
                     if !parent.is_dir() {
                         return Err(format!("Directory not found: {}", parent.display()));

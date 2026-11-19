@@ -4523,7 +4523,7 @@ fn the_import_preview_reports_conflicts_and_keeps_both() {
     use egui_kittest::kittest::Queryable as _;
 
     let mut app = ui_test_app();
-    let mut existing = crate::config::preferences::ImageExportPreset {
+    let existing = crate::config::preferences::ImageExportPreset {
         name: "Same".to_string(),
         dpi: 300.0,
         dpi_custom: false,
