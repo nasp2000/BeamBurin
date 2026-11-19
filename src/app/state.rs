@@ -280,6 +280,7 @@ impl BeamBurinApp {
             preview_order: false,
             show_layers_panel: true,
             show_properties_panel: true,
+            side_panels_memory: None,
             show_tool_panel: true,
             side_panel_tab: SidePanelTab::Properties,
             doc_properties_open: false,

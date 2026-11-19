@@ -29,6 +29,7 @@ pub mod import;
 pub mod inspection;
 pub mod jobs;
 pub mod layers;
+pub mod layout;
 pub mod licenses;
 pub mod machines;
 pub mod material_test;

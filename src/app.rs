@@ -581,6 +581,8 @@ pub struct BeamBurinApp {
     preview_line_numbers: bool,
     preview_order: bool,
     show_layers_panel: bool,
+    /// Panel visibility saved by Toggle Side Panels.
+    side_panels_memory: Option<(bool, bool)>,
     show_properties_panel: bool,
     show_tool_panel: bool,
     side_panel_tab: SidePanelTab,
@@ -1608,6 +1610,19 @@ impl BeamBurinApp {
             | DragState::Handle { .. }
             | DragState::Transform { .. } => {}
         }
+    }
+
+    pub(super) fn toggle_side_panels(&mut self) {
+        crate::layout::toggle_side_panels(
+            &mut self.show_layers_panel,
+            &mut self.show_properties_panel,
+            &mut self.side_panels_memory,
+        );
+    }
+
+    pub(super) fn reset_layout(&mut self) {
+        self.apply_workspace(&crate::layout::reset_layout());
+        self.status = "Layout reset to the default".to_string();
     }
 
     fn cut(&mut self) {

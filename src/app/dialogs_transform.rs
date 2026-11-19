@@ -899,6 +899,7 @@ impl BeamBurinApp {
         self.show_tool_panel = workspace.tool_panel;
         self.preferences.drawing.show_rulers = workspace.rulers;
         self.preferences.drawing.guides_visible = workspace.guides;
+        self.side_panels_memory = None;
     }
 
     pub(super) fn run_palette_action(&mut self, action: PaletteAction) {

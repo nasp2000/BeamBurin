@@ -148,6 +148,57 @@ pub struct PasteReport {
     pub cleared_holes: usize,
 }
 
+/// Direction used by the Dock action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DockSide {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl DockSide {
+    pub fn label(self) -> &'static str {
+        match self {
+            DockSide::Left => "left",
+            DockSide::Right => "right",
+            DockSide::Up => "up",
+            DockSide::Down => "down",
+        }
+    }
+
+    fn action(self) -> &'static str {
+        match self {
+            DockSide::Left => "Dock left",
+            DockSide::Right => "Dock right",
+            DockSide::Up => "Dock up",
+            DockSide::Down => "Dock down",
+        }
+    }
+
+    fn vertical(self) -> bool {
+        matches!(self, DockSide::Left | DockSide::Right)
+    }
+}
+
+/// What a dock moved, with any notes for the status line.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DockReport {
+    pub moved: usize,
+    pub warnings: Vec<String>,
+}
+
+struct DockUnit {
+    indices: Vec<usize>,
+    order: usize,
+}
+
+struct DockBox {
+    unit: DockUnit,
+    min: Point2,
+    max: Point2,
+}
+
 /// One crossing between the outlines of two objects.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathIntersection {
@@ -2820,6 +2871,211 @@ impl EditorState {
             }
         }
         true
+    }
+
+    /// Pack the selected objects against one side of their combined box.
+    ///
+    /// Each object (or group, or array) keeps its size, rotation, style and
+    /// layer; only translations are applied. One undo step covers the action.
+    #[allow(clippy::too_many_lines)]
+    pub fn dock_selection(
+        &mut self,
+        side: DockSide,
+        spacing_mm: f64,
+        preserve: bool,
+    ) -> std::result::Result<DockReport, String> {
+        if !spacing_mm.is_finite() || !(0.0..=1000.0).contains(&spacing_mm) {
+            return Err("the dock spacing must be between 0 and 1000 mm".to_string());
+        }
+        let selected = self.selected_indices();
+        if selected.is_empty() {
+            return Err("Select at least two shapes to dock".to_string());
+        }
+        let mut units: Vec<DockUnit> = Vec::new();
+        let mut used = vec![false; selected.len()];
+        for (position, &index) in selected.iter().enumerate() {
+            if used[position] {
+                continue;
+            }
+            let object = &self.document.objects[index];
+            let mut members = vec![index];
+            if let Some(group_id) = object.group_id.clone() {
+                let all: Vec<usize> = self
+                    .document
+                    .objects
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, candidate)| {
+                        candidate.group_id.as_deref() == Some(group_id.as_str())
+                    })
+                    .map(|(candidate, _)| candidate)
+                    .collect();
+                if all.len() > 1 && all.iter().all(|member| selected.contains(member)) {
+                    members = all;
+                }
+            } else if let Some(array_id) = object.array_id.clone() {
+                members = selected
+                    .iter()
+                    .copied()
+                    .filter(|&member| {
+                        self.document.objects[member].array_id.as_deref() == Some(array_id.as_str())
+                    })
+                    .collect();
+            }
+            for member in &members {
+                if let Some(slot) = selected.iter().position(|candidate| candidate == member) {
+                    used[slot] = true;
+                }
+            }
+            units.push(DockUnit {
+                indices: members,
+                order: position,
+            });
+        }
+
+        let mut warnings = Vec::new();
+        let mut skipped = 0;
+        let mut editable: Vec<DockUnit> = Vec::new();
+        for unit in units {
+            let unlocked = unit.indices.iter().all(|&index| {
+                let object = &self.document.objects[index];
+                !object.locked && !self.layer_locked(&object.layer_id)
+            });
+            if unlocked {
+                editable.push(unit);
+            } else {
+                skipped += unit.indices.len();
+            }
+        }
+        if editable.is_empty() {
+            return Err("All selected shapes are locked".to_string());
+        }
+        if skipped > 0 {
+            warnings.push(format!("{skipped} locked shape(s) skipped"));
+        }
+
+        let mut boxes: Vec<DockBox> = Vec::new();
+        let mut no_geometry = 0;
+        for unit in editable {
+            let mut min = Point2::new(f64::INFINITY, f64::INFINITY);
+            let mut max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+            for &index in &unit.indices {
+                if let Some((low, high)) = self.document.objects[index].bounds() {
+                    min.x = min.x.min(low.x);
+                    min.y = min.y.min(low.y);
+                    max.x = max.x.max(high.x);
+                    max.y = max.y.max(high.y);
+                }
+            }
+            if min.x.is_finite() && min.y.is_finite() {
+                boxes.push(DockBox { unit, min, max });
+            } else {
+                no_geometry += unit.indices.len();
+            }
+        }
+        if no_geometry > 0 {
+            warnings.push(format!("{no_geometry} shape(s) with no geometry skipped"));
+        }
+        if boxes.len() < 2 {
+            warnings.push("Nothing to dock".to_string());
+            return Ok(DockReport { moved: 0, warnings });
+        }
+
+        let vertical = side.vertical();
+        boxes.sort_by(|left, right| {
+            let order = if vertical {
+                right.max.y.total_cmp(&left.max.y)
+            } else {
+                left.min.x.total_cmp(&right.min.x)
+            };
+            order.then(left.unit.order.cmp(&right.unit.order))
+        });
+        let mut bounds_min = Point2::new(f64::INFINITY, f64::INFINITY);
+        let mut bounds_max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for unit in &boxes {
+            bounds_min.x = bounds_min.x.min(unit.min.x);
+            bounds_min.y = bounds_min.y.min(unit.min.y);
+            bounds_max.x = bounds_max.x.max(unit.max.x);
+            bounds_max.y = bounds_max.y.max(unit.max.y);
+        }
+        let mut gaps = vec![0.0; boxes.len()];
+        for index in 1..boxes.len() {
+            gaps[index] = if vertical {
+                boxes[index - 1].min.y - boxes[index].max.y
+            } else {
+                boxes[index].min.x - boxes[index - 1].max.x
+            };
+        }
+
+        let mut moves: Vec<(f64, f64)> = Vec::with_capacity(boxes.len());
+        let mut cursor = if vertical { bounds_max.y } else { bounds_min.x };
+        for (index, unit_box) in boxes.iter().enumerate() {
+            let (dx, dy) = if vertical {
+                let dx = match side {
+                    DockSide::Left => bounds_min.x - unit_box.min.x,
+                    DockSide::Right => bounds_max.x - unit_box.max.x,
+                    DockSide::Up | DockSide::Down => 0.0,
+                };
+                (dx, cursor - unit_box.max.y)
+            } else {
+                let dy = match side {
+                    DockSide::Up => bounds_max.y - unit_box.max.y,
+                    DockSide::Down => bounds_min.y - unit_box.min.y,
+                    DockSide::Left | DockSide::Right => 0.0,
+                };
+                (cursor - unit_box.min.x, dy)
+            };
+            moves.push((dx, dy));
+            cursor = if index + 1 < boxes.len() {
+                if vertical {
+                    unit_box.min.y + dy
+                        - if preserve {
+                            gaps[index + 1]
+                        } else {
+                            spacing_mm
+                        }
+                } else if preserve {
+                    unit_box.max.x + dx + gaps[index + 1]
+                } else {
+                    unit_box.max.x + dx + spacing_mm
+                }
+            } else {
+                cursor
+            };
+        }
+        if moves
+            .iter()
+            .all(|(dx, dy)| dx.abs() < 1e-9 && dy.abs() < 1e-9)
+        {
+            warnings.push("Nothing to dock".to_string());
+            return Ok(DockReport { moved: 0, warnings });
+        }
+
+        self.record_action(side.action());
+        let mut moved = 0;
+        let mut moved_min = Point2::new(f64::INFINITY, f64::INFINITY);
+        let mut moved_max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (unit_box, (dx, dy)) in boxes.iter().zip(moves) {
+            if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+                continue;
+            }
+            for &index in &unit_box.unit.indices {
+                self.document.objects[index].translate(dx, dy);
+            }
+            moved += 1;
+            moved_min.x = moved_min.x.min(unit_box.min.x + dx);
+            moved_min.y = moved_min.y.min(unit_box.min.y + dy);
+            moved_max.x = moved_max.x.max(unit_box.max.x + dx);
+            moved_max.y = moved_max.y.max(unit_box.max.y + dy);
+        }
+        if moved_min.x < -1e-6
+            || moved_min.y < -1e-6
+            || moved_max.x > self.document.width_mm + 1e-6
+            || moved_max.y > self.document.height_mm + 1e-6
+        {
+            warnings.push("The docked group extends outside the page".to_string());
+        }
+        Ok(DockReport { moved, warnings })
     }
 
     pub fn delete_selection(&mut self) {
@@ -6832,6 +7088,374 @@ mod tests {
         editor.select_open_shapes_with_fill();
 
         assert_eq!(editor.history.undo_len(), history);
+    }
+
+    fn add_rect_at(editor: &mut EditorState, width: f64, height: f64, x: f64, y: f64) -> String {
+        editor
+            .add_rectangle(Point2::new(x, y), Point2::new(x + width, y + height))
+            .unwrap()
+    }
+
+    fn select_ids(editor: &mut EditorState, ids: &[&String]) {
+        editor.selection.clear();
+        for id in ids {
+            editor.selection.add((*id).clone());
+        }
+    }
+
+    #[test]
+    fn dock_left_stacks_against_the_left_edge() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        let third = add_rect_at(&mut editor, 12.0, 6.0, 40.0, 5.0);
+        select_ids(&mut editor, &[&first, &second, &third]);
+
+        let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        assert_eq!(report.moved, 3);
+        let bounds = |id: &str| editor.document.object(id).unwrap().bounds().unwrap();
+        let (second_min, second_max) = bounds(&second);
+        let (third_min, third_max) = bounds(&third);
+        let (first_min, first_max) = bounds(&first);
+        assert!((second_min.x - 0.0).abs() < 1e-9);
+        assert!((second_max.y - 34.0).abs() < 1e-9);
+        assert!((third_min.x - 0.0).abs() < 1e-9);
+        assert!((third_max.y - 28.0).abs() < 1e-9);
+        assert!((first_min.x - 0.0).abs() < 1e-9);
+        assert!((first_max.y - 20.0).abs() < 1e-9);
+        assert!((second_min.y - third_max.y - 2.0).abs() < 1e-9);
+        assert!((third_min.y - first_max.y - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dock_right_aligns_the_right_edges() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        let third = add_rect_at(&mut editor, 12.0, 6.0, 40.0, 5.0);
+        select_ids(&mut editor, &[&first, &second, &third]);
+
+        editor.dock_selection(DockSide::Right, 2.0, false).unwrap();
+
+        for id in [&first, &second, &third] {
+            let (_, max) = editor.document.object(id).unwrap().bounds().unwrap();
+            assert!((max.x - 52.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn dock_up_places_a_row_at_the_top() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        let third = add_rect_at(&mut editor, 12.0, 6.0, 40.0, 5.0);
+        select_ids(&mut editor, &[&first, &second, &third]);
+
+        editor.dock_selection(DockSide::Up, 2.0, false).unwrap();
+
+        let bounds = |id: &str| editor.document.object(id).unwrap().bounds().unwrap();
+        let (first_min, first_max) = bounds(&first);
+        let (second_min, second_max) = bounds(&second);
+        let (third_min, third_max) = bounds(&third);
+        assert!((first_min.x - 0.0).abs() < 1e-9);
+        assert!((second_min.x - 12.0).abs() < 1e-9);
+        assert!((third_min.x - 18.0).abs() < 1e-9);
+        for max in [first_max.y, second_max.y, third_max.y] {
+            assert!((max - 34.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn dock_down_places_a_row_at_the_bottom() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        let third = add_rect_at(&mut editor, 12.0, 6.0, 40.0, 5.0);
+        select_ids(&mut editor, &[&first, &second, &third]);
+
+        editor.dock_selection(DockSide::Down, 2.0, false).unwrap();
+
+        let bounds = |id: &str| editor.document.object(id).unwrap().bounds().unwrap();
+        let (first_min, _) = bounds(&first);
+        let (second_min, _) = bounds(&second);
+        let (third_min, _) = bounds(&third);
+        for min in [first_min.y, second_min.y, third_min.y] {
+            assert!((min - 0.0).abs() < 1e-9);
+        }
+        assert!((second_min.x - 12.0).abs() < 1e-9);
+        assert!((third_min.x - 18.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dock_order_follows_the_flow_axis() {
+        let mut editor = editor();
+        let bottom = add_rect_at(&mut editor, 4.0, 4.0, 0.0, 0.0);
+        let top = add_rect_at(&mut editor, 4.0, 4.0, 0.0, 20.0);
+        let middle = add_rect_at(&mut editor, 4.0, 4.0, 0.0, 10.0);
+        select_ids(&mut editor, &[&bottom, &middle, &top]);
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        let top_bounds = editor.document.object(&top).unwrap().bounds().unwrap();
+        let middle_bounds = editor.document.object(&middle).unwrap().bounds().unwrap();
+        let bottom_bounds = editor.document.object(&bottom).unwrap().bounds().unwrap();
+        assert!(top_bounds.1.y > middle_bounds.1.y);
+        assert!(middle_bounds.1.y > bottom_bounds.1.y);
+    }
+
+    #[test]
+    fn dock_zero_spacing_touches() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        select_ids(&mut editor, &[&first, &second]);
+
+        editor.dock_selection(DockSide::Left, 0.0, false).unwrap();
+
+        let (_, first_max) = editor.document.object(&first).unwrap().bounds().unwrap();
+        let (second_min, _) = editor.document.object(&second).unwrap().bounds().unwrap();
+        assert!((second_min.y - first_max.y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn preserve_spacing_keeps_the_original_gaps() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 17.0);
+        select_ids(&mut editor, &[&first, &second]);
+        let (first_min_before, first_max_before) =
+            editor.document.object(&first).unwrap().bounds().unwrap();
+
+        editor.dock_selection(DockSide::Left, 2.0, true).unwrap();
+
+        let (first_min, first_max) = editor.document.object(&first).unwrap().bounds().unwrap();
+        let (second_min, _) = editor.document.object(&second).unwrap().bounds().unwrap();
+        assert!((second_min.y - first_max.y - 7.0).abs() < 1e-9);
+        assert!((first_min.x - first_min_before.x).abs() < 1e-9);
+        assert!((first_max.y - first_max_before.y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dock_moves_without_scaling_or_rotating() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 6.0, 20.0, 30.0);
+        select_ids(&mut editor, &[&first, &second]);
+        let before = editor.document.object(&first).unwrap().clone();
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        let after = editor.document.object(&first).unwrap();
+        assert_eq!(after.shape, before.shape);
+        assert!((after.transform.a - before.transform.a).abs() < 1e-12);
+        assert!((after.transform.d - before.transform.d).abs() < 1e-12);
+        assert!((after.transform.b - before.transform.b).abs() < 1e-12);
+        assert!((after.transform.c - before.transform.c).abs() < 1e-12);
+    }
+
+    #[test]
+    fn dock_keeps_style_layer_and_operation() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        {
+            let object = editor.document.object_mut(&first).unwrap();
+            object.style.stroke = Some("#ff0000".to_string());
+            object.operation_id = Some("engrave".to_string());
+        }
+        let layer = editor.document.object(&first).unwrap().layer_id.clone();
+        select_ids(&mut editor, &[&first, &second]);
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        let object = editor.document.object(&first).unwrap();
+        assert_eq!(object.style.stroke.as_deref(), Some("#ff0000"));
+        assert_eq!(object.operation_id.as_deref(), Some("engrave"));
+        assert_eq!(object.layer_id, layer);
+    }
+
+    #[test]
+    fn one_object_is_a_no_op_without_undo() {
+        let mut editor = editor();
+        let only = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        select_ids(&mut editor, &[&only]);
+        let history = editor.history.undo_len();
+
+        let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        assert_eq!(report.moved, 0);
+        assert!(report.warnings.iter().any(|note| note == "Nothing to dock"));
+        assert_eq!(editor.history.undo_len(), history);
+    }
+
+    #[test]
+    fn locked_objects_are_skipped_with_a_note() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        let locked = add_rect_at(&mut editor, 5.0, 5.0, 40.0, 10.0);
+        editor.document.object_mut(&locked).unwrap().locked = true;
+        select_ids(&mut editor, &[&first, &second, &locked]);
+
+        let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        assert_eq!(report.moved, 2);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|note| note == "1 locked shape(s) skipped")
+        );
+        let (locked_min, _) = editor.document.object(&locked).unwrap().bounds().unwrap();
+        assert!((locked_min.x - 40.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn all_locked_is_an_error() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        editor.document.object_mut(&first).unwrap().locked = true;
+        editor.document.object_mut(&second).unwrap().locked = true;
+        select_ids(&mut editor, &[&first, &second]);
+
+        assert!(editor.dock_selection(DockSide::Left, 2.0, false).is_err());
+    }
+
+    #[test]
+    fn groups_dock_as_a_unit() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 0.0, 15.0);
+        let other = add_rect_at(&mut editor, 6.0, 6.0, 30.0, 5.0);
+        editor.document.object_mut(&first).unwrap().group_id = Some("g".to_string());
+        editor.document.object_mut(&second).unwrap().group_id = Some("g".to_string());
+        select_ids(&mut editor, &[&first, &second, &other]);
+        let offset_before = {
+            let (a, _) = editor.document.object(&first).unwrap().bounds().unwrap();
+            let (b, _) = editor.document.object(&second).unwrap().bounds().unwrap();
+            (b.x - a.x, b.y - a.y)
+        };
+
+        let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        assert_eq!(report.moved, 2);
+        let offset_after = {
+            let (a, _) = editor.document.object(&first).unwrap().bounds().unwrap();
+            let (b, _) = editor.document.object(&second).unwrap().bounds().unwrap();
+            (b.x - a.x, b.y - a.y)
+        };
+        assert!((offset_after.0 - offset_before.0).abs() < 1e-9);
+        assert!((offset_after.1 - offset_before.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn text_and_images_use_their_bounds() {
+        let mut editor = editor();
+        let layer = editor.document.layers[0].id.clone();
+        let text = Object::new(
+            layer.clone(),
+            Shape::Text(crate::objects::TextObject::default()),
+        );
+        let text_id = text.id.clone();
+        editor.document.add_object(text);
+        let image = Object::new(
+            layer,
+            Shape::Image(crate::objects::ImageObject::new(
+                "missing.png",
+                10,
+                10,
+                25.4,
+            )),
+        );
+        let image_id = image.id.clone();
+        editor.document.add_object(image);
+        select_ids(&mut editor, &[&text_id, &image_id]);
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        let (text_min, _) = editor.document.object(&text_id).unwrap().bounds().unwrap();
+        let (image_min, _) = editor.document.object(&image_id).unwrap().bounds().unwrap();
+        assert!((text_min.x - image_min.x).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dock_outside_the_page_warns() {
+        let mut editor = EditorState::new(Document::new("Dock", 100.0, 30.0));
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 10.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 10.0);
+        select_ids(&mut editor, &[&first, &second]);
+
+        let report = editor.dock_selection(DockSide::Left, 50.0, false).unwrap();
+
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|note| note == "The docked group extends outside the page")
+        );
+    }
+
+    #[test]
+    fn dock_is_one_undo_step_with_the_side_name() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        select_ids(&mut editor, &[&first, &second]);
+        let before = editor.document.object(&first).unwrap().bounds().unwrap();
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+        assert_eq!(editor.undo().as_deref(), Some("Dock left"));
+        let after = editor.document.object(&first).unwrap().bounds().unwrap();
+        assert!((after.0.y - before.0.y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn selection_is_unchanged_after_docking() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        select_ids(&mut editor, &[&first, &second]);
+
+        editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        let expected = [first, second];
+        assert_eq!(editor.selection.ids(), expected.as_slice());
+    }
+
+    #[test]
+    fn spacing_validation_and_limits() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 20.0, 30.0);
+        select_ids(&mut editor, &[&first, &second]);
+        assert!(
+            editor
+                .dock_selection(DockSide::Left, f64::NAN, false)
+                .is_err()
+        );
+        assert!(editor.dock_selection(DockSide::Left, -1.0, false).is_err());
+        assert!(
+            editor
+                .dock_selection(DockSide::Left, 1001.0, false)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn arrays_dock_as_a_unit() {
+        let mut editor = editor();
+        let first = add_rect_at(&mut editor, 10.0, 10.0, 0.0, 0.0);
+        let second = add_rect_at(&mut editor, 4.0, 4.0, 0.0, 15.0);
+        let other = add_rect_at(&mut editor, 6.0, 6.0, 30.0, 5.0);
+        editor.document.object_mut(&first).unwrap().array_id = Some("array".to_string());
+        editor.document.object_mut(&second).unwrap().array_id = Some("array".to_string());
+        select_ids(&mut editor, &[&first, &second, &other]);
+
+        let report = editor.dock_selection(DockSide::Left, 2.0, false).unwrap();
+
+        assert_eq!(report.moved, 2);
     }
 
     #[test]

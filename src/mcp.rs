@@ -993,6 +993,35 @@ impl McpServer {
                 let selected = self.editor.select_open_shapes_with_fill();
                 Ok(json!({"selected": selected}))
             }
+            "dock_objects" => {
+                self.select_scope(arguments)?;
+                let side = match string(arguments, "side").as_deref() {
+                    Some("left") => crate::editor::state::DockSide::Left,
+                    Some("right") => crate::editor::state::DockSide::Right,
+                    Some("up") => crate::editor::state::DockSide::Up,
+                    Some("down") => crate::editor::state::DockSide::Down,
+                    Some(other) => {
+                        return Err(BeamError::InvalidInput(format!(
+                            "unknown dock side '{other}'; use left, right, up or down"
+                        )));
+                    }
+                    None => return Err(missing("side")),
+                };
+                let spacing = number(arguments, "spacing").unwrap_or(2.0);
+                let preserve = arguments
+                    .get("preserve")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let report = self
+                    .editor
+                    .dock_selection(side, spacing, preserve)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "moved": report.moved,
+                    "warnings": report.warnings,
+                    "objects": self.editor.document.objects.len()
+                }))
+            }
             "invert_selection" => {
                 let count = self.editor.invert_selection();
                 Ok(json!({"selected": count}))
@@ -2447,6 +2476,16 @@ fn tool_definitions() -> Vec<Value> {
         tool(
             "paste_in_place",
             "Paste the in-app clipboard at its stored coordinates.",
+        ),
+        tool_with(
+            "dock_objects",
+            "Pack the selected objects against one side of their combined box.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "side": {"type": "string", "enum": ["left", "right", "up", "down"]},
+                "spacing": {"type": "number"},
+                "preserve": {"type": "boolean"}
+            }, "required": ["side"]}),
         ),
         tool(
             "select_smaller_than_selected",
@@ -4449,6 +4488,51 @@ mod tests {
 
         let empty = call(&mut server, "paste_in_place", json!({}));
         assert_eq!(empty.get("error"), None);
+    }
+
+    #[test]
+    fn dock_objects_tool_packs_the_selection() {
+        let mut server = McpServer::new();
+        let first = call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 10.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let second = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 20.0, "y": 30.0, "width": 4.0, "height": 4.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let docked = call(
+            &mut server,
+            "dock_objects",
+            json!({"ids": [first.clone(), second.clone()], "side": "left", "spacing": 2.0}),
+        );
+        assert!(docked.get("error").is_none(), "{docked}");
+        assert_eq!(docked["result"]["moved"], 2);
+        let (first_min, _) = server
+            .editor
+            .document
+            .object(&first)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let (second_min, _) = server
+            .editor
+            .document
+            .object(&second)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((first_min.x - second_min.x).abs() < 1e-9);
+        let refused = call(&mut server, "dock_objects", json!({"side": "sideways"}));
+        assert!(refused.get("error").is_some());
     }
 
     #[test]
