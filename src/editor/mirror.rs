@@ -49,6 +49,7 @@ impl EditorState {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn prepare_targets(
         &self,
         ids: &[String],
