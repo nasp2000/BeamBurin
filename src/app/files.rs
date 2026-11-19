@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::{
     BeamBurinApp, Document, FileDialog, FileMode, FileReport, Path, TaskResult, Unit, run_export,
     sanitize_name,
@@ -458,10 +460,10 @@ impl BeamBurinApp {
     pub(super) fn import_presets_file(&mut self, path: &Path) {
         match crate::config::presets_file::read_file(path, self.preset_file_kind) {
             Ok(file) => {
-                self.preset_import_label = path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.display().to_string());
+                self.preset_import_label = path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |name| name.to_string_lossy().to_string(),
+                );
                 self.pending_preset_import = Some(file);
                 self.preset_import_error = None;
                 self.preset_conflict = crate::config::presets_file::ConflictPolicy::Skip;
@@ -539,13 +541,13 @@ impl BeamBurinApp {
                 self.preferences = preferences;
                 let mut message = format!("Imported {} preset(s)", outcome.applied());
                 if outcome.replaced > 0 {
-                    message.push_str(&format!(" · replaced {}", outcome.replaced));
+                    let _ = write!(message, " · replaced {}", outcome.replaced);
                 }
                 if outcome.skipped > 0 {
-                    message.push_str(&format!(" · skipped {}", outcome.skipped));
+                    let _ = write!(message, " · skipped {}", outcome.skipped);
                 }
                 if !outcome.renamed.is_empty() {
-                    message.push_str(&format!(" · renamed {}", outcome.renamed.len()));
+                    let _ = write!(message, " · renamed {}", outcome.renamed.len());
                 }
                 if !outcome.warnings.is_empty() {
                     message.push_str(" · ");

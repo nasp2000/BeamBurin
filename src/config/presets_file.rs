@@ -170,6 +170,7 @@ struct Envelope {
 }
 
 /// Read and validate a preset file for one family.
+#[allow(clippy::too_many_lines)]
 pub fn read_file(path: &Path, expected: PresetKind) -> Result<PresetFile, String> {
     let metadata = std::fs::metadata(path)
         .map_err(|error| format!("Cannot read the preset file: {error}."))?;
@@ -245,7 +246,9 @@ pub fn read_file(path: &Path, expected: PresetKind) -> Result<PresetFile, String
                 preset
                     .validate()
                     .map_err(|reason| invalid_preset(number, &preset.name, &reason))?;
-                if !preset.layers.is_empty() {
+                if preset.layers.is_empty() {
+                    (preset.name.trim().to_string(), value)
+                } else {
                     preset.layers.clear();
                     warnings.push(
                         "Layer selections stay with the document and are not written to preset \
@@ -254,8 +257,6 @@ pub fn read_file(path: &Path, expected: PresetKind) -> Result<PresetFile, String
                     );
                     let value = serde_json::to_value(&preset)
                         .map_err(|error| format!("Preset {number} is invalid: {error}."))?;
-                    (preset.name.trim().to_string(), value)
-                } else {
                     (preset.name.trim().to_string(), value)
                 }
             }
@@ -359,7 +360,7 @@ pub fn merge_gcode(
         if target != original {
             outcome.renamed.push((original, target.clone()));
         }
-        preset.name = target.clone();
+        preset.name.clone_from(&target);
         preset.validate()?;
         if let Some(existing) = merged.saved.iter_mut().find(|entry| entry.name == target) {
             *existing = preset;
@@ -405,7 +406,7 @@ pub fn merge_image(
         if target != original {
             outcome.renamed.push((original, target.clone()));
         }
-        preset.name = target.clone();
+        preset.name.clone_from(&target);
         preset.validate()?;
         if let Some(existing) = merged.saved.iter_mut().find(|entry| entry.name == target) {
             *existing = preset;
@@ -451,7 +452,7 @@ pub fn merge_vector(
         if target != original {
             outcome.renamed.push((original, target.clone()));
         }
-        preset.name = target.clone();
+        preset.name.clone_from(&target);
         preset.layers.clear();
         preset.validate()?;
         if let Some(existing) = merged.saved.iter_mut().find(|entry| entry.name == target) {
@@ -537,7 +538,7 @@ pub fn export_gcode(prefs: &ExportPresetPrefs, path: &Path) -> Result<ExportOutc
         .map(serde_json::to_value)
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|error| format!("Cannot write the preset file: {error}."))?;
-    write_file(PresetKind::Gcode, values, path)
+    write_file(PresetKind::Gcode, &values, path)
 }
 
 pub fn export_image(prefs: &ImageExportPresetPrefs, path: &Path) -> Result<ExportOutcome, String> {
@@ -550,7 +551,7 @@ pub fn export_image(prefs: &ImageExportPresetPrefs, path: &Path) -> Result<Expor
         .map(serde_json::to_value)
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|error| format!("Cannot write the preset file: {error}."))?;
-    write_file(PresetKind::Image, values, path)
+    write_file(PresetKind::Image, &values, path)
 }
 
 pub fn export_vector(
@@ -577,12 +578,12 @@ pub fn export_vector(
         .map(serde_json::to_value)
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|error| format!("Cannot write the preset file: {error}."))?;
-    let mut outcome = write_file(PresetKind::Vector, values, path)?;
+    let mut outcome = write_file(PresetKind::Vector, &values, path)?;
     outcome.warnings = warnings;
     Ok(outcome)
 }
 
-fn write_file(kind: PresetKind, presets: Vec<Value>, path: &Path) -> Result<ExportOutcome, String> {
+fn write_file(kind: PresetKind, presets: &[Value], path: &Path) -> Result<ExportOutcome, String> {
     let count = presets.len();
     let envelope = serde_json::json!({
         "schema": SCHEMA,
@@ -698,9 +699,10 @@ mod tests {
         .unwrap();
         assert!((merged.saved[0].dpi - 300.0).abs() < f64::EPSILON);
 
-        export_vector(&vector_prefs, &path).unwrap();
+        let exported = export_vector(&vector_prefs, &path).unwrap();
+        assert!(!exported.warnings.is_empty());
         let file = read_file(&path, PresetKind::Vector).unwrap();
-        assert!(!file.warnings.is_empty());
+        assert!(file.warnings.is_empty());
         let (merged, _) = merge_vector(
             &VectorExportPresetPrefs::default(),
             &file,
