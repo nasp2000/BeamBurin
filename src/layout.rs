@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn reset_layout_does_not_touch_the_document() {
-        let mut editor = EditorState::new(Document::new("Layout", 100.0, 100.0));
+        let editor = EditorState::new(Document::new("Layout", 100.0, 100.0));
         let objects = editor.document.objects.len();
         let history = editor.history.undo_len();
         let workspace = reset_layout();

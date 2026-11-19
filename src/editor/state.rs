@@ -3007,7 +3007,7 @@ impl EditorState {
             };
         }
 
-        let mut moves: Vec<(f64, f64)> = Vec::with_capacity(boxes.len());
+        let mut shifts: Vec<(f64, f64)> = Vec::with_capacity(boxes.len());
         let mut cursor = if vertical { bounds_max.y } else { bounds_min.x };
         for (index, unit_box) in boxes.iter().enumerate() {
             let (dx, dy) = if vertical {
@@ -3025,7 +3025,7 @@ impl EditorState {
                 };
                 (cursor - unit_box.min.x, dy)
             };
-            moves.push((dx, dy));
+            shifts.push((dx, dy));
             cursor = if index + 1 < boxes.len() {
                 if vertical {
                     unit_box.min.y + dy
@@ -3043,7 +3043,7 @@ impl EditorState {
                 cursor
             };
         }
-        if moves
+        if shifts
             .iter()
             .all(|(dx, dy)| dx.abs() < 1e-9 && dy.abs() < 1e-9)
         {
@@ -3052,30 +3052,30 @@ impl EditorState {
         }
 
         self.record_action(side.action());
-        let mut moved = 0;
-        let mut moved_min = Point2::new(f64::INFINITY, f64::INFINITY);
-        let mut moved_max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for (unit_box, (dx, dy)) in boxes.iter().zip(moves) {
-            if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
-                continue;
+        let mut area_min = Point2::new(f64::INFINITY, f64::INFINITY);
+        let mut area_max = Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (unit_box, (dx, dy)) in boxes.iter().zip(shifts) {
+            if dx.abs() > 1e-9 || dy.abs() > 1e-9 {
+                for &index in &unit_box.unit.indices {
+                    self.document.objects[index].translate(dx, dy);
+                }
             }
-            for &index in &unit_box.unit.indices {
-                self.document.objects[index].translate(dx, dy);
-            }
-            moved += 1;
-            moved_min.x = moved_min.x.min(unit_box.min.x + dx);
-            moved_min.y = moved_min.y.min(unit_box.min.y + dy);
-            moved_max.x = moved_max.x.max(unit_box.max.x + dx);
-            moved_max.y = moved_max.y.max(unit_box.max.y + dy);
+            area_min.x = area_min.x.min(unit_box.min.x + dx);
+            area_min.y = area_min.y.min(unit_box.min.y + dy);
+            area_max.x = area_max.x.max(unit_box.max.x + dx);
+            area_max.y = area_max.y.max(unit_box.max.y + dy);
         }
-        if moved_min.x < -1e-6
-            || moved_min.y < -1e-6
-            || moved_max.x > self.document.width_mm + 1e-6
-            || moved_max.y > self.document.height_mm + 1e-6
+        if area_min.x < -1e-6
+            || area_min.y < -1e-6
+            || area_max.x > self.document.width_mm + 1e-6
+            || area_max.y > self.document.height_mm + 1e-6
         {
             warnings.push("The docked group extends outside the page".to_string());
         }
-        Ok(DockReport { moved, warnings })
+        Ok(DockReport {
+            moved: boxes.len(),
+            warnings,
+        })
     }
 
     pub fn delete_selection(&mut self) {
