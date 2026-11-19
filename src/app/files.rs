@@ -401,7 +401,14 @@ impl BeamBurinApp {
         };
         let origin = self.gcode_origin;
         let smooth_mm = self.gcode_smooth_mm;
-        let allow_outside_page = if vector_mode {
+        let allow_outside_page = if matches!(
+            mode,
+            FileMode::ExportSvg
+                | FileMode::ExportDxf
+                | FileMode::ExportPdf
+                | FileMode::ExportEps
+                | FileMode::ExportHpgl
+        ) {
             self.export_vector_allow_outside_page
         } else {
             self.export_image_allow_outside_page
