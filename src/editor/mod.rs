@@ -1,6 +1,7 @@
 pub mod alignment;
 pub mod arrays;
 pub mod canvas;
+pub mod cut;
 pub mod hit_test;
 pub mod nesting;
 pub mod nodes;

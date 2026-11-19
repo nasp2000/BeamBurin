@@ -1007,6 +1007,38 @@ impl McpServer {
                     .collect();
                 Ok(json!({"arrays": arrays, "count": arrays.len()}))
             }
+            "cut_shapes" => {
+                self.select_scope(arguments)?;
+                let cutter = string(arguments, "cutter").ok_or_else(|| missing("cutter"))?;
+                let report = self
+                    .editor
+                    .cut_shapes(Some(&cutter))
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "pieces": report.pieces,
+                    "removed": report.removed,
+                    "warnings": report.warnings,
+                    "cutter_removed": true
+                }))
+            }
+            "split_path" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                let x = number(arguments, "x").ok_or_else(|| missing("x"))?;
+                let y = number(arguments, "y").ok_or_else(|| missing("y"))?;
+                let pieces = self
+                    .editor
+                    .split_path_at(&id, crate::geometry::Point2::new(x, y))
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"pieces": pieces, "joined": false}))
+            }
+            "break_apart" => {
+                self.select_scope(arguments)?;
+                let report = self.editor.break_apart().map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "released": report.released,
+                    "outlines": report.outlines
+                }))
+            }
             "repeat" => {
                 let mode = match string(arguments, "mode").as_deref().unwrap_or("linear") {
                     "linear" => crate::editor::RepeatMode::Linear,
@@ -1949,6 +1981,31 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_x": {"type": "number"},
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
+            }}),
+        ),
+        tool_with(
+            "cut_shapes",
+            "Cut the selected targets with one closed cutter, keeping the inside.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "cutter": {"type": "string"}
+            }, "required": ["cutter"]}),
+        ),
+        tool_with(
+            "split_path",
+            "Split a path at the point closest to x and y.",
+            json!({"type": "object", "properties": {
+                "id": {"type": "string"},
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "join": {"type": "boolean"}
+            }, "required": ["id", "x", "y"]}),
+        ),
+        tool_with(
+            "break_apart",
+            "Release holes and convert text to outlines.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}}
             }}),
         ),
         tool_with(

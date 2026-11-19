@@ -1071,6 +1071,12 @@ impl EditorState {
         self.document.objects.remove(first_index);
         let insert_at = first_index.min(self.document.objects.len());
         self.selection.clear();
+        let paths: Vec<Path> = contours
+            .iter()
+            .map(|contour| Path::from_points(contour, true))
+            .collect();
+        let parents = crate::geometry::path::contour_parents_with_rule(&paths, true);
+        let mut pieces = Vec::with_capacity(contours.len());
         for (index, contour) in contours.iter().enumerate() {
             let name = if contours.len() == 1 {
                 format!("{} {}", op.label(), template.name)
@@ -1084,6 +1090,14 @@ impl EditorState {
             .with_style(template.style.clone());
             object.name = name;
             object.operation_id.clone_from(&template.operation_id);
+            pieces.push(object);
+        }
+        for (index, parent) in parents.iter().enumerate() {
+            if let Some(parent) = parent {
+                pieces[index].hole_of = Some(pieces[*parent].id.clone());
+            }
+        }
+        for (index, object) in pieces.into_iter().enumerate() {
             self.selection.add(object.id.clone());
             self.document.objects.insert(insert_at + index, object);
         }
@@ -1435,7 +1449,23 @@ impl EditorState {
         if indices.len() < 2 {
             return Err("Select the shapes to trim and a closed trimmer".to_string());
         }
-        let trimmer_index = indices[indices.len() - 1];
+        let trimmer_id = self
+            .selection
+            .ids()
+            .last()
+            .cloned()
+            .ok_or_else(|| "Select the shapes to trim and a closed trimmer".to_string())?;
+        let trimmer_index = self
+            .document
+            .objects
+            .iter()
+            .position(|object| object.id == trimmer_id)
+            .ok_or_else(|| format!("unknown trimmer: {trimmer_id}"))?;
+        let targets: Vec<usize> = indices
+            .iter()
+            .copied()
+            .filter(|index| *index != trimmer_index)
+            .collect();
         let trimmer = Self::closed_world_contour(&self.document.objects[trimmer_index])
             .ok_or_else(|| {
                 format!(
@@ -1445,7 +1475,7 @@ impl EditorState {
             })?;
         let mut plans: Vec<Trimmed> = Vec::new();
         let mut changed = 0;
-        for index in indices[..indices.len() - 1].iter().copied() {
+        for index in targets {
             self.ensure_editable(index)?;
             let object = &self.document.objects[index];
             let path = object.world_path();

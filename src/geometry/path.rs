@@ -546,6 +546,66 @@ impl Path {
     }
 
     /// Split an open path at one node into two paths that share the node.
+    /// Split this path at parameter `t` of one segment.
+    ///
+    /// An open path becomes two open paths; a closed path becomes one open path
+    /// that starts and ends at the cut point. A cut at an existing node reuses
+    /// that node instead of creating a duplicate.
+    pub fn split_at(&self, segment: usize, t: f64) -> Option<(Path, Option<Path>)> {
+        if self.segments.is_empty() || segment >= self.segments.len() || !t.is_finite() {
+            return None;
+        }
+        let epsilon = 1e-9;
+        if self.closed {
+            let count = self.segments.len();
+            if t <= epsilon {
+                return self.open_closed_at(segment);
+            }
+            if t >= 1.0 - epsilon {
+                return self.open_closed_at((segment + 1) % count);
+            }
+            let (first, second) = split_segment(self.segments[segment], t)?;
+            let mut open = Path::new();
+            open.segments.push(second);
+            open.segments
+                .extend(self.segments[segment + 1..].iter().copied());
+            open.segments
+                .extend(self.segments[..segment].iter().copied());
+            open.segments.push(first);
+            Some((open, None))
+        } else {
+            if t <= epsilon || t >= 1.0 - epsilon {
+                let index = if t <= epsilon { segment } else { segment + 1 };
+                return self
+                    .split_at_node(index)
+                    .map(|(left, right)| (left, Some(right)));
+            }
+            let (first, second) = split_segment(self.segments[segment], t)?;
+            let mut left = Path::new();
+            left.segments
+                .extend(self.segments[..segment].iter().copied());
+            left.segments.push(first);
+            let mut right = Path::new();
+            right.segments.push(second);
+            right
+                .segments
+                .extend(self.segments[segment + 1..].iter().copied());
+            Some((left, Some(right)))
+        }
+    }
+
+    fn open_closed_at(&self, node: usize) -> Option<(Path, Option<Path>)> {
+        let count = self.segments.len();
+        if count == 0 || node >= count {
+            return None;
+        }
+        let mut open = Path::new();
+        open.segments.extend(self.segments[node..].iter().copied());
+        open.segments.extend(self.segments[..node].iter().copied());
+        open.closed = false;
+        Some((open, None))
+    }
+
     pub fn split_at_node(&self, index: usize) -> Option<(Path, Path)> {
         if self.closed {
             return None;
@@ -742,6 +802,25 @@ fn interior_point(polygon: &[(f64, f64)]) -> Option<(f64, f64)> {
     }
     let center = (f64::midpoint(min_x, max_x), f64::midpoint(min_y, max_y));
     point_in_polygon(center.0, center.1, polygon).then_some(center)
+}
+
+fn split_segment(segment: Segment, t: f64) -> Option<(Segment, Segment)> {
+    match segment {
+        Segment::Line { from, to } => {
+            if (to.x - from.x).abs() < 1e-12 && (to.y - from.y).abs() < 1e-12 {
+                return None;
+            }
+            let at = Point2::new(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+            Some((
+                Segment::Line { from, to: at },
+                Segment::Line { from: at, to },
+            ))
+        }
+        Segment::Cubic(cubic) => {
+            let (first, second) = cubic.split(t);
+            Some((Segment::Cubic(first), Segment::Cubic(second)))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1147,5 +1226,35 @@ mod tests {
         let mut p = Path::new();
         p.closed = true;
         assert!(p.closed);
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    #[test]
+    fn split_line_at_half() {
+        let path = Path::from_points(&[(0.0, 0.0), (10.0, 0.0)], false);
+        let (left, right) = path.split_at(0, 0.5).unwrap();
+        assert_eq!(left.to_points().last().copied(), Some((5.0, 0.0)));
+        assert!(right.is_some());
+    }
+
+    #[test]
+    fn split_open_path_returns_two() {
+        let path = Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], false);
+        let (left, right) = path.split_at(0, 0.5).unwrap();
+        assert_eq!(left.segments.len(), 1);
+        assert_eq!(right.unwrap().segments.len(), 2);
+    }
+
+    #[test]
+    fn split_closed_path_opens_at_the_cut() {
+        let path = Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], true);
+        let (open, second) = path.split_at(0, 0.5).unwrap();
+        assert!(second.is_none());
+        assert!(!open.closed);
+        assert_eq!(open.to_points().first(), open.to_points().last());
     }
 }
