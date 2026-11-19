@@ -247,6 +247,9 @@ impl BeamBurinApp {
         if self.grid_array_open {
             self.grid_array_window(ctx);
         }
+        if self.circular_array_open {
+            self.circular_array_window(ctx);
+        }
         if self.offset_open {
             self.offset_window(ctx);
         }

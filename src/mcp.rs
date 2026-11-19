@@ -921,12 +921,91 @@ impl McpServer {
                         .get("column_major")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
+                    virtual_array: false,
                 };
                 let created = self.editor.duplicate_grid_with(&options);
                 Ok(json!({
                     "created": created,
                     "objects": self.editor.document.objects.len()
                 }))
+            }
+            "create_array" => {
+                self.select_scope(arguments)?;
+                let layout = array_layout(arguments)?;
+                let ids = self.editor.selection.ids().to_vec();
+                let id = self
+                    .editor
+                    .create_array(layout, &ids)
+                    .map_err(BeamError::InvalidInput)?;
+                let copies = self
+                    .editor
+                    .document
+                    .array(&id)
+                    .map_or(0, |array| array.layout.cells().saturating_sub(1));
+                Ok(json!({"array": id, "copies": copies}))
+            }
+            "edit_array" => {
+                let id = string(arguments, "array").ok_or_else(|| missing("array"))?;
+                let layout = array_layout(arguments)?;
+                let copies = self
+                    .editor
+                    .update_array(&id, layout)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"array": id, "copies": copies}))
+            }
+            "add_to_array" => {
+                let id = string(arguments, "array").ok_or_else(|| missing("array"))?;
+                let ids = string_list(arguments, "ids")?;
+                let count = self
+                    .editor
+                    .add_to_array(&id, &ids)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"array": id, "added": count}))
+            }
+            "remove_from_array" => {
+                let id = string(arguments, "array").ok_or_else(|| missing("array"))?;
+                let ids = string_list(arguments, "ids")?;
+                let count = self
+                    .editor
+                    .remove_from_array(&id, &ids)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"array": id, "removed": count}))
+            }
+            "duplicate_array" => {
+                let id = string(arguments, "array").ok_or_else(|| missing("array"))?;
+                let dx = number(arguments, "dx").unwrap_or(10.0);
+                let dy = number(arguments, "dy").unwrap_or(0.0);
+                let new_id = self
+                    .editor
+                    .duplicate_array(&id, dx, dy)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"array": new_id}))
+            }
+            "flatten_array" => {
+                let id = string(arguments, "array").ok_or_else(|| missing("array"))?;
+                let count = self
+                    .editor
+                    .flatten_array(&id)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"flattened": count}))
+            }
+            "list_arrays" => {
+                let arrays: Vec<Value> = self
+                    .editor
+                    .document
+                    .arrays
+                    .iter()
+                    .map(|array| {
+                        json!({
+                            "id": array.id,
+                            "name": array.name,
+                            "sources": &array.source_ids,
+                            "cells": array.layout.cells(),
+                            "layout": &array.layout
+                        })
+                    })
+                    .collect();
+                Ok(json!({"arrays": arrays, "count": arrays.len()}))
             }
             "repeat" => {
                 let mode = match string(arguments, "mode").as_deref().unwrap_or("linear") {
@@ -1873,6 +1952,90 @@ fn tool_definitions() -> Vec<Value> {
             }}),
         ),
         tool_with(
+            "create_array",
+            "Create a virtual array from the selected shapes or the ids given.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "kind": {"type": "string", "enum": ["grid", "circular"]},
+                "columns": {"type": "integer"},
+                "rows": {"type": "integer"},
+                "spacing_x": {"type": "number"},
+                "spacing_y": {"type": "number"},
+                "spacing": {"type": "string", "enum": ["gap", "pitch"]},
+                "column_major": {"type": "boolean"},
+                "angle_degrees": {"type": "number"},
+                "mirror_columns": {"type": "boolean"},
+                "mirror_rows": {"type": "boolean"},
+                "shift_fraction": {"type": "number"},
+                "center_x": {"type": "number"},
+                "center_y": {"type": "number"},
+                "copies": {"type": "integer"},
+                "start": {"type": "number"},
+                "step": {"type": "number"},
+                "rotate_copies": {"type": "boolean"}
+            }}),
+        ),
+        tool_with(
+            "edit_array",
+            "Change the layout of an existing virtual array.",
+            json!({"type": "object", "properties": {
+                "array": {"type": "string"},
+                "kind": {"type": "string", "enum": ["grid", "circular"]},
+                "columns": {"type": "integer"},
+                "rows": {"type": "integer"},
+                "spacing_x": {"type": "number"},
+                "spacing_y": {"type": "number"},
+                "spacing": {"type": "string", "enum": ["gap", "pitch"]},
+                "column_major": {"type": "boolean"},
+                "angle_degrees": {"type": "number"},
+                "mirror_columns": {"type": "boolean"},
+                "mirror_rows": {"type": "boolean"},
+                "shift_fraction": {"type": "number"},
+                "center_x": {"type": "number"},
+                "center_y": {"type": "number"},
+                "copies": {"type": "integer"},
+                "start": {"type": "number"},
+                "step": {"type": "number"},
+                "rotate_copies": {"type": "boolean"}
+            }, "required": ["array"]}),
+        ),
+        tool_with(
+            "add_to_array",
+            "Add shapes to an array as extra base shapes.",
+            json!({"type": "object", "properties": {
+                "array": {"type": "string"},
+                "ids": {"type": "array", "items": {"type": "string"}}
+            }, "required": ["array", "ids"]}),
+        ),
+        tool_with(
+            "remove_from_array",
+            "Remove base shapes from an array, keeping them in the document.",
+            json!({"type": "object", "properties": {
+                "array": {"type": "string"},
+                "ids": {"type": "array", "items": {"type": "string"}}
+            }, "required": ["array", "ids"]}),
+        ),
+        tool_with(
+            "duplicate_array",
+            "Duplicate an array and its base shapes, offset by dx and dy.",
+            json!({"type": "object", "properties": {
+                "array": {"type": "string"},
+                "dx": {"type": "number"},
+                "dy": {"type": "number"}
+            }, "required": ["array"]}),
+        ),
+        tool_with(
+            "flatten_array",
+            "Turn every copy of an array into an independent object.",
+            json!({"type": "object", "properties": {
+                "array": {"type": "string"}
+            }, "required": ["array"]}),
+        ),
+        tool(
+            "list_arrays",
+            "List the virtual arrays and their cell counts.",
+        ),
+        tool_with(
             "repeat",
             "Duplicate the selection linearly or around a circle.",
             json!({"type": "object", "properties": {
@@ -2154,6 +2317,74 @@ fn tool(name: &str, description: &str) -> Value {
 #[allow(clippy::needless_pass_by_value)]
 fn tool_with(name: &str, description: &str, schema: Value) -> Value {
     json!({"name": name, "description": description, "inputSchema": schema})
+}
+
+fn string_list(arguments: &Value, key: &str) -> Result<Vec<String>> {
+    let values = arguments
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| missing(key))?;
+    values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| BeamError::InvalidInput(format!("{key} must be strings")))
+        })
+        .collect()
+}
+
+fn array_layout(arguments: &Value) -> Result<crate::document::ArrayLayout> {
+    let kind = string(arguments, "kind").unwrap_or_else(|| "grid".to_string());
+    let layout = if kind == "circular" {
+        crate::document::ArrayLayout::Circular {
+            center_x: number(arguments, "center_x").unwrap_or(0.0),
+            center_y: number(arguments, "center_y").unwrap_or(0.0),
+            copies: usize::try_from(arguments.get("copies").and_then(Value::as_u64).unwrap_or(6))
+                .unwrap_or(6),
+            start_degrees: number(arguments, "start").unwrap_or(0.0),
+            step_degrees: number(arguments, "step").unwrap_or(60.0),
+            rotate_copies: arguments
+                .get("rotate_copies")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+        }
+    } else {
+        crate::document::ArrayLayout::Grid {
+            columns: usize::try_from(
+                arguments
+                    .get("columns")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(2),
+            )
+            .unwrap_or(2),
+            rows: usize::try_from(arguments.get("rows").and_then(Value::as_u64).unwrap_or(2))
+                .unwrap_or(2),
+            spacing_x_mm: number(arguments, "spacing_x").unwrap_or(10.0),
+            spacing_y_mm: number(arguments, "spacing_y").unwrap_or(10.0),
+            spacing: match string(arguments, "spacing").as_deref() {
+                Some("pitch") => crate::document::Spacing::Pitch,
+                _ => crate::document::Spacing::Gap,
+            },
+            angle_degrees: number(arguments, "angle_degrees").unwrap_or(0.0),
+            column_major: arguments
+                .get("column_major")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            mirror_columns: arguments
+                .get("mirror_columns")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            mirror_rows: arguments
+                .get("mirror_rows")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            shift_fraction: number(arguments, "shift_fraction").unwrap_or(0.0),
+        }
+    };
+    layout.validate().map_err(BeamError::InvalidInput)?;
+    Ok(layout)
 }
 
 fn number(arguments: &Value, key: &str) -> Option<f64> {

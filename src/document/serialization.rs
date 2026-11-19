@@ -10,19 +10,30 @@ pub const PROJECT_FORMAT_VERSION: u32 = CURRENT_FORMAT_VERSION;
 
 pub fn to_json(doc: &Document) -> Result<String> {
     validate(doc)?;
-    Ok(serde_json::to_string_pretty(doc)?)
+    let mut writable = doc.clone();
+    writable.strip_array_copies();
+    validate(&writable)?;
+    Ok(serde_json::to_string_pretty(&writable)?)
 }
 
 pub fn from_json(s: &str) -> Result<Document> {
-    let doc: Document = serde_json::from_str(s)?;
-    if doc.format_version != PROJECT_FORMAT_VERSION {
+    from_json_with_warnings(s).map(|(document, _)| document)
+}
+
+/// Load a project and return the repair notes along with it.
+pub fn from_json_with_warnings(s: &str) -> Result<(Document, Vec<String>)> {
+    let mut doc: Document = serde_json::from_str(s)?;
+    if !(1..=PROJECT_FORMAT_VERSION).contains(&doc.format_version) {
         return Err(BeamError::InvalidInput(format!(
-            "unsupported project format version {} (expected {})",
+            "unsupported project format version {} (expected 1 to {})",
             doc.format_version, PROJECT_FORMAT_VERSION
         )));
     }
+    doc.format_version = PROJECT_FORMAT_VERSION;
+    doc.strip_array_copies();
+    let warnings = doc.repair_arrays();
     validate(&doc)?;
-    Ok(doc)
+    Ok((doc, warnings))
 }
 
 pub fn validate(doc: &Document) -> Result<()> {
@@ -83,6 +94,12 @@ pub fn save_recovery(doc: &Document, path: &Path) -> Result<()> {
 pub fn load_from_file(path: &Path) -> Result<Document> {
     let s = fs::read_to_string(path)?;
     from_json(&s)
+}
+
+/// Load a project with its array repair warnings.
+pub fn load_from_file_with_warnings(path: &Path) -> Result<(Document, Vec<String>)> {
+    let s = fs::read_to_string(path)?;
+    from_json_with_warnings(&s)
 }
 
 /// Load a project, falling back to its backup when the main file is unreadable.

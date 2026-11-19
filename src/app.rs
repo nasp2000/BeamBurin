@@ -525,6 +525,7 @@ pub struct BeamBurinApp {
     preferences_search: String,
     polygon_sides: usize,
     grid_array_open: bool,
+    circular_array_open: bool,
     offset_open: bool,
     offset_distance: f64,
     star_points: usize,
@@ -561,6 +562,12 @@ pub struct BeamBurinApp {
     nest_proposal: Option<crate::editor::NestProposal>,
     nest_message: String,
     grid_array: crate::editor::GridOptions,
+    circular_copies: usize,
+    circular_center_x: f64,
+    circular_center_y: f64,
+    circular_start: f64,
+    circular_step: f64,
+    circular_rotate: bool,
     search_query: String,
     preview_open: bool,
     playback: Option<crate::gcode::Playback>,
@@ -1954,6 +1961,7 @@ impl BeamBurinApp {
 
     pub fn advance(&mut self, ctx: &egui::Context) {
         self.persist_theme();
+        self.editor.sync_arrays();
         let requests = self
             .bridge
             .as_ref()

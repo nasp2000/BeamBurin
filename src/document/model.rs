@@ -9,7 +9,7 @@ pub use super::shape::{Shape, Style};
 use super::units::Unit;
 
 /// Current native project schema version.
-pub const CURRENT_FORMAT_VERSION: u32 = 2;
+pub const CURRENT_FORMAT_VERSION: u32 = 3;
 
 /// Coordinate origin convention for the document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -34,6 +34,12 @@ pub struct Object {
     pub shape: Shape,
     pub style: Style,
     pub operation_id: Option<String>,
+    /// Array that owns this copy; copies are regenerated, never saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub array_id: Option<String>,
+    /// Cell of the owning array.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub array_cell: Option<u32>,
     /// Objects grouped together share this identifier.
     #[serde(default)]
     pub group_id: Option<String>,
@@ -59,6 +65,8 @@ impl Object {
             shape,
             style: Style::default(),
             operation_id: None,
+            array_id: None,
+            array_cell: None,
             group_id: None,
             hole_of: None,
             visible: true,
@@ -224,6 +232,9 @@ pub struct Document {
     /// Geometric constraints solved on demand.
     #[serde(default)]
     pub constraints: Vec<crate::constraints::Constraint>,
+    /// Virtual arrays: one specification per repeated set of shapes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arrays: Vec<super::arrays::ArraySpec>,
     pub format_version: u32,
 }
 
@@ -325,6 +336,29 @@ impl Document {
         subset
             .objects
             .retain(|object| ids.iter().any(|id| id == &object.id));
+        let kept: std::collections::HashSet<&str> = subset
+            .objects
+            .iter()
+            .map(|object| object.id.as_str())
+            .collect();
+        subset
+            .arrays
+            .retain(|array| array.source_ids.iter().all(|id| kept.contains(id.as_str())));
+        let arrays: std::collections::HashSet<&str> = subset
+            .arrays
+            .iter()
+            .map(|array| array.id.as_str())
+            .collect();
+        for object in &mut subset.objects {
+            if object
+                .array_id
+                .as_deref()
+                .is_some_and(|id| !arrays.contains(id))
+            {
+                object.array_id = None;
+                object.array_cell = None;
+            }
+        }
         subset
     }
 }
@@ -345,6 +379,7 @@ impl Default for Document {
             restricted_areas: Vec::new(),
             parameters: Vec::new(),
             constraints: Vec::new(),
+            arrays: Vec::new(),
             format_version: CURRENT_FORMAT_VERSION,
         }
     }
@@ -475,6 +510,7 @@ impl Document {
         }
 
         self.validate_guides()?;
+        self.validate_arrays()?;
 
         let mut object_ids = std::collections::HashSet::new();
         for object in &self.objects {

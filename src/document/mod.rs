@@ -1,8 +1,10 @@
+pub mod arrays;
 pub mod model;
 pub mod serialization;
 pub mod shape;
 pub mod units;
 
+pub use arrays::{ArrayLayout, ArraySpec, Spacing};
 pub use model::{CURRENT_FORMAT_VERSION, Document, MaterialZone, Object, Origin};
 pub use shape::{Shape, Style};
 pub use units::Unit;

@@ -23,6 +23,8 @@ pub struct GridOptions {
     pub margin_y: f64,
     /// Fill column by column instead of row by row.
     pub column_major: bool,
+    /// Create a virtual array instead of material copies.
+    pub virtual_array: bool,
 }
 
 impl Default for GridOptions {
@@ -35,6 +37,7 @@ impl Default for GridOptions {
             margin_x: 0.0,
             margin_y: 0.0,
             column_major: false,
+            virtual_array: true,
         }
     }
 }
@@ -202,6 +205,12 @@ pub struct EditorState {
     pub extend_path: bool,
     /// Append at the last endpoint instead of the first.
     pub extend_at_end: bool,
+    /// Array whose base shapes are being edited, if any.
+    pub array_edit: Option<String>,
+    /// Incremented whenever the document may have changed.
+    geometry_revision: u64,
+    /// Revision at which the derived copies were last regenerated.
+    array_synced_revision: u64,
 }
 
 impl EditorState {
@@ -242,6 +251,9 @@ impl EditorState {
             node_selection: Vec::new(),
             extend_path: false,
             extend_at_end: false,
+            array_edit: None,
+            geometry_revision: 0,
+            array_synced_revision: 0,
         }
     }
 
@@ -253,6 +265,7 @@ impl EditorState {
     /// name, so undo and redo can say what they will do.
     pub fn record_action(&mut self, action: &str) {
         self.history.record(&self.document, action);
+        self.geometry_revision = self.geometry_revision.wrapping_add(1);
     }
 
     pub fn set_document(&mut self, document: Document) {
@@ -1823,6 +1836,13 @@ impl EditorState {
             if !object.visible || object.locked {
                 continue;
             }
+            if self
+                .array_edit
+                .as_deref()
+                .is_some_and(|id| object.array_id.as_deref() == Some(id))
+            {
+                continue;
+            }
             if let Some(layer) = self.document.layer(&object.layer_id) {
                 if !layer.visible || layer.locked {
                     continue;
@@ -1877,6 +1897,14 @@ impl EditorState {
     ) -> Option<String> {
         let hit = self.object_at(point, tolerance_mm);
         let members = |editor: &Self, id: &str| -> Vec<String> {
+            if let Some(array_id) = editor.array_for_object(id) {
+                return editor
+                    .document
+                    .array_members(&array_id)
+                    .into_iter()
+                    .map(|object| object.id.clone())
+                    .collect();
+            }
             if editor.select_whole_group {
                 editor
                     .group_members(id)
@@ -2445,6 +2473,17 @@ impl EditorState {
                 changed = true;
             }
         }
+        if changed {
+            let arrays: Vec<String> = self
+                .selection
+                .ids()
+                .iter()
+                .filter_map(|id| self.array_for_object(id))
+                .collect();
+            for array_id in arrays {
+                self.absorb_array_transform(&array_id, &combined);
+            }
+        }
         changed
     }
 
@@ -2750,8 +2789,23 @@ impl EditorState {
         if self.selection.is_empty() {
             return;
         }
-        self.record_action("Delete");
         let ids = self.selection.ids().to_vec();
+        let mut arrays = Vec::new();
+        for id in &ids {
+            if let Some(array_id) = self.array_for_object(id)
+                && !arrays.contains(&array_id)
+            {
+                arrays.push(array_id);
+            }
+        }
+        if arrays.is_empty() {
+            self.record_action("Delete");
+        } else {
+            self.record_action("Delete array");
+            for array in &arrays {
+                self.document.remove_array(array, false);
+            }
+        }
         for id in &ids {
             self.document.remove_object(id);
         }

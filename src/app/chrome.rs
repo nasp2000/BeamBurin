@@ -398,6 +398,104 @@ impl BeamBurinApp {
                     ui.close();
                 }
                 ui.separator();
+                let array_id = self.editor.selected_array_id();
+                let editing = self.editor.array_edit.clone();
+                ui.menu_button("Array", |ui| {
+                    if ui
+                        .add_enabled(
+                            array_id.is_some() && editing.is_none(),
+                            egui::Button::new("Edit Array"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(id) = &array_id {
+                            match self.editor.begin_array_edit(id) {
+                                Ok(()) => self.status = "Editing array".to_string(),
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    let can_add = array_id.as_ref().is_some_and(|id| {
+                        self.editor.document.array(id).is_some_and(|array| {
+                            self.editor
+                                .selection
+                                .ids()
+                                .iter()
+                                .any(|selected| !array.source_ids.contains(selected))
+                        })
+                    });
+                    if ui
+                        .add_enabled(can_add, egui::Button::new("Add to Array"))
+                        .clicked()
+                    {
+                        if let Some(id) = &array_id {
+                            let ids = self.editor.selection.ids().to_vec();
+                            match self.editor.add_to_array(id, &ids) {
+                                Ok(count) => {
+                                    self.status = format!("Added {count} shape(s) to the array");
+                                }
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            editing.is_some() && !self.editor.selection.is_empty(),
+                            egui::Button::new("Remove from Array"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(id) = &editing {
+                            let ids = self.editor.selection.ids().to_vec();
+                            match self.editor.remove_from_array(id, &ids) {
+                                Ok(count) => {
+                                    self.status = format!("Removed {count} shape(s) from the array");
+                                }
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(array_id.is_some(), egui::Button::new("Duplicate Array"))
+                        .clicked()
+                    {
+                        if let Some(id) = &array_id {
+                            match self.editor.duplicate_array(id, 10.0, 0.0) {
+                                Ok(_) => self.status = "Array duplicated".to_string(),
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(array_id.is_some(), egui::Button::new("Flatten Array"))
+                        .clicked()
+                    {
+                        if let Some(id) = &array_id {
+                            match self.editor.flatten_array(id) {
+                                Ok(count) => {
+                                    self.status = format!(
+                                        "Array flattened: {count} objects are now independent"
+                                    );
+                                }
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(editing.is_some(), egui::Button::new("Exit Array"))
+                        .clicked()
+                    {
+                        self.editor.end_array_edit();
+                        self.status = "Left array editing".to_string();
+                        ui.close();
+                    }
+                });
+                ui.separator();
                 if icons::button(ui, Icon::SelectAll, "Select all").clicked() {
                     self.editor.select_all();
                     ui.close();
@@ -850,6 +948,13 @@ impl BeamBurinApp {
                         self.grid_array_open = true;
                         ui.close();
                     }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Repeat, "Circular array..."))
+                        .clicked()
+                    {
+                        self.circular_array_open = true;
+                        ui.close();
+                    }
                 }).response.on_hover_text(crate::ui::icons::description("Transform"));
                 ui.menu_button(icons::menu_label(ui, Icon::TextOutline, "Convert"), |ui| {
                     if ui
@@ -1297,7 +1402,7 @@ impl BeamBurinApp {
                     )
                     .clicked()
                     {
-                        self.repeat_open = true;
+                        self.circular_array_open = true;
                     }
                     if icons::icon_button_enabled(
                         ui,

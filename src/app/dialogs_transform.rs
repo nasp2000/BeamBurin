@@ -731,6 +731,10 @@ impl BeamBurinApp {
                 });
                 ui.checkbox(&mut options.column_major, "Fill column by column")
                     .on_hover_text(crate::ui::icons::description("Fill column by column"));
+                ui.checkbox(&mut options.virtual_array, "Create virtual array")
+                    .on_hover_text(
+                        "Edit the count later, and edits to the source shape update every copy",
+                    );
                 let options = *options;
                 ui.label(format!(
                     "Creates {} copies of the {} selected object(s).",
@@ -747,12 +751,129 @@ impl BeamBurinApp {
                     )
                     .clicked()
                 {
-                    let created = self.editor.duplicate_grid_with(&options);
-                    self.status = format!("Created {created} copies");
-                    self.grid_array_open = false;
+                    if options.virtual_array {
+                        let layout = crate::editor::ArrayLayout::Grid {
+                            columns: options.columns,
+                            rows: options.rows,
+                            spacing_x_mm: options.dx,
+                            spacing_y_mm: options.dy,
+                            spacing: crate::editor::Spacing::Gap,
+                            angle_degrees: 0.0,
+                            column_major: options.column_major,
+                            mirror_columns: false,
+                            mirror_rows: false,
+                            shift_fraction: 0.0,
+                        };
+                        match self.editor.create_array(layout, &[]) {
+                            Ok(_) => {
+                                let copies = options.columns.saturating_mul(options.rows) - 1;
+                                self.status = format!("Created array with {copies} copies");
+                                self.grid_array_open = false;
+                            }
+                            Err(error) => self.status = error,
+                        }
+                    } else {
+                        let created = self.editor.duplicate_grid_with(&options);
+                        self.status = format!("Created {created} copies");
+                        self.grid_array_open = false;
+                    }
                 }
             });
         self.grid_array_open = open && self.grid_array_open;
+    }
+
+    pub(super) fn circular_array_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.circular_array_open;
+        egui::Window::new("Circular array")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let label = ui.label("Copies");
+                    ui.add(
+                        egui::DragValue::new(&mut self.circular_copies)
+                            .speed(1.0)
+                            .range(1..=100),
+                    )
+                    .labelled_by(label.id);
+                });
+                ui.horizontal(|ui| {
+                    let x = ui.label("Centre X");
+                    ui.add(
+                        egui::DragValue::new(&mut self.circular_center_x)
+                            .speed(0.5)
+                            .range(-10000.0..=10000.0)
+                            .suffix(" mm"),
+                    )
+                    .labelled_by(x.id);
+                    let y = ui.label("Y");
+                    ui.add(
+                        egui::DragValue::new(&mut self.circular_center_y)
+                            .speed(0.5)
+                            .range(-10000.0..=10000.0)
+                            .suffix(" mm"),
+                    )
+                    .labelled_by(y.id);
+                });
+                if ui.button("Use selection centre").clicked() {
+                    if let Some((min, max)) = self.editor.selected_bounds() {
+                        self.circular_center_x = f64::midpoint(min.x, max.x);
+                        self.circular_center_y = f64::midpoint(min.y, max.y);
+                    }
+                }
+                ui.horizontal(|ui| {
+                    let start = ui.label("Start");
+                    ui.add(
+                        egui::DragValue::new(&mut self.circular_start)
+                            .speed(1.0)
+                            .range(-360.0..=360.0)
+                            .suffix("°"),
+                    )
+                    .labelled_by(start.id);
+                    let step = ui.label("Step");
+                    ui.add(
+                        egui::DragValue::new(&mut self.circular_step)
+                            .speed(1.0)
+                            .range(-360.0..=360.0)
+                            .suffix("°"),
+                    )
+                    .labelled_by(step.id);
+                });
+                ui.checkbox(&mut self.circular_rotate, "Rotate copies");
+                ui.label(format!(
+                    "Creates {} copies of the {} selected object(s).",
+                    self.circular_copies,
+                    self.editor.selection.len()
+                ));
+                if ui
+                    .add_enabled(
+                        !self.editor.selection.is_empty(),
+                        egui::Button::new("Create array"),
+                    )
+                    .clicked()
+                {
+                    let layout = crate::editor::ArrayLayout::Circular {
+                        center_x: self.circular_center_x,
+                        center_y: self.circular_center_y,
+                        copies: self.circular_copies,
+                        start_degrees: self.circular_start,
+                        step_degrees: self.circular_step,
+                        rotate_copies: self.circular_rotate,
+                    };
+                    match self.editor.create_array(layout, &[]) {
+                        Ok(_) => {
+                            self.status =
+                                format!("Created array with {} copies", self.circular_copies);
+                            self.circular_array_open = false;
+                        }
+                        Err(error) => self.status = error,
+                    }
+                }
+            });
+        self.circular_array_open = open && self.circular_array_open;
     }
 
     pub(super) fn current_workspace(&self, name: &str) -> crate::config::preferences::Workspace {

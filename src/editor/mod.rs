@@ -1,4 +1,5 @@
 pub mod alignment;
+pub mod arrays;
 pub mod canvas;
 pub mod hit_test;
 pub mod nesting;
@@ -10,6 +11,7 @@ pub mod snapping;
 pub mod state;
 pub mod tools;
 
+pub use crate::document::arrays::{ArrayLayout, ArraySpec, Spacing};
 pub use canvas::CanvasState;
 pub use nesting::{NestPlacement, NestProposal};
 pub use search::{SearchHit, SearchKind, search_document};
