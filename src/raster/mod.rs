@@ -781,7 +781,7 @@ static PREVIEW_CACHE: OnceLock<Mutex<PreviewCacheStore>> = OnceLock::new();
 #[cfg(test)]
 thread_local! {
     static PREVIEW_CACHE: std::cell::RefCell<PreviewCacheStore> =
-        std::cell::RefCell::new(PreviewCacheStore::new());
+        const { std::cell::RefCell::new(PreviewCacheStore::new()) };
     static PREVIEW_HITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static PREVIEW_MISSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
