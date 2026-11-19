@@ -318,17 +318,16 @@ impl McpServer {
                 })
                 .collect(),
             "selection" => {
-                let ids: Vec<String> = arguments
-                    .get("ids")
-                    .and_then(Value::as_array)
-                    .map(|values| {
+                let ids: Vec<String> = arguments.get("ids").and_then(Value::as_array).map_or_else(
+                    || self.editor.selection.ids().to_vec(),
+                    |values| {
                         values
                             .iter()
                             .filter_map(Value::as_str)
                             .map(str::to_string)
                             .collect()
-                    })
-                    .unwrap_or_else(|| self.editor.selection.ids().to_vec());
+                    },
+                );
                 ids.iter()
                     .filter_map(|id| self.editor.document.object(id))
                     .collect()

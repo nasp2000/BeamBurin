@@ -419,7 +419,6 @@ mod tests {
     use super::*;
     use crate::document::Style;
     use crate::document::model::{Object, Shape};
-    use crate::geometry::Transform2;
 
     fn document_with_rect(fill: Option<&str>, stroke: bool) -> Document {
         let mut document = Document {
