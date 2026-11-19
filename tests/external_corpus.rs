@@ -45,26 +45,43 @@ fn root() -> PathBuf {
 fn minimum_objects(name: &str) -> Option<usize> {
     Some(match name {
         "myst-guy.hpgl" | "ocs-lwpolyline.dxf" | "text-on-path.svg" | "hpgl-pd-pa.hpgl"
-        | "hpgl-scaling.plt" => 1,
-        "eagle.hpgl" | "minimal-r12.dxf" | "r2018-hatch.dxf" | "mask-clip.svg"
-        | "vector-only.pdf" => 2,
-        "hatch-in-fill.dxf" => 3,
+        | "hpgl-scaling.plt" | "spline_qcad.dxf" => 1,
+        "eagle.hpgl"
+        | "minimal-r12.dxf"
+        | "r2018-hatch.dxf"
+        | "mask-clip.svg"
+        | "vector-only.pdf"
+        | "leader-mleader.dxf"
+        | "resvg-clip-path-on-child.svg"
+        | "resvg-color-simple.svg"
+        | "Type3WordSpacing.pdf" => 2,
+        "hatch-in-fill.dxf"
+        | "Embedded_font.pdf"
+        | "XiaoBiaoSong.pdf"
+        | "resvg-circle-simple.svg" => 3,
         "r2000-blocks.dxf" => 4,
-        "stroke-mask.svg" => 5,
-        "viewport-frozen-layers.dxf" => 7,
+        "stroke-mask.svg" | "mtext_columns_R2007.dxf" => 5,
+        "viewport-frozen-layers.dxf" | "LWPOLYLINE-OCS.dxf" => 7,
         "Wikipedia_wordmark.svg" | "pattern-units.svg" => 10,
+        "mtext-ocs-reduced.dxf" | "ZapfDingbats.pdf" => 6,
+        "ocs2wcs3.dxf" => 8,
+        "hatches_2.dxf" => 9,
         "mtext-inline.dxf" => 12,
         "annotation-stamp.pdf" | "svg-logo.svg" | "text-viewports.dxf" => 18,
-        "symbols-labels.svg" => 22,
+        "symbols-labels.svg" | "VP4.dxf" => 22,
+        "hp.hpgl" => 25,
         "oshw-logo.hpgl" => 26,
         "dimension-in-blocks.dxf" => 28,
         "wipeout-random.dxf" => 30,
+        "ocs2wcs1.dxf" => 32,
         "ocs2wcs2.dxf" => 40,
         "s2.pdf" => 41,
+        "xclip.dxf" => 45,
         "uncommon.dxf" => 47,
+        "valid_lineweights.dxf" => 50,
         "thuluth.pdf" => 51,
         "columns-r2018.dxf" => 52,
-        "caret-encoding.dxf" => 60,
+        "caret-encoding.dxf" | "tektronix.hpgl" => 60,
         "columns-r2007.dxf" => 67,
         "form-160f.pdf" => 103,
         "escher-lizard.hpgl" => 127,
@@ -74,16 +91,19 @@ fn minimum_objects(name: &str) -> Option<usize> {
         "wipeout-door.dxf" => 278,
         "man-of-war.hpgl" => 296,
         "text-oblique.dxf" => 317,
+        "space-shuttle.hpgl" => 226,
         "stacked-shx.dxf" | "stacked-text.dxf" => 439,
         "bricscad-insert.dxf" => 450,
         "world-map.hpgl" => 480,
         "pattern-019.svg" => 509,
+        "resvg-gradient-default.svg" => 66,
         "text-mirror.dxf" => 672,
         "text-fonts.dxf" => 1344,
         "Cassini.hpgl" => 1400,
         "tracemonkey.pdf" => 1546,
         "world-map.svg" => 2338,
         "rca-pattern.svg" => 4773,
+        "DSN-antenna.hpgl" => 2736,
         _ => return None,
     })
 }
@@ -215,6 +235,14 @@ fn assert_importable(entry: &Entry) {
 
 #[test]
 fn the_corpus_manifest_is_well_formed() {
+    let manifest = std::fs::read_to_string(root().join("assets/external/corpus.tsv"))
+        .expect("read external corpus manifest");
+    assert!(
+        manifest
+            .lines()
+            .any(|line| line.trim() == "# manifest-version: 3"),
+        "the manifest must declare version 3"
+    );
     let entries = entries();
     assert!(
         entries.len() >= 15,

@@ -20,6 +20,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "assets/external/corpus.tsv"
+MANIFEST_VERSION = 3
 EXTERNAL = ROOT / "assets/external/files"
 FIXTURES = ROOT / "tests/fixtures/corpus"
 
@@ -69,7 +70,10 @@ def fail(messages: list[str], text: str) -> None:
 
 def load(messages: list[str]) -> list[Entry]:
     entries: list[Entry] = []
-    for number, line in enumerate(MANIFEST.read_text(encoding="utf-8").splitlines(), start=1):
+    text = MANIFEST.read_text(encoding="utf-8")
+    if f"# manifest-version: {MANIFEST_VERSION}" not in text.splitlines():
+        fail(messages, f"the manifest must declare # manifest-version: {MANIFEST_VERSION}")
+    for number, line in enumerate(text.splitlines(), start=1):
         if not line or line.startswith("#"):
             continue
         fields = line.split("\t")
@@ -190,7 +194,7 @@ def main() -> int:
     present = sum(1 for entry in remote if entry.path.is_file())
     print(
         "corpus-manifest: ok "
-        f"({len(entries)} entries: {len(local)} local, {len(remote)} remote; "
+        f"(v{MANIFEST_VERSION}: {len(entries)} entries: {len(local)} local, {len(remote)} remote; "
         f"{present} remote file(s) present; {local_bytes} local bytes)"
     )
     return 0
