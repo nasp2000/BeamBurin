@@ -15,6 +15,8 @@ use crate::geometry::Point2;
 /// Raster output settings (§14.3).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PngOptions {
+    /// Render vectors, fills and text black and images in grayscale.
+    pub monochrome: bool,
     /// Output resolution in dots per inch.
     pub dpi: f64,
     /// Transparent background instead of white.
@@ -49,6 +51,7 @@ pub type PngArea = Area;
 impl Default for PngOptions {
     fn default() -> Self {
         Self {
+            monochrome: false,
             dpi: 96.0,
             transparent: false,
             width_px: None,
@@ -394,7 +397,14 @@ pub fn render_rgba_cancellable(
                     .filter(|points| points.len() >= 3)
                     .collect()
             };
-            draw_object(&mut canvas, object, (lr, lg, lb), &holes, &mut warnings);
+            draw_object(
+                &mut canvas,
+                object,
+                (lr, lg, lb),
+                &holes,
+                &mut warnings,
+                options.monochrome,
+            );
         }
     }
     #[allow(clippy::cast_possible_truncation)]
@@ -411,19 +421,24 @@ fn draw_object(
     layer_rgb: (u8, u8, u8),
     holes: &[Vec<Point2>],
     warnings: &mut Vec<String>,
+    monochrome: bool,
 ) {
     let stroke_fallback = [layer_rgb.0, layer_rgb.1, layer_rgb.2];
-    let stroke = object
+    let mut stroke = object
         .style
         .stroke
         .as_deref()
         .and_then(crate::color::parse_hex_color)
         .map_or(stroke_fallback, |(r, g, b)| [r, g, b]);
-    let fill = object
+    let mut fill = object
         .style
         .fill
         .as_deref()
         .and_then(crate::color::parse_hex_color);
+    if monochrome {
+        stroke = [0, 0, 0];
+        fill = fill.map(|_| (0, 0, 0));
+    }
 
     match &object.shape {
         Shape::Text(text) => {
@@ -492,7 +507,18 @@ fn draw_object(
                     let height = ((y1 - y0).abs().round() as u32).max(1);
                     let resized =
                         source.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
-                    let rgba = resized.to_rgba8();
+                    let mut rgba = resized.to_rgba8();
+                    if monochrome {
+                        for pixel in rgba.pixels_mut() {
+                            let [red, green, blue, alpha] = pixel.0;
+                            #[allow(clippy::cast_possible_truncation)]
+                            let luminance = (0.299 * f64::from(red)
+                                + 0.587 * f64::from(green)
+                                + 0.114 * f64::from(blue))
+                            .round() as u8;
+                            pixel.0 = [luminance, luminance, luminance, alpha];
+                        }
+                    }
                     #[allow(clippy::cast_possible_truncation)]
                     let start_x = x0.round() as i64;
                     #[allow(clippy::cast_possible_truncation)]
@@ -593,6 +619,7 @@ mod tests {
     fn filled_rectangle_covers_the_page() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: false,
             width_px: None,
@@ -648,6 +675,7 @@ mod tests {
         document.add_object(hole);
 
         let options = PngOptions {
+            monochrome: false,
             dpi: 25.4,
             transparent: false,
             width_px: None,
@@ -672,6 +700,7 @@ mod tests {
     fn transparent_background_keeps_alpha_zero() {
         let document = document_with_rect(None, false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -689,6 +718,7 @@ mod tests {
     fn explicit_dimensions_set_the_output_size() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: Some(20),
@@ -716,6 +746,7 @@ mod tests {
             ..Document::default()
         };
         let options = PngOptions {
+            monochrome: false,
             dpi: 96.0,
             transparent: false,
             width_px: None,
@@ -741,6 +772,7 @@ mod tests {
             ..Document::default()
         };
         let options = PngOptions {
+            monochrome: false,
             dpi: 96.0,
             transparent: false,
             width_px: Some(476),
@@ -761,6 +793,7 @@ mod tests {
     fn one_explicit_side_keeps_the_aspect_ratio() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: Some(20),
@@ -782,6 +815,7 @@ mod tests {
     fn a_zero_explicit_size_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: Some(0),
@@ -799,6 +833,7 @@ mod tests {
     fn a_margin_adds_blank_space_around_the_page() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 25.4,
             transparent: true,
             width_px: None,
@@ -820,6 +855,7 @@ mod tests {
     fn an_offset_moves_the_region() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 25.4,
             transparent: true,
             width_px: None,
@@ -839,6 +875,7 @@ mod tests {
     fn a_non_finite_offset_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: false,
             width_px: None,
@@ -856,6 +893,7 @@ mod tests {
     fn a_negative_margin_is_rejected() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: false,
             width_px: None,
@@ -874,6 +912,7 @@ mod tests {
         let mut document = document_with_rect(Some("#000000"), false);
         document.layers[0].visible = false;
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -891,6 +930,7 @@ mod tests {
     fn stroke_is_drawn_without_fill() {
         let document = document_with_rect(None, true);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -909,6 +949,7 @@ mod tests {
     fn invalid_options_are_rejected() {
         let document = Document::default();
         let options = PngOptions {
+            monochrome: false,
             dpi: 0.0,
             transparent: false,
             width_px: None,
@@ -926,6 +967,7 @@ mod tests {
         let mut document = document_with_rect(Some("#ff0000"), false);
         document.objects[0].transform = Transform2::translate(5.0, 0.0);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -945,6 +987,7 @@ mod tests {
     fn an_area_renders_only_that_region() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -975,6 +1018,7 @@ mod tests {
         };
         document.objects[0].transform = Transform2::translate(5.0, 5.0);
         let inside = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -992,6 +1036,7 @@ mod tests {
         let (pixels, ..) = render_rgba(&document, &inside).unwrap();
         assert_eq!(&pixels[0..4], &[255, 0, 0, 255]);
         let outside = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: true,
             width_px: None,
@@ -1014,6 +1059,7 @@ mod tests {
     fn an_area_outside_the_page_is_refused() {
         let document = document_with_rect(Some("#ff0000"), false);
         let options = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: false,
             width_px: None,
@@ -1031,6 +1077,7 @@ mod tests {
         let error = render_rgba(&document, &options).unwrap_err();
         assert!(error.to_string().contains("inside the page"), "{error}");
         let empty = PngOptions {
+            monochrome: false,
             dpi: 10.0,
             transparent: false,
             width_px: None,
@@ -1144,6 +1191,7 @@ mod tests {
         for (dpi, expected_width, expected_height) in [(96.0, 794u32, 1123u32), (300.0, 2480, 3508)]
         {
             let options = PngOptions {
+                monochrome: false,
                 dpi,
                 transparent: false,
                 width_px: None,

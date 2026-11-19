@@ -236,6 +236,7 @@ pub fn run(cli: Cli) -> Result<()> {
         Some(Commands::ExportPng { input, output, dpi }) => {
             let document = open_document(&input)?;
             let options = crate::export::PngOptions {
+                monochrome: false,
                 dpi,
                 transparent: false,
                 width_px: None,

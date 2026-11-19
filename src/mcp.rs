@@ -234,6 +234,7 @@ impl McpServer {
                     | "export_svg"
                     | "export_dxf"
                     | "export_gcode"
+                    | "export_print"
                     | "start_job"
             ) {
                 return Err(BeamError::InvalidInput(format!(
@@ -277,6 +278,87 @@ impl McpServer {
             "ok": true,
             "applied": steps.len(),
             "results": results,
+        }))
+    }
+
+    /// Resolve the optional `area` argument of `export_print`.
+    fn print_area(&self, arguments: &Value) -> Result<Option<crate::export::Area>> {
+        let Some(value) = arguments.get("area") else {
+            return Ok(None);
+        };
+        if value.is_object() {
+            return Ok(Some(crate::export::Area {
+                x: number(value, "x").ok_or_else(|| missing("x"))?,
+                y: number(value, "y").ok_or_else(|| missing("y"))?,
+                width: number(value, "width").ok_or_else(|| missing("width"))?,
+                height: number(value, "height").ok_or_else(|| missing("height"))?,
+            }));
+        }
+        let name = value.as_str().ok_or_else(|| {
+            BeamError::InvalidInput(
+                "area must be page, drawing, selection or a rectangle".to_string(),
+            )
+        })?;
+        if name == "page" {
+            return Ok(None);
+        }
+        let objects: Vec<&crate::document::Object> = match name {
+            "drawing" => self
+                .editor
+                .document
+                .objects
+                .iter()
+                .filter(|object| {
+                    object.visible
+                        && self
+                            .editor
+                            .document
+                            .layer(&object.layer_id)
+                            .is_some_and(|layer| layer.visible)
+                })
+                .collect(),
+            "selection" => {
+                let ids: Vec<String> = arguments
+                    .get("ids")
+                    .and_then(Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_else(|| self.editor.selection.ids().to_vec());
+                ids.iter()
+                    .filter_map(|id| self.editor.document.object(id))
+                    .collect()
+            }
+            other => {
+                return Err(BeamError::InvalidInput(format!(
+                    "unknown print area '{other}'; use page, drawing, selection or a rectangle"
+                )));
+            }
+        };
+        let mut min = crate::geometry::Point2::new(f64::INFINITY, f64::INFINITY);
+        let mut max = crate::geometry::Point2::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for object in objects {
+            if let Some((low, high)) = object.bounds() {
+                min.x = min.x.min(low.x);
+                min.y = min.y.min(low.y);
+                max.x = max.x.max(high.x);
+                max.y = max.y.max(high.y);
+            }
+        }
+        if !min.x.is_finite() || !min.y.is_finite() {
+            return Err(BeamError::InvalidInput(
+                "the print area has no content".to_string(),
+            ));
+        }
+        Ok(Some(crate::export::Area {
+            x: min.x,
+            y: min.y,
+            width: max.x - min.x,
+            height: max.y - min.y,
         }))
     }
 
@@ -1613,6 +1695,102 @@ impl McpServer {
                     "warnings": report.warnings
                 }))
             }
+            "export_print" => {
+                let path = self.required_path(arguments, "path")?;
+                let colour = match string(arguments, "colour").as_deref() {
+                    Some("colour" | "color" | "keep" | "colours" | "colors") => {
+                        crate::print::PrintColour::KeepColours
+                    }
+                    _ => crate::print::PrintColour::BlackOnly,
+                };
+                let paper = match arguments.get("paper") {
+                    Some(Value::String(name)) => match name.to_ascii_lowercase().as_str() {
+                        "letter" => crate::print::Paper::Letter,
+                        "a3" => crate::print::Paper::A3,
+                        "legal" => crate::print::Paper::Legal,
+                        "a4" => crate::print::Paper::A4,
+                        other => {
+                            return Err(BeamError::InvalidInput(format!(
+                                "unknown paper '{other}'; use a4, letter, a3, legal or a size"
+                            )));
+                        }
+                    },
+                    Some(value) if value.is_object() => crate::print::Paper::Custom {
+                        width_mm: number(value, "width_mm").ok_or_else(|| missing("width_mm"))?,
+                        height_mm: number(value, "height_mm")
+                            .ok_or_else(|| missing("height_mm"))?,
+                    },
+                    Some(_) => {
+                        return Err(BeamError::InvalidInput(
+                            "paper must be a name or a width/height object".to_string(),
+                        ));
+                    }
+                    None => crate::print::Paper::A4,
+                };
+                let scale = match arguments.get("scale") {
+                    Some(Value::String(name)) if name == "fit" => crate::print::PrintScale::Fit,
+                    Some(Value::Number(value)) => {
+                        crate::print::PrintScale::Percent(value.as_f64().unwrap_or(100.0))
+                    }
+                    Some(_) => {
+                        return Err(BeamError::InvalidInput(
+                            "scale must be a percentage or 'fit'".to_string(),
+                        ));
+                    }
+                    None => crate::print::PrintScale::Percent(100.0),
+                };
+                let margins = match arguments.get("margins") {
+                    Some(Value::Array(values)) if values.len() == 4 => {
+                        let mut margins = [0.0; 4];
+                        for (slot, value) in margins.iter_mut().zip(values) {
+                            *slot = value.as_f64().ok_or_else(|| missing("margins"))?;
+                        }
+                        margins
+                    }
+                    Some(Value::Number(value)) => {
+                        let margin = value.as_f64().unwrap_or(0.0);
+                        [margin; 4]
+                    }
+                    Some(_) => {
+                        return Err(BeamError::InvalidInput(
+                            "margins must be a number or four numbers".to_string(),
+                        ));
+                    }
+                    None => [5.0; 4],
+                };
+                let dpi = arguments
+                    .get("dpi")
+                    .and_then(Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .unwrap_or(300);
+                let options = crate::print::PrintOptions {
+                    colour,
+                    area: self.print_area(arguments)?,
+                    paper,
+                    landscape: arguments
+                        .get("landscape")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    scale,
+                    margins_mm: margins,
+                    dpi,
+                    include_marks: arguments
+                        .get("marks")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
+                };
+                let raster = crate::print::render_print_raster(&self.editor.document, &options)?;
+                crate::print::write_print_pdf(&raster, &options, &path)?;
+                Ok(json!({
+                    "path": path.display().to_string(),
+                    "pages": 1,
+                    "dpi": raster.dpi,
+                    "width_px": raster.width_px,
+                    "height_px": raster.height_px,
+                    "scale": raster.scale,
+                    "warnings": raster.warnings
+                }))
+            }
             "check_job" => {
                 let report = if arguments.get("path").is_some() {
                     let path = self.required_path(arguments, "path")?;
@@ -2669,6 +2847,44 @@ fn tool_definitions() -> Vec<Value> {
             json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}),
         ),
         tool_with(
+            "export_print",
+            "Write a one-page print PDF with the chosen paper, scale and colour mode.",
+            json!({"type": "object", "properties": {
+                "path": {"type": "string"},
+                "colour": {"type": "string", "enum": ["black", "colour"]},
+                "paper": {
+                    "oneOf": [
+                        {"type": "string", "enum": ["a4", "letter", "a3", "legal"]},
+                        {"type": "object", "properties": {
+                            "width_mm": {"type": "number"},
+                            "height_mm": {"type": "number"}
+                        }, "required": ["width_mm", "height_mm"]}
+                    ]
+                },
+                "landscape": {"type": "boolean"},
+                "scale": {"oneOf": [
+                    {"type": "number"},
+                    {"type": "string", "enum": ["fit"]}
+                ]},
+                "margins": {"oneOf": [
+                    {"type": "number"},
+                    {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}
+                ]},
+                "dpi": {"type": "integer", "enum": [150, 300, 600]},
+                "area": {"oneOf": [
+                    {"type": "string", "enum": ["page", "drawing", "selection"]},
+                    {"type": "object", "properties": {
+                        "x": {"type": "number"},
+                        "y": {"type": "number"},
+                        "width": {"type": "number"},
+                        "height": {"type": "number"}
+                    }, "required": ["x", "y", "width", "height"]}
+                ]},
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "marks": {"type": "boolean"}
+            }, "required": ["path"]}),
+        ),
+        tool_with(
             "start_job",
             "Render an export in the background and return a job id; poll it with job_status.",
             json!({"type": "object", "properties": {
@@ -3505,6 +3721,44 @@ mod tests {
             json!({"tool": "export_svg", "arguments": {}}),
         );
         assert!(no_path.get("error").is_some());
+    }
+
+    #[test]
+    fn export_print_writes_a_pdf_and_is_refused_read_only() {
+        let mut server = McpServer::new();
+        call(
+            &mut server,
+            "add_rectangle",
+            json!({"width": 10.0, "height": 5.0}),
+        );
+        let path =
+            std::env::temp_dir().join(format!("beamburin_mcp_print_{}.pdf", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let printed = call(
+            &mut server,
+            "export_print",
+            json!({
+                "path": path.to_string_lossy(),
+                "area": "drawing",
+                "margins": 0.0,
+                "dpi": 300
+            }),
+        );
+        assert!(printed.get("error").is_none(), "{printed}");
+        assert!(path.is_file());
+        assert_eq!(printed["result"]["pages"], 1);
+        assert_eq!(printed["result"]["dpi"], 300);
+        assert_eq!(server.editor.document.objects.len(), 1);
+        let _ = std::fs::remove_file(&path);
+
+        server.set_policy(crate::policy::Policy::new(None, true).unwrap());
+        let refused = call(
+            &mut server,
+            "export_print",
+            json!({"path": path.to_string_lossy()}),
+        );
+        assert!(refused.get("error").is_some(), "{refused}");
+        assert!(!path.exists());
     }
 
     #[test]

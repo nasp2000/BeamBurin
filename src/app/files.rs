@@ -114,6 +114,7 @@ impl BeamBurinApp {
             None
         };
         let png_options = crate::export::PngOptions {
+            monochrome: false,
             dpi: self.export_image_dpi,
             transparent: self.export_image_transparent,
             area: export_area,
