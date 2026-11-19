@@ -619,6 +619,130 @@ impl Path {
         Some((left, right))
     }
 
+    /// Ensure a closed path has an explicit segment back to its first point.
+    pub fn close_explicitly(&mut self) {
+        if !self.closed || self.segments.is_empty() {
+            return;
+        }
+        let Some(start) = self.start_point() else {
+            return;
+        };
+        let Some(end) = self.last_point() else {
+            return;
+        };
+        if (start.x - end.x).abs() > 1e-9 || (start.y - end.y).abs() > 1e-9 {
+            self.segments.push(Segment::Line {
+                from: end,
+                to: start,
+            });
+        }
+    }
+
+    /// Rotate the start of a closed path to `t` on `segment`.
+    ///
+    /// The geometry is unchanged; at most one new node is created, and a cut at
+    /// an existing node reuses it. Returns false when the point is already the
+    /// start or the path is not closed.
+    pub fn rotate_start(&mut self, segment: usize, t: f64) -> bool {
+        if !self.closed || self.segments.is_empty() || segment >= self.segments.len() {
+            return false;
+        }
+        if !t.is_finite() {
+            return false;
+        }
+        let t = t.clamp(0.0, 1.0);
+        self.close_explicitly();
+        let count = self.segments.len();
+        let epsilon = 1e-9;
+        let node = if t <= epsilon {
+            segment
+        } else if t >= 1.0 - epsilon {
+            (segment + 1) % count
+        } else {
+            let (first, second) = match split_segment(self.segments[segment], t) {
+                Some(parts) => parts,
+                None => return false,
+            };
+            let mut rotated = Vec::with_capacity(count + 1);
+            rotated.push(second);
+            rotated.extend(self.segments[segment + 1..].iter().copied());
+            rotated.extend(self.segments[..segment].iter().copied());
+            rotated.push(first);
+            self.segments = rotated;
+            return true;
+        };
+        if node == 0 {
+            return false;
+        }
+        self.segments.rotate_left(node);
+        true
+    }
+
+    /// The canonical start: the lowest node, then the leftmost one.
+    pub fn default_start_point(&self) -> Option<Point2> {
+        if self.closed {
+            self.nodes()
+                .iter()
+                .map(|node| node.point)
+                .min_by(|left, right| {
+                    left.y
+                        .partial_cmp(&right.y)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(
+                            left.x
+                                .partial_cmp(&right.x)
+                                .unwrap_or(std::cmp::Ordering::Equal),
+                        )
+                })
+        } else {
+            let start = self.start_point()?;
+            let end = self.last_point()?;
+            Some(if (end.y, end.x) < (start.y, start.x) {
+                end
+            } else {
+                start
+            })
+        }
+    }
+
+    /// Rotate to the canonical start. Returns false when it is already there.
+    pub fn rotate_to_default(&mut self) -> bool {
+        if !self.closed {
+            let Some(start) = self.start_point() else {
+                return false;
+            };
+            let Some(default) = self.default_start_point() else {
+                return false;
+            };
+            if (start.x - default.x).abs() < 1e-9 && (start.y - default.y).abs() < 1e-9 {
+                return false;
+            }
+            self.reverse();
+            return true;
+        }
+        self.close_explicitly();
+        let Some(default) = self.default_start_point() else {
+            return false;
+        };
+        let Some(start) = self.start_point() else {
+            return false;
+        };
+        if (start.x - default.x).abs() < 1e-9 && (start.y - default.y).abs() < 1e-9 {
+            return false;
+        }
+        let Some(index) = self.segments.iter().position(|segment| {
+            let from = match segment {
+                Segment::Line { from, .. } => *from,
+                Segment::Cubic(cubic) => cubic.p0,
+            };
+            (from.x - default.x).abs() < 1e-9 && (from.y - default.y).abs() < 1e-9
+        }) else {
+            return false;
+        };
+        self.segments.rotate_left(index);
+        true
+    }
+
     /// Start point of the path, if any.
     pub fn start_point(&self) -> Option<Point2> {
         self.segments.first().map(|s| match s {
@@ -1256,5 +1380,64 @@ mod split_tests {
         assert!(second.is_none());
         assert!(!open.closed);
         assert_eq!(open.to_points().first(), open.to_points().last());
+    }
+}
+
+#[cfg(test)]
+mod start_tests {
+    use super::*;
+
+    fn square() -> Path {
+        Path::from_points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], true)
+    }
+
+    #[test]
+    fn rotate_start_on_a_line_segment() {
+        let mut path = square();
+        assert!(path.rotate_start(0, 0.5));
+        assert!(path.closed);
+        let start = path.start_point().unwrap();
+        assert!((start.x - 5.0).abs() < 1e-9 && start.y.abs() < 1e-9);
+        assert_eq!(path.to_points().first(), path.to_points().last());
+    }
+
+    #[test]
+    fn rotate_start_keeps_the_geometry_length() {
+        let mut path = square();
+        let before = path.length();
+        path.rotate_start(1, 0.5);
+        assert!((path.length() - before).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rotate_start_at_the_current_start_is_a_no_op() {
+        let mut path = square();
+        assert!(!path.rotate_start(0, 0.0));
+    }
+
+    #[test]
+    fn rotate_start_rejects_open_paths() {
+        let mut path = Path::from_points(&[(0.0, 0.0), (10.0, 0.0)], false);
+        assert!(!path.rotate_start(0, 0.5));
+    }
+
+    #[test]
+    fn default_start_is_lowest_then_leftmost() {
+        let path = Path::from_points(
+            &[(10.0, 0.0), (20.0, 0.0), (20.0, 10.0), (10.0, 10.0)],
+            true,
+        );
+        let default = path.default_start_point().unwrap();
+        assert!((default.x - 10.0).abs() < 1e-9 && default.y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn reset_to_default_is_idempotent() {
+        let mut path = square();
+        path.rotate_start(2, 0.5);
+        assert!(path.rotate_to_default());
+        let once = path.start_point().unwrap();
+        assert!(!path.rotate_to_default());
+        assert_eq!(path.start_point().unwrap(), once);
     }
 }

@@ -1007,6 +1007,32 @@ impl McpServer {
                     .collect();
                 Ok(json!({"arrays": arrays, "count": arrays.len()}))
             }
+            "set_start_point" => {
+                let id = string(arguments, "id").ok_or_else(|| missing("id"))?;
+                let x = number(arguments, "x").ok_or_else(|| missing("x"))?;
+                let y = number(arguments, "y").ok_or_else(|| missing("y"))?;
+                let start = self
+                    .editor
+                    .set_start_point(&id, crate::geometry::Point2::new(x, y))
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"start": [start.x, start.y]}))
+            }
+            "reverse_path" => {
+                self.select_scope(arguments)?;
+                let count = self
+                    .editor
+                    .reverse_paths()
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"reversed": count}))
+            }
+            "reset_start_point" => {
+                self.select_scope(arguments)?;
+                let count = self
+                    .editor
+                    .reset_start_points()
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({"reset": count}))
+            }
             "cut_shapes" => {
                 self.select_scope(arguments)?;
                 let cutter = string(arguments, "cutter").ok_or_else(|| missing("cutter"))?;
@@ -1981,6 +2007,29 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_x": {"type": "number"},
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
+            }}),
+        ),
+        tool_with(
+            "set_start_point",
+            "Set a path's start at the point closest to x and y.",
+            json!({"type": "object", "properties": {
+                "id": {"type": "string"},
+                "x": {"type": "number"},
+                "y": {"type": "number"}
+            }, "required": ["id", "x", "y"]}),
+        ),
+        tool_with(
+            "reverse_path",
+            "Reverse the selected paths.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}}
+            }}),
+        ),
+        tool_with(
+            "reset_start_point",
+            "Reset the selected paths to the canonical start.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}}
             }}),
         ),
         tool_with(

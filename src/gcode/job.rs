@@ -1092,7 +1092,18 @@ fn kerfed(points: &[Point2], kerf_mm: f64) -> Vec<Point2> {
         return points.to_vec();
     }
     let polygon: Vec<(f64, f64)> = points.iter().map(|point| (point.x, point.y)).collect();
-    let offset = crate::geometry::offset::offset_polygon_miter(&polygon, -kerf_mm / 2.0);
+    let ccw = crate::geometry::boolean::polygon_area(&polygon) >= 0.0;
+    let work = if ccw {
+        polygon.clone()
+    } else {
+        let mut reversed = polygon.clone();
+        reversed.reverse();
+        reversed
+    };
+    let mut offset = crate::geometry::offset::offset_polygon_miter(&work, -kerf_mm / 2.0);
+    if !ccw {
+        offset.reverse();
+    }
     if offset.len() < 3 {
         points.to_vec()
     } else {
@@ -3415,5 +3426,52 @@ mod tests {
         assert_eq!(report.lines, text.lines().count());
         assert!(!path.with_extension("nc.tmp").exists());
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod kerf_direction_tests {
+    use super::*;
+
+    fn square(clockwise: bool) -> Vec<Point2> {
+        let points = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(10.0, 0.0),
+            Point2::new(10.0, 10.0),
+            Point2::new(0.0, 10.0),
+        ];
+        if clockwise {
+            points.into_iter().rev().collect()
+        } else {
+            points
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn sorted(points: &[Point2]) -> Vec<(i64, i64)> {
+        let mut values: Vec<(i64, i64)> = points
+            .iter()
+            .map(|point| {
+                (
+                    (point.x * 1000.0).round() as i64,
+                    (point.y * 1000.0).round() as i64,
+                )
+            })
+            .collect();
+        values.sort_unstable();
+        values
+    }
+
+    #[test]
+    fn kerf_stays_inward_in_both_directions() {
+        let counter_clockwise = kerfed(&square(false), 1.0);
+        let clockwise = kerfed(&square(true), 1.0);
+        assert_eq!(counter_clockwise.len(), 4);
+        assert_eq!(clockwise.len(), 4);
+        assert_eq!(sorted(&counter_clockwise), sorted(&clockwise));
+        for point in counter_clockwise {
+            assert!(point.x > 0.0 && point.x < 10.0);
+            assert!(point.y > 0.0 && point.y < 10.0);
+        }
     }
 }

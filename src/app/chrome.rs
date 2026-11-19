@@ -1025,6 +1025,31 @@ impl BeamBurinApp {
                         self.apply_close_paths();
                         ui.close();
                     }
+                    if ui
+                        .add_enabled(enabled, icons::widget(ui, Icon::Repeat, "Reverse path"))
+                        .clicked()
+                    {
+                        match self.editor.reverse_paths() {
+                            Ok(count) => self.status = format!("Reversed {count} path(s)"),
+                            Err(error) => self.status = error,
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            icons::widget(ui, Icon::Recover, "Reset start point"),
+                        )
+                        .clicked()
+                    {
+                        match self.editor.reset_start_points() {
+                            Ok(count) => {
+                                self.status = format!("Reset {count} start point(s)");
+                            }
+                            Err(error) => self.status = error,
+                        }
+                        ui.close();
+                    }
                     ui.separator();
                     if self.editor.is_editing_nodes() {
                         if icons::button(ui, Icon::Nodes, "Exit node editing").clicked() {

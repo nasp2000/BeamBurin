@@ -202,6 +202,10 @@ fn object_json(document: &Document, object: &Object) -> Value {
         "visible": object.visible,
         "locked": object.locked,
         "closed": path.closed,
+        "start_point": path.start_point().map(|start| json!({
+            "x": round(start.x),
+            "y": round(start.y),
+        })),
         "length_mm": round(path.length()),
         "area_mm2": round(path_area(&path)),
         "bounds": object.bounds().map(bounds_json),
