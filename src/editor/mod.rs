@@ -10,6 +10,7 @@ pub mod nodes;
 pub mod renderer;
 pub mod search;
 pub mod selection;
+pub mod shape_maker;
 pub mod snapping;
 pub mod start_point;
 pub mod state;

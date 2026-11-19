@@ -1075,6 +1075,18 @@ impl McpServer {
                     "converted_text": report.converted_text
                 }))
             }
+            "shape_maker" => {
+                self.select_scope(arguments)?;
+                let report = self
+                    .editor
+                    .shape_maker(number(arguments, "tolerance"))
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "shapes": report.shapes,
+                    "holes": report.holes,
+                    "ignored": report.open_chains_ignored
+                }))
+            }
             "trace_image" => {
                 let mode = match string(arguments, "mode").as_deref().unwrap_or("outline") {
                     "centerline" => crate::trace::TraceMode::Centerline,
@@ -2258,6 +2270,14 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_x": {"type": "number"},
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
+            }}),
+        ),
+        tool_with(
+            "shape_maker",
+            "Close selected paths within the join tolerance and union them into new shapes.",
+            json!({"type": "object", "properties": {
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "tolerance": {"type": "number"}
             }}),
         ),
         tool_with(
