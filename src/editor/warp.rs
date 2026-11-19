@@ -117,7 +117,7 @@ impl EditorState {
         Ok((min, max))
     }
 
-    fn convert_texts(&mut self, texts: Vec<(String, Vec<Path>)>) -> Vec<String> {
+    fn convert_warp_texts(&mut self, texts: Vec<(String, Vec<Path>)>) -> Vec<String> {
         let mut outlines = Vec::new();
         for (id, paths) in texts {
             let Some(object) = self.document.object(&id).cloned() else {
@@ -149,7 +149,7 @@ impl EditorState {
         let (targets, texts) = self.warp_targets(ids)?;
         let converted = !texts.is_empty();
         self.record_action(action);
-        let outlines = self.convert_texts(texts);
+        let outlines = self.convert_warp_texts(texts);
         let mut targets = targets;
         targets.retain(|id| !outlines.contains(id));
         targets.extend(outlines.iter().cloned());
