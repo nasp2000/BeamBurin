@@ -1,0 +1,9 @@
+# CI profile for the partitioned test run.
+#
+# A failing test never stops the other shards, the log lists every failure at
+# the end, and a test that runs for more than two minutes is treated as a hang.
+[profile.default]
+fail-fast = false
+failure-output = "immediate-final"
+success-output = "never"
+slow-timeout = { period = "120s", terminate-after = 2 }
