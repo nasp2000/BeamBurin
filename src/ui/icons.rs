@@ -1620,7 +1620,7 @@ const TOOLTIPS: &[(&str, &str)] = &[
         "Properties panel (F10)",
         "Show or hide the properties panel",
     ),
-    ("About BeamBurin", "Version, scope and licence"),
+    ("About BeamBurin", "Version, build, scope, link and licence"),
     ("Cuts / Layers...", "Edit cuts, speeds, power and output"),
     ("Exact size", "Draw with an exact width and height"),
     ("Grid", "Snap or show the grid"),

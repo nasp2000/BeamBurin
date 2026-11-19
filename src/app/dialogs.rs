@@ -292,11 +292,17 @@ impl BeamBurinApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(ctx, |ui| {
+                    let about = crate::about::info();
                     ui.heading("BeamBurin");
-                    ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.label(format!("Version {}", about.version));
+                    ui.label(about.build_line());
                     ui.label("Vector drawing and laser job preparation.");
                     ui.label("This build prepares jobs only; it does not control machines.");
-                    ui.label("MIT or Apache-2.0 licensed.");
+                    ui.label(format!("{} licensed.", about.license));
+                    ui.hyperlink_to(about.repository, about.repository);
+                    if !crate::about::UPDATE_CHECK {
+                        ui.label("No automatic update check: updates are manual.");
+                    }
                     if ui
                         .button("Third-party licences")
                         .on_hover_text(crate::ui::icons::description("Third-party licences"))

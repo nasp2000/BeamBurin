@@ -641,6 +641,43 @@ fn every_top_level_menu_opens_with_its_main_entry() {
 }
 
 #[test]
+fn the_about_dialog_shows_version_build_and_link() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.get_by_label("Help").click_accesskit();
+    harness.run();
+    harness.get_by_label("About BeamBurin").click_accesskit();
+    harness.run();
+    assert!(harness.query_by_label("BeamBurin").is_some());
+    let version = format!("Version {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        harness.query_by_label(&version).is_some(),
+        "missing {version}"
+    );
+    let build = crate::about::info().build_line();
+    assert!(harness.query_by_label(&build).is_some(), "missing {build}");
+    assert!(
+        harness.query_by_label(crate::about::REPOSITORY).is_some(),
+        "missing the project link"
+    );
+    assert!(
+        harness
+            .query_by_label("No automatic update check: updates are manual.")
+            .is_some(),
+        "missing the update-check note"
+    );
+    assert!(
+        harness
+            .query_all_by_label("Check for Updates")
+            .next()
+            .is_none(),
+        "the About build must not offer an update check"
+    );
+}
+
+#[test]
 fn the_edit_menu_selects_the_open_shapes() {
     use egui_kittest::kittest::Queryable as _;
 

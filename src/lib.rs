@@ -6,6 +6,7 @@
 #![allow(clippy::return_self_not_must_use)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod about;
 pub mod app;
 pub mod assistant;
 pub mod barcode;
