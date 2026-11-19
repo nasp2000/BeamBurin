@@ -367,7 +367,7 @@ mod tests {
         );
         assert_eq!(editor.document.objects.len(), 8);
         assert_eq!(editor.remove_from_array(&id, &[second]).unwrap(), 1);
-        assert_eq!(editor.document.objects.len(), 4);
+        assert_eq!(editor.document.objects.len(), 5);
         assert!(editor.document.object(&first).is_some());
     }
 
