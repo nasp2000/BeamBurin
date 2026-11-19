@@ -98,29 +98,31 @@ impl EditorState {
             .array(id)
             .ok_or_else(|| format!("unknown array: {id}"))?
             .clone();
-        let mut added = 0;
+        let mut to_add: Vec<String> = Vec::new();
         for object_id in ids {
             let object = self
                 .document
                 .object(object_id)
                 .ok_or_else(|| format!("unknown object: {object_id}"))?;
+            if object.array_id.as_deref() == Some(id) {
+                continue;
+            }
             if object.array_id.is_some() {
                 return Err("A copy cannot be added to an array; flatten it first".to_string());
             }
-            if !spec.source_ids.iter().any(|source| source == object_id) {
-                added += 1;
+            if !spec.source_ids.iter().any(|source| source == object_id)
+                && !to_add.iter().any(|added| added == object_id)
+            {
+                to_add.push(object_id.clone());
             }
         }
-        if added == 0 {
+        if to_add.is_empty() {
             return Ok(0);
         }
+        let added = to_add.len();
         self.record_action("Add to array");
         if let Some(spec) = self.document.array_mut(id) {
-            for object_id in ids {
-                if !spec.source_ids.iter().any(|source| source == object_id) {
-                    spec.source_ids.push(object_id.clone());
-                }
-            }
+            spec.source_ids.extend(to_add);
         }
         self.document.expand_arrays();
         self.array_synced_revision = self.geometry_revision;

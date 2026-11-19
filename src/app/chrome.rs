@@ -112,6 +112,9 @@ impl BeamBurinApp {
             if self.editor.extend_path {
                 self.editor.cancel_path_extension();
                 self.status = "Path extension finished".to_string();
+            } else if self.editor.array_edit.is_some() {
+                self.editor.end_array_edit();
+                self.status = "Left array editing".to_string();
             } else {
                 if self.editor.is_editing_nodes() {
                     self.editor.end_node_edit();
