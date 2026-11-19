@@ -49,5 +49,6 @@ pub mod report;
 pub mod task;
 pub mod textfont;
 pub mod theme;
+pub mod trace;
 pub mod ui;
 pub mod vectorize;

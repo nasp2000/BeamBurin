@@ -1075,6 +1075,61 @@ impl McpServer {
                     "converted_text": report.converted_text
                 }))
             }
+            "trace_image" => {
+                let mode = match string(arguments, "mode").as_deref().unwrap_or("outline") {
+                    "centerline" => crate::trace::TraceMode::Centerline,
+                    _ => crate::trace::TraceMode::Outline,
+                };
+                let threshold =
+                    if let Some(value) = arguments.get("threshold").and_then(Value::as_u64) {
+                        crate::trace::ThresholdSource::Custom {
+                            value: u8::try_from(value).unwrap_or(128),
+                            invert: arguments
+                                .get("invert")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                        }
+                    } else {
+                        crate::trace::ThresholdSource::ImageSettings
+                    };
+                let options = crate::trace::TraceOptions {
+                    mode,
+                    threshold,
+                    transparency: arguments
+                        .get("transparency")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    tolerance_mm: number(arguments, "tolerance").unwrap_or(0.2),
+                    corner_degrees: number(arguments, "corner_degrees").unwrap_or(40.0),
+                    min_area_mm2: number(arguments, "min_area").unwrap_or(0.0),
+                };
+                let id = string(arguments, "id");
+                let path = string(arguments, "path").map(std::path::PathBuf::from);
+                if id.is_none() == path.is_none() {
+                    return Err(BeamError::InvalidInput(
+                        "trace_image needs exactly one of id or path".to_string(),
+                    ));
+                }
+                let delete = arguments
+                    .get("delete_source")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if delete && id.is_none() {
+                    return Err(BeamError::InvalidInput(
+                        "delete_source needs an image id".to_string(),
+                    ));
+                }
+                let report = self
+                    .editor
+                    .trace_image(id.as_deref(), path.as_deref(), &options, delete)
+                    .map_err(BeamError::InvalidInput)?;
+                Ok(json!({
+                    "objects": report.objects,
+                    "contours": report.contours,
+                    "holes": report.holes,
+                    "warnings": []
+                }))
+            }
             "warp_selection" => {
                 self.select_scope(arguments)?;
                 let points = point_list(arguments, "points")?;
@@ -2203,6 +2258,22 @@ fn tool_definitions() -> Vec<Value> {
                 "margin_x": {"type": "number"},
                 "margin_y": {"type": "number"},
                 "column_major": {"type": "boolean"}
+            }}),
+        ),
+        tool_with(
+            "trace_image",
+            "Trace one image from the document or a file into paths.",
+            json!({"type": "object", "properties": {
+                "id": {"type": "string"},
+                "path": {"type": "string"},
+                "mode": {"type": "string", "enum": ["outline", "centerline"]},
+                "threshold": {"type": "integer"},
+                "invert": {"type": "boolean"},
+                "transparency": {"type": "boolean"},
+                "tolerance": {"type": "number"},
+                "corner_degrees": {"type": "number"},
+                "min_area": {"type": "number"},
+                "delete_source": {"type": "boolean"}
             }}),
         ),
         tool_with(

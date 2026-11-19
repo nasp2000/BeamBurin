@@ -14,6 +14,7 @@ pub mod snapping;
 pub mod start_point;
 pub mod state;
 pub mod tools;
+pub mod trace;
 pub mod warp;
 
 pub use crate::document::arrays::{ArrayLayout, ArraySpec, Spacing};
