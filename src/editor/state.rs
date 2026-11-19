@@ -141,8 +141,6 @@ struct Outlined {
     contours: Vec<OutlineContour>,
 }
 
-/// One crossing between the outlines of two objects.
-#[derive(Debug, Clone, PartialEq)]
 /// What a paste added, plus the hole links it had to clear.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PasteReport {
@@ -150,6 +148,8 @@ pub struct PasteReport {
     pub cleared_holes: usize,
 }
 
+/// One crossing between the outlines of two objects.
+#[derive(Debug, Clone, PartialEq)]
 pub struct PathIntersection {
     pub first: String,
     pub second: String,
