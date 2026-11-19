@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use crate::document::{Document, Object, Shape};
+use crate::document::{Object, Shape};
 use crate::geometry::boolean::{
     BooleanOp, boolean_contours, point_in_polygon, polygon_area, split_polyline,
 };
@@ -62,6 +62,7 @@ impl EditorState {
     }
 
     /// Cut every selected target with one closed cutter, keeping the inside.
+    #[allow(clippy::too_many_lines)]
     pub fn cut_shapes(&mut self, cutter_id: Option<&str>) -> Result<CutReport, String> {
         let selected: Vec<String> = self.selection.ids().to_vec();
         let cutter_id = cutter_id
@@ -176,13 +177,7 @@ impl EditorState {
                 plans.insert(id.clone(), Vec::new());
                 continue;
             }
-            if !closed {
-                let mut objects = Vec::new();
-                for (index, piece) in pieces.iter().enumerate() {
-                    objects.push(piece_object(&target, piece, false, index, pieces.len()));
-                }
-                plans.insert(id.clone(), objects);
-            } else {
+            if closed {
                 let paths: Vec<Path> = pieces
                     .iter()
                     .map(|contour| Path::from_points(contour, true))
@@ -197,6 +192,12 @@ impl EditorState {
                         let parent_id = objects[*parent].id.clone();
                         objects[index].hole_of = Some(parent_id);
                     }
+                }
+                plans.insert(id.clone(), objects);
+            } else {
+                let mut objects = Vec::new();
+                for (index, piece) in pieces.iter().enumerate() {
+                    objects.push(piece_object(&target, piece, false, index, pieces.len()));
                 }
                 plans.insert(id.clone(), objects);
             }
@@ -383,8 +384,7 @@ fn nearest_segment(path: &Path, point: Point2) -> Option<(usize, f64)> {
     let mut best: Option<(usize, f64, f64)> = None;
     for (index, segment) in path.segments.iter().enumerate() {
         for step in 0..=64 {
-            #[allow(clippy::cast_precision_loss)]
-            let t = step as f64 / 64.0;
+            let t = f64::from(step) / 64.0;
             let at = match segment {
                 crate::geometry::path::Segment::Line { from, to } => {
                     Point2::new(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t)
@@ -403,7 +403,7 @@ fn nearest_segment(path: &Path, point: Point2) -> Option<(usize, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{Document, Object};
+    use crate::document::Document;
     use crate::geometry::BooleanOp;
 
     fn editor() -> EditorState {
@@ -468,7 +468,7 @@ mod tests {
     fn cut_is_one_undo_step() {
         let mut editor = editor();
         let target = rect(&mut editor, 0.0, 0.0, 40.0, 20.0);
-        let cutter = rect(&mut editor, 10.0, 0.0, 30.0, 20.0);
+        let cutter = rect(&mut editor, 10.0, -5.0, 30.0, 25.0);
         select(&mut editor, &[target, cutter]);
         editor.cut_shapes(None).unwrap();
         assert_eq!(editor.document.objects.len(), 1);
