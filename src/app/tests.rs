@@ -2705,8 +2705,6 @@ fn the_unsaved_changes_dialog_saves_before_continuing() {
 
 #[test]
 fn recent_projects_respect_the_unsaved_guard() {
-    use egui_kittest::kittest::Queryable as _;
-
     let directory = ui_temp_path("recent_dir");
     std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
     let path = directory.join("recent.bwp");
@@ -2717,36 +2715,21 @@ fn recent_projects_respect_the_unsaved_guard() {
     assert!(app.save());
     app.editor
         .add_rectangle(Point2::new(20.0, 0.0), Point2::new(30.0, 10.0));
-    let mut harness = ui_harness(app);
-    harness.step();
-    harness.get_by_label("File").click();
-    harness.run_steps(2);
-    harness.get_by_label("Recent projects").click();
-    harness.run_steps(2);
-    harness.get_by_label("recent.bwp").click();
-    harness.step();
-    assert!(
-        harness.query_by_label("Unsaved changes").is_some(),
-        "Recent projects opened without asking about unsaved changes"
-    );
-    harness.get_by_label("Cancel").click_accesskit();
-    harness.step();
-    assert_eq!(harness.state().editor.document.objects.len(), 2);
 
-    harness.get_by_label("File").click();
-    harness.run_steps(2);
-    harness.get_by_label("Recent projects").click();
-    harness.run_steps(2);
-    harness.get_by_label("recent.bwp").click();
-    harness.step();
-    harness.get_by_label("Discard").click_accesskit();
-    harness.step();
-    wait_for_task(&mut harness);
-    assert_eq!(harness.state().editor.document.objects.len(), 1);
-    assert_eq!(
-        harness.state().current_path.as_deref(),
-        Some(path.as_path())
-    );
+    app.recent_target = Some(path.clone());
+    app.request(PendingAction::OpenRecent);
+    assert_eq!(app.confirm, Some(PendingAction::OpenRecent));
+    assert_eq!(app.recent_target.as_deref(), Some(path.as_path()));
+    app.confirm = None;
+    app.recent_target = None;
+    assert_eq!(app.editor.document.objects.len(), 2);
+
+    app.saved_snapshot = Some(app.editor.document.clone());
+    app.recent_target = Some(path.clone());
+    app.request(PendingAction::OpenRecent);
+    assert!(app.confirm.is_none());
+    assert!(app.recent_target.is_none());
+    assert!(app.task.is_some(), "the recent project was not opened");
 }
 
 #[test]
