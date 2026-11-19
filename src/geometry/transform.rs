@@ -369,7 +369,7 @@ mod mirror_tests {
 }
 
 #[cfg(test)]
-mod mirror_tests {
+mod reflect_similarity_tests {
     use super::*;
 
     fn point(x: f64, y: f64) -> Point2 {

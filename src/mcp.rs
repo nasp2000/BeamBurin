@@ -1018,7 +1018,7 @@ impl McpServer {
                         "line needs exactly two points".to_string(),
                     ));
                 }
-                let point = |value: &Value| {
+                let point = |value: &Value| -> Result<crate::geometry::Point2> {
                     let x = value
                         .get("x")
                         .and_then(Value::as_f64)
