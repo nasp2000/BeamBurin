@@ -301,9 +301,12 @@ impl BeamBurinApp {
             self.status = "The project has no images".to_string();
             return;
         }
-        self.editor.record_action("Collect images");
+        let before = self.editor.document.clone();
         match self.editor.document.collect_images(&directory) {
             Ok(report) => {
+                if !report.collected.is_empty() {
+                    self.editor.history.record(&before, "Collect images");
+                }
                 let mut file_report =
                     FileReport::new("Collect images", directory.display().to_string())
                         .with_summary("Copied", report.collected.len().to_string())
@@ -587,6 +590,15 @@ impl BeamBurinApp {
                 document.name = stem.to_string();
             }
         }
+        let mut repair_warnings = Vec::new();
+        if is_project {
+            let repaired = document.repair_image_paths(path);
+            if repaired > 0 {
+                repair_warnings.push(format!(
+                    "Relinked {repaired} image(s) relative to the project"
+                ));
+            }
+        }
         self.editor.set_document(document.clone());
         self.current_path = if is_project {
             Some(path.to_path_buf())
@@ -607,7 +619,13 @@ impl BeamBurinApp {
         )
         .with_summary("Objects", object_count.to_string())
         .with_summary("Layers", layer_count.to_string())
-        .with_warnings(outcome.warnings);
+        .with_warnings(
+            outcome
+                .warnings
+                .into_iter()
+                .chain(repair_warnings)
+                .collect(),
+        );
         self.status = report.headline();
         self.show_report(report);
     }

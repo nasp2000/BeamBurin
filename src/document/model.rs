@@ -253,6 +253,45 @@ impl Document {
     /// Paths are rewritten to the copied files, so moving the project and its
     /// folder keeps it usable. Images that are missing are reported and left
     /// untouched. Returns the mapping and the missing paths.
+    /// Rewrite missing image paths when the file name exists beside the project.
+    ///
+    /// Collect stores absolute paths, so moving the project together with its
+    /// assets folder would otherwise leave every image broken. When an image
+    /// file is missing, look for the same file name in the project directory
+    /// and in `<stem>_assets`; the first hit wins. Returns how many paths were
+    /// repaired.
+    pub fn repair_image_paths(&mut self, project_path: &std::path::Path) -> usize {
+        let parent = project_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = project_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("project");
+        let assets = parent.join(format!("{stem}_assets"));
+        let mut repaired = 0;
+        for object in &mut self.objects {
+            let Shape::Image(image) = &mut object.shape else {
+                continue;
+            };
+            if std::path::Path::new(&image.path).is_file() {
+                continue;
+            }
+            let Some(name) = std::path::Path::new(&image.path)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+            else {
+                continue;
+            };
+            for candidate in [assets.join(&name), parent.join(&name)] {
+                if candidate.is_file() {
+                    image.path = candidate.to_string_lossy().to_string();
+                    repaired += 1;
+                    break;
+                }
+            }
+        }
+        repaired
+    }
+
     pub fn collect_images(
         &mut self,
         destination: &std::path::Path,

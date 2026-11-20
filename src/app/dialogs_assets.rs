@@ -77,6 +77,9 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    close_requested = true;
+                }
                 ui.label(
                     "One outline cell per combination. Each cell gets its own speed and power.",
                 );
@@ -1251,6 +1254,9 @@ impl BeamBurinApp {
                             ui.weak(name);
                         }
                     });
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
                 ui.separator();
                 ui.label("On a name conflict:");
                 for candidate in ConflictPolicy::all() {
@@ -1715,6 +1721,9 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    close_requested = true;
+                }
                 ui.label(
                     "Adds four marks around the selection, or around the whole drawing \
                  when nothing is selected. They are ordinary paths and stay outside \

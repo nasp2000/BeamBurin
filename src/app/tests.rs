@@ -5713,3 +5713,488 @@ fn the_main_windows_offer_context_help() {
     harness.run();
     check(&mut harness, "image_adjust");
 }
+
+#[test]
+fn collect_images_uses_the_menu_and_rewrites_paths_with_one_undo() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("collect_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let source = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&source)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&source).expect("import");
+    let project = directory.join("job.bwp");
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.current_path = Some(project.clone());
+    let undo_before = app.editor.history.undo_len();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Collect images...").click_accesskit();
+    harness.step();
+    let state = harness.state();
+    let assets = directory.join("job_assets");
+    assert!(assets.is_dir(), "the assets folder was not created");
+    let copied: Vec<_> = std::fs::read_dir(&assets)
+        .expect("read assets")
+        .filter_map(|entry| entry.ok())
+        .collect();
+    assert_eq!(copied.len(), 1, "the image was not copied");
+    let object = state.editor.document.objects.first().expect("no object");
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    assert!(
+        image.path.contains("job_assets"),
+        "the path was not rewritten: {}",
+        image.path
+    );
+    assert!(
+        std::path::Path::new(&image.path).is_file(),
+        "the rewritten path does not exist"
+    );
+    assert!(
+        state.status.contains("Collect images"),
+        "unexpected status: {}",
+        state.status
+    );
+    assert_eq!(
+        state.editor.history.undo_len(),
+        undo_before + 1,
+        "collect did not record one undo step"
+    );
+    assert!(
+        state.file_report.is_some(),
+        "the collect report was not shown"
+    );
+}
+
+#[test]
+fn collect_images_without_changes_or_on_failure_records_no_undo() {
+    let directory = ui_temp_path("collect_empty_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let project = directory.join("job.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(project);
+    let undo_before = app.editor.history.undo_len();
+    app.collect_images();
+    assert_eq!(app.status, "The project has no images");
+    assert_eq!(app.editor.history.undo_len(), undo_before);
+
+    // Block the assets directory with a regular file so creation fails.
+    let directory = ui_temp_path("collect_blocked_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let source = directory.join("photo.png");
+    image::RgbaImage::from_pixel(4, 4, image::Rgba([10, 20, 30, 255]))
+        .save(&source)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&source).expect("import");
+    let project = directory.join("job.bwp");
+    std::fs::write(directory.join("job_assets"), "blocked").expect("blocker");
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.current_path = Some(project);
+    let undo_before = app.editor.history.undo_len();
+    app.collect_images();
+    assert!(
+        app.status.starts_with("Collect failed"),
+        "unexpected status: {}",
+        app.status
+    );
+    assert_eq!(
+        app.editor.history.undo_len(),
+        undo_before,
+        "a failed collect left an undo step"
+    );
+}
+
+#[test]
+fn document_properties_opens_from_the_menu_and_undoes_once() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Document properties...").click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Document properties").is_some(),
+        "the properties window did not open"
+    );
+    assert!(harness.query_by_label("Name").is_some());
+    assert!(harness.query_by_label("Width").is_some());
+    let undo_before = harness.state().editor.history.undo_len();
+    harness.state_mut().editor.document.name = "Renamed".to_string();
+    harness.state_mut().editor.document.width_mm = 210.0;
+    harness.state_mut().doc_properties_open = false;
+    harness.run();
+    let state = harness.state();
+    assert_eq!(state.editor.document.name, "Renamed");
+    assert!(
+        (state.editor.document.width_mm - 210.0).abs() < 1e-9,
+        "the width edit was lost"
+    );
+    assert_eq!(
+        state.editor.history.undo_len(),
+        undo_before + 1,
+        "closing with changes did not record one undo step"
+    );
+    harness.state_mut().undo();
+    assert_eq!(harness.state().editor.document.name, "Untitled");
+
+    // Reopen and close without changes: no new undo step.
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Document properties...").click();
+    harness.run();
+    let undo_before = harness.state().editor.history.undo_len();
+    harness.state_mut().doc_properties_open = false;
+    harness.run();
+    assert_eq!(
+        harness.state().editor.history.undo_len(),
+        undo_before,
+        "an unchanged close recorded an undo step"
+    );
+}
+
+#[test]
+fn relink_follows_the_properties_button_and_updates_the_path() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("relink_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let old_path = directory.join("old.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&old_path)
+        .expect("png");
+    let new_path = directory.join("new.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([220, 30, 30, 255]))
+        .save(&new_path)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&old_path).expect("import");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    app.preferences.general.default_directory = directory.display().to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Relink...").click_accesskit();
+    harness.run();
+    assert_eq!(
+        harness.state().relink_target.as_deref(),
+        Some(id.as_str()),
+        "the relink target was not set"
+    );
+    assert!(
+        harness
+            .state()
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| { dialog.mode == crate::ui::file_dialog::FileMode::RelinkImage }),
+        "the relink dialog did not open"
+    );
+    harness
+        .state_mut()
+        .dialog
+        .as_mut()
+        .expect("dialog missing")
+        .file_name = "new.png".to_string();
+    harness.get_by_label("Relink").click_accesskit();
+    harness.run();
+    let state = harness.state();
+    let object = state.editor.document.object(&id).expect("image missing");
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    assert!(
+        image.path.ends_with("new.png"),
+        "the path was not relinked: {}",
+        image.path
+    );
+    assert!(
+        state.status.contains("Relinked image"),
+        "unexpected status: {}",
+        state.status
+    );
+
+    // A missing file reports instead of relinking.
+    let mut app = ui_test_app();
+    app.relink_target = Some(id.clone());
+    app.relink_image(&directory.join("gone.png"));
+    assert!(app.status.starts_with("Relink failed"), "{}", app.status);
+    assert!(app.relink_target.is_none());
+}
+
+#[test]
+fn moved_project_assets_are_relinked_on_open() {
+    let first = ui_temp_path("moved_first");
+    std::fs::create_dir_all(&first).expect("cannot create the temporary directory");
+    let source = first.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&source)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&source).expect("import");
+    let project = first.join("job.bwp");
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.current_path = Some(project.clone());
+    app.collect_images();
+    assert!(app.status.contains("Collect images"), "{}", app.status);
+    crate::document::serialization::save_to_file(&app.editor.document, &project).expect("save");
+
+    let second = ui_temp_path("moved_second");
+    let moved = second.join("first");
+    std::fs::create_dir_all(&second).expect("cannot create the temporary directory");
+    std::fs::rename(&first, &moved).expect("move");
+    assert!(!first.exists());
+    let moved_project = moved.join("job.bwp");
+    assert!(moved_project.is_file());
+
+    let mut app = ui_test_app();
+    app.open_path(&moved_project);
+    assert_eq!(app.editor.document.objects.len(), 1);
+    let object = &app.editor.document.objects[0];
+    let crate::document::Shape::Image(image) = &object.shape else {
+        panic!("the object is not an image");
+    };
+    assert!(
+        std::path::Path::new(&image.path).is_file(),
+        "the moved image path is broken: {}",
+        image.path
+    );
+    assert!(
+        crate::raster::image_dimensions(std::path::Path::new(&image.path)).is_ok(),
+        "the moved preview cannot be read"
+    );
+    let warnings = app
+        .file_report
+        .as_ref()
+        .map(|report| report.warnings.join(" "))
+        .unwrap_or_default();
+    assert!(
+        warnings.contains("Relinked 1 image(s)"),
+        "the open did not report the repair: {warnings}"
+    );
+}
+
+#[test]
+fn external_gcode_preview_opens_and_rejects_bad_files() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("gcode_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let good = directory.join("job.nc");
+    std::fs::write(&good, "G0 X0 Y0\nG1 X10 Y0 F600\n").expect("nc");
+    let mut app = ui_test_app();
+    app.preferences.general.default_directory = directory.display().to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Preview external G-code...").click();
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| dialog.mode == crate::ui::file_dialog::FileMode::PreviewGcode),
+        "the preview dialog did not open"
+    );
+    harness
+        .state_mut()
+        .dialog
+        .as_mut()
+        .expect("dialog missing")
+        .file_name = "job.nc".to_string();
+    harness
+        .get_all_by_label("Open")
+        .find(|node| node.rect().min.y > 90.0)
+        .expect("the dialog Open button is missing")
+        .click_accesskit();
+    harness.step();
+    assert!(
+        harness.state().external_gcode_open,
+        "the external preview did not open"
+    );
+    assert!(
+        harness.state().status.contains("cut move"),
+        "unexpected status: {}",
+        harness.state().status
+    );
+    assert!(harness.query_by_label("External G-code").is_some());
+
+    let mut app = ui_test_app();
+    app.preview_external_gcode(&directory.join("missing.nc"));
+    assert!(app.status.starts_with("Cannot read"), "{}", app.status);
+    assert!(!app.external_gcode_open);
+}
+
+#[test]
+fn switching_tools_cancels_a_pending_draw_or_sketch() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor.tool = crate::editor::Tool::Bezier;
+    app.pen_nodes.push(crate::geometry::path::Node {
+        point: Point2::new(0.0, 0.0),
+        handle_in: None,
+        handle_out: None,
+    });
+    app.pen_drag_start = Some(Point2::new(1.0, 1.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert_eq!(harness.state().pen_nodes.len(), 1);
+    harness.state_mut().editor.tool = crate::editor::Tool::Pan;
+    harness.run();
+    assert!(
+        harness.state().pen_nodes.is_empty(),
+        "pen nodes survived leaving the Bezier tool"
+    );
+    assert!(
+        harness.state().pen_drag_start.is_none(),
+        "the pending pen drag survived the tool switch"
+    );
+
+    // A line drag started with Line must not continue after switching to Pan.
+    let mut app = ui_test_app();
+    app.editor.tool = crate::editor::Tool::Line;
+    app.drag = Some(crate::app::DragState::Draw {
+        tool: crate::editor::Tool::Line,
+        start: Point2::new(0.0, 0.0),
+        end: Point2::new(5.0, 5.0),
+        constrain: false,
+    });
+    app.editor.tool = crate::editor::Tool::Pan;
+    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 800.0));
+    app.update_drag(rect, egui::pos2(100.0, 100.0));
+    assert!(
+        app.drag.is_none(),
+        "a stale Draw drag survived the tool switch"
+    );
+
+    // A freehand sketch must not continue after leaving Pencil.
+    let mut app = ui_test_app();
+    app.editor.tool = crate::editor::Tool::Pencil;
+    app.drag = Some(crate::app::DragState::Sketch {
+        points: vec![Point2::new(0.0, 0.0)],
+    });
+    app.editor.tool = crate::editor::Tool::Select;
+    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1280.0, 800.0));
+    app.update_drag(rect, egui::pos2(100.0, 100.0));
+    assert!(app.drag.is_none(), "a stale Sketch survived leaving Pencil");
+}
+
+#[test]
+fn layer_row_menu_renames_duplicates_and_deletes_without_merge() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    assert!(
+        harness.query_by_label("Duplicate layer").is_some(),
+        "the row menu has no duplicate action"
+    );
+    assert!(
+        harness.query_by_label("Delete layer").is_some(),
+        "the row menu has no delete action"
+    );
+    assert!(
+        harness.query_all_by_label("Merge").next().is_none()
+            && harness.query_all_by_label("Merge layers").next().is_none(),
+        "a merge action exists but the plan has no merge semantics to test"
+    );
+    harness.get_by_label("Duplicate layer").click_accesskit();
+    harness.run();
+    assert_eq!(harness.state().editor.document.layers.len(), 2);
+    assert_eq!(harness.state().editor.document.objects.len(), 2);
+
+    // Rename through the row settings, then OK keeps the name.
+    harness.get_by_label("Layer 1").click_secondary();
+    harness.run();
+    harness
+        .state_mut()
+        .editor
+        .document
+        .layer_mut(&harness.state().editor.document.layers[0].id.clone())
+        .expect("layer missing")
+        .name = "Cutting".to_string();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    assert_eq!(harness.state().editor.document.layers[0].name, "Cutting");
+    assert!(harness.state().editor.history.can_undo());
+}
+
+#[test]
+fn escape_closes_the_supported_dialogs_without_changing_the_document() {
+    use egui_kittest::kittest::Queryable as _;
+
+    for (label, open) in [
+        ("Document properties", "Document properties..."),
+        ("Registration marks", "Registration marks..."),
+        ("Material test", "Material test..."),
+    ] {
+        let mut app = ui_test_app();
+        app.editor
+            .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+        let undo_before = app.editor.history.undo_len();
+        let mut harness = ui_harness(app);
+        harness.run();
+        let menu = if label == "Document properties" {
+            "File"
+        } else {
+            "Operations"
+        };
+        harness.get_by_label(menu).click();
+        harness.run();
+        harness.get_by_label(open).click();
+        harness.run();
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "{label} did not open"
+        );
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert!(
+            harness.query_by_label(label).is_none(),
+            "{label} ignored Escape"
+        );
+        assert_eq!(
+            harness.state().editor.history.undo_len(),
+            undo_before,
+            "{label} changed the undo history on Escape"
+        );
+        assert_eq!(
+            harness.state().editor.document.objects.len(),
+            1,
+            "{label} changed the document on Escape"
+        );
+    }
+
+    // Export presets has no Escape handler yet: it stays open (documented gap).
+    let mut app = ui_test_app();
+    app.export_presets_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("Export presets").is_some(),
+        "the presets window unexpectedly closed on Escape"
+    );
+}

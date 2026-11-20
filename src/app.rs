@@ -1373,6 +1373,16 @@ impl BeamBurinApp {
     }
 
     fn update_drag(&mut self, rect: Rect, pos: Pos2) {
+        let stale_drawing = matches!(
+            &self.drag,
+            Some(DragState::Draw { tool, .. }) if *tool != self.editor.tool
+        ) || matches!(&self.drag, Some(DragState::Sketch { .. })
+            if self.editor.tool != Tool::Pencil);
+        if stale_drawing {
+            self.drag = None;
+            self.pen_nodes.clear();
+            self.pen_drag_start = None;
+        }
         let point = self.doc_point(rect, pos);
         self.smart_guides.clear();
         let Some(drag) = &mut self.drag else {

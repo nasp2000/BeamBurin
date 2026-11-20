@@ -16,6 +16,9 @@ impl BeamBurinApp {
         .resizable(false)
         .max_height(520.0)
         .show(ctx, |ui| {
+            if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                open = false;
+            }
             egui::ScrollArea::vertical()
                 .id_salt("document_properties_scroll")
                 .auto_shrink([false, false])
