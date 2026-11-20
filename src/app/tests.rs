@@ -6763,7 +6763,7 @@ fn keyboard_tab_moves_focus_in_material_test() {
                 .filter_map(|node| {
                     let accesskit = node.accesskit_node();
                     accesskit
-                        .focused()
+                        .is_focused()
                         .then(|| accesskit.label().unwrap_or_default())
                 })
                 .next()
