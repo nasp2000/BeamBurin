@@ -6042,8 +6042,6 @@ fn external_gcode_preview_opens_and_rejects_bad_files() {
 
 #[test]
 fn switching_tools_cancels_a_pending_draw_or_sketch() {
-    use egui_kittest::kittest::Queryable as _;
-
     let mut app = ui_test_app();
     app.editor.tool = crate::editor::Tool::Bezier;
     app.pen_nodes.push(crate::geometry::path::Node {
@@ -6127,11 +6125,12 @@ fn layer_row_menu_renames_duplicates_and_deletes_without_merge() {
     // Rename through the row settings, then OK keeps the name.
     harness.get_by_label("Layer 1").click_secondary();
     harness.run();
+    let layer_id = harness.state().editor.document.layers[0].id.clone();
     harness
         .state_mut()
         .editor
         .document
-        .layer_mut(&harness.state().editor.document.layers[0].id.clone())
+        .layer_mut(&layer_id)
         .expect("layer missing")
         .name = "Cutting".to_string();
     harness.get_by_label("OK").click_accesskit();
