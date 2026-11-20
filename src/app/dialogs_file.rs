@@ -7,6 +7,7 @@ impl BeamBurinApp {
         use crate::document::Unit;
 
         let mut open = self.doc_properties_open;
+        let esc_close = ctx.input(|input| input.key_pressed(egui::Key::Escape));
         let mut changed = false;
         egui::Window::new("Document properties")
         .pivot(egui::Align2::CENTER_CENTER)
@@ -16,7 +17,7 @@ impl BeamBurinApp {
         .resizable(false)
         .max_height(520.0)
         .show(ctx, |ui| {
-            if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            if esc_close {
                 open = false;
             }
             egui::ScrollArea::vertical()

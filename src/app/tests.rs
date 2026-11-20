@@ -5840,6 +5840,8 @@ fn document_properties_opens_from_the_menu_and_undoes_once() {
     let undo_before = harness.state().editor.history.undo_len();
     harness.state_mut().editor.document.name = "Renamed".to_string();
     harness.state_mut().editor.document.width_mm = 210.0;
+    harness.get_by_label("Document properties").click();
+    harness.run();
     harness.key_press(egui::Key::Escape);
     harness.run();
     let state = harness.state();
@@ -5862,6 +5864,8 @@ fn document_properties_opens_from_the_menu_and_undoes_once() {
     harness.get_by_label("Document properties...").click();
     harness.run();
     let undo_before = harness.state().editor.history.undo_len();
+    harness.get_by_label("Document properties").click();
+    harness.run();
     harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(
@@ -6179,6 +6183,8 @@ fn escape_closes_the_supported_dialogs_without_changing_the_document() {
             _ => harness.state().material_test_open,
         };
         assert!(is_open, "{label} did not open");
+        harness.get_by_label(label).click();
+        harness.run();
         harness.key_press(egui::Key::Escape);
         harness.run();
         let is_open = match label {
