@@ -6322,7 +6322,7 @@ fn quit_guard_dialog_offers_save_discard_cancel() {
     harness.state_mut().request(PendingAction::Quit);
     harness.run();
     harness.get_by_label("Discard").click_accesskit();
-    harness.run();
+    harness.step();
     assert!(
         harness.state().quit_requested,
         "Discard did not confirm the quit"
@@ -6348,7 +6348,7 @@ fn quit_guard_save_writes_the_project_then_quits() {
         .find(|node| node.rect().min.y > 100.0)
         .expect("the dialog Save button is missing")
         .click_accesskit();
-    harness.run();
+    harness.step();
     assert!(path.is_file(), "Save did not write the project");
     assert!(
         harness.state().quit_requested,
@@ -6562,7 +6562,9 @@ fn autosave_writes_recovery_only_when_dirty_and_due() {
     let _ = std::fs::remove_file(&recovery);
     app.editor
         .add_rectangle(Point2::new(0.0, 0.0), Point2::new(5.0, 5.0));
-    app.last_autosave = std::time::Instant::now() - std::time::Duration::from_secs(31);
+    app.last_autosave = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(31))
+        .unwrap();
     let mut harness = ui_harness(app);
     harness.run();
     let ctx = harness.ctx.clone();
@@ -6575,7 +6577,9 @@ fn autosave_writes_recovery_only_when_dirty_and_due() {
     let mut app = ui_test_app();
     let recovery = app.recovery_path.clone();
     let _ = std::fs::remove_file(&recovery);
-    app.last_autosave = std::time::Instant::now() - std::time::Duration::from_secs(31);
+    app.last_autosave = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(31))
+        .unwrap();
     let mut harness = ui_harness(app);
     harness.run();
     let ctx = harness.ctx.clone();
@@ -6760,13 +6764,12 @@ fn keyboard_tab_moves_focus_in_material_test() {
             let focused = harness
                 .root()
                 .children_recursive()
-                .filter_map(|node| {
+                .find_map(|node| {
                     let accesskit = node.accesskit_node();
                     accesskit
                         .is_focused()
                         .then(|| accesskit.label().unwrap_or_default())
                 })
-                .next()
                 .unwrap_or_default();
             seen.push(focused);
         }
