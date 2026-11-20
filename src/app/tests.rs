@@ -6752,6 +6752,7 @@ fn keyboard_tab_moves_focus_in_material_test() {
         harness: &mut egui_kittest::Harness<'static, BeamBurinApp>,
         steps: usize,
     ) -> Vec<String> {
+        use egui_kittest::kittest::NodeT as _;
         let mut seen = Vec::new();
         for _ in 0..steps {
             harness.key_press(egui::Key::Tab);
@@ -6760,7 +6761,6 @@ fn keyboard_tab_moves_focus_in_material_test() {
                 .root()
                 .children_recursive()
                 .filter_map(|node| {
-                    use egui_kittest::kittest::NodeT as _;
                     let accesskit = node.accesskit_node();
                     accesskit
                         .focused()
