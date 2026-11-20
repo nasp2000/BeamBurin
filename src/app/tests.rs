@@ -5840,7 +5840,7 @@ fn document_properties_opens_from_the_menu_and_undoes_once() {
     let undo_before = harness.state().editor.history.undo_len();
     harness.state_mut().editor.document.name = "Renamed".to_string();
     harness.state_mut().editor.document.width_mm = 210.0;
-    harness.state_mut().doc_properties_open = false;
+    harness.key_press(egui::Key::Escape);
     harness.run();
     let state = harness.state();
     assert_eq!(state.editor.document.name, "Renamed");
@@ -5862,7 +5862,7 @@ fn document_properties_opens_from_the_menu_and_undoes_once() {
     harness.get_by_label("Document properties...").click();
     harness.run();
     let undo_before = harness.state().editor.history.undo_len();
-    harness.state_mut().doc_properties_open = false;
+    harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(
         harness.state().editor.history.undo_len(),
