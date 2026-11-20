@@ -5741,7 +5741,7 @@ fn collect_images_uses_the_menu_and_rewrites_paths_with_one_undo() {
     assert!(assets.is_dir(), "the assets folder was not created");
     let copied: Vec<_> = std::fs::read_dir(&assets)
         .expect("read assets")
-        .filter_map(|entry| entry.ok())
+        .filter_map(Result::ok)
         .collect();
     assert_eq!(copied.len(), 1, "the image was not copied");
     let object = state.editor.document.objects.first().expect("no object");
@@ -5829,8 +5829,14 @@ fn document_properties_opens_from_the_menu_and_undoes_once() {
         harness.query_by_label("Document properties").is_some(),
         "the properties window did not open"
     );
-    assert!(harness.query_by_label("Name").is_some());
-    assert!(harness.query_by_label("Width").is_some());
+    assert!(
+        harness.query_all_by_label("Name").next().is_some(),
+        "the properties window has no Name field"
+    );
+    assert!(
+        harness.query_all_by_label("Width").next().is_some(),
+        "the properties window has no Width field"
+    );
     let undo_before = harness.state().editor.history.undo_len();
     harness.state_mut().editor.document.name = "Renamed".to_string();
     harness.state_mut().editor.document.width_mm = 210.0;
@@ -6022,7 +6028,11 @@ fn external_gcode_preview_opens_and_rejects_bad_files() {
         .find(|node| node.rect().min.y > 90.0)
         .expect("the dialog Open button is missing")
         .click_accesskit();
-    harness.step();
+    harness.run();
+    if harness.query_by_label("Replace file?").is_some() {
+        harness.get_by_label("Replace").click_accesskit();
+        harness.run();
+    }
     assert!(
         harness.state().external_gcode_open,
         "the external preview did not open"
@@ -6163,16 +6173,20 @@ fn escape_closes_the_supported_dialogs_without_changing_the_document() {
         harness.run();
         harness.get_by_label(open).click();
         harness.run();
-        assert!(
-            harness.query_by_label(label).is_some(),
-            "{label} did not open"
-        );
+        let is_open = match label {
+            "Document properties" => harness.state().doc_properties_open,
+            "Registration marks" => harness.state().regmarks_open,
+            _ => harness.state().material_test_open,
+        };
+        assert!(is_open, "{label} did not open");
         harness.key_press(egui::Key::Escape);
         harness.run();
-        assert!(
-            harness.query_by_label(label).is_none(),
-            "{label} ignored Escape"
-        );
+        let is_open = match label {
+            "Document properties" => harness.state().doc_properties_open,
+            "Registration marks" => harness.state().regmarks_open,
+            _ => harness.state().material_test_open,
+        };
+        assert!(!is_open, "{label} ignored Escape");
         assert_eq!(
             harness.state().editor.history.undo_len(),
             undo_before,
