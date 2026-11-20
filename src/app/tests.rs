@@ -4473,7 +4473,7 @@ fn the_image_adjust_shows_the_cut_entry_and_the_estimate() {
 fn compare_operations_lists_entries_and_empty_state() {
     use egui_kittest::kittest::Queryable as _;
 
-    let mut app = ui_test_app();
+    let app = ui_test_app();
     let mut harness = ui_harness(app);
     harness.run();
     harness.get_by_label("Operations").click();
