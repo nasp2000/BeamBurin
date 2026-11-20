@@ -2750,6 +2750,41 @@ fn opening_a_corrupt_project_keeps_the_current_document() {
 }
 
 #[test]
+fn recovering_a_project_uses_the_backup() {
+    let directory = ui_temp_path("recover_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("recovered.bwp");
+    let mut first = crate::document::Document {
+        name: "From backup".to_string(),
+        ..Default::default()
+    };
+    first.add_object(crate::document::Object::new(
+        first.layers[0].id.clone(),
+        crate::document::Shape::Rect {
+            width: 10.0,
+            height: 10.0,
+            corner_radius: 0.0,
+        },
+    ));
+    crate::document::serialization::save_to_file_with_backup(&first, &path, true).unwrap();
+    let second = crate::document::Document {
+        name: "Current".to_string(),
+        ..Default::default()
+    };
+    crate::document::serialization::save_to_file_with_backup(&second, &path, true).unwrap();
+    assert!(crate::document::serialization::backup_path(&path).is_file());
+
+    let mut app = ui_test_app();
+    app.recover_project(&path);
+
+    assert_eq!(app.editor.document.name, "From backup");
+    assert_eq!(app.editor.document.objects.len(), 1);
+    assert_eq!(app.current_path.as_deref(), Some(path.as_path()));
+    assert!(app.saved_snapshot.is_none());
+    assert!(app.status.starts_with("Recovered"), "{}", app.status);
+}
+
+#[test]
 fn saving_a_project_archive_round_trips() {
     use egui_kittest::kittest::Queryable as _;
 
