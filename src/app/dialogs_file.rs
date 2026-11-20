@@ -17,9 +17,6 @@ impl BeamBurinApp {
         .resizable(false)
         .max_height(520.0)
         .show(ctx, |ui| {
-            if esc_close {
-                open = false;
-            }
             egui::ScrollArea::vertical()
                 .id_salt("document_properties_scroll")
                 .auto_shrink([false, false])
@@ -252,6 +249,9 @@ impl BeamBurinApp {
             }
                 });
         });
+        if esc_close {
+            open = false;
+        }
         if changed {
             self.needs_fit = true;
         }
