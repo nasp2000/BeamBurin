@@ -69,7 +69,7 @@ impl BeamBurinApp {
     pub(super) fn material_test_window(&mut self, ctx: &egui::Context) {
         let mut open = self.material_test_open;
         let mut generate = false;
-        let mut close_requested = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+        let mut close_requested = false;
         egui::Window::new("Material test")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -77,6 +77,9 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    close_requested = true;
+                }
                 ui.label(
                     "One outline cell per combination. Each cell gets its own speed and power.",
                 );
@@ -1710,7 +1713,7 @@ impl BeamBurinApp {
     pub(super) fn registration_marks_window(&mut self, ctx: &egui::Context) {
         let mut open = self.regmarks_open;
         let mut generate = false;
-        let mut close_requested = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+        let mut close_requested = false;
         egui::Window::new("Registration marks")
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
@@ -1718,6 +1721,9 @@ impl BeamBurinApp {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                    close_requested = true;
+                }
                 ui.label(
                     "Adds four marks around the selection, or around the whole drawing \
                  when nothing is selected. They are ordinary paths and stay outside \
