@@ -6297,3 +6297,499 @@ fn escape_closes_the_supported_dialogs_without_changing_the_document() {
         "the presets window unexpectedly closed on Escape"
     );
 }
+
+#[test]
+fn quit_guard_dialog_offers_save_discard_cancel() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("quit_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("dirty.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(path.clone());
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    app.request(PendingAction::Quit);
+    assert_eq!(app.confirm, Some(PendingAction::Quit));
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(harness.query_by_label("Unsaved changes").is_some());
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(!harness.state().quit_requested, "Cancel still quits");
+    assert_eq!(harness.state().editor.document.objects.len(), 1);
+
+    harness.state_mut().request(PendingAction::Quit);
+    harness.run();
+    harness.get_by_label("Discard").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().quit_requested,
+        "Discard did not confirm the quit"
+    );
+}
+
+#[test]
+fn quit_guard_save_writes_the_project_then_quits() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("quit_save_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("dirty.bwp");
+    let mut app = ui_test_app();
+    app.current_path = Some(path.clone());
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    app.request(PendingAction::Quit);
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness
+        .get_all_by_label("Save")
+        .find(|node| node.rect().min.y > 100.0)
+        .expect("the dialog Save button is missing")
+        .click_accesskit();
+    harness.run();
+    assert!(path.is_file(), "Save did not write the project");
+    assert!(
+        harness.state().quit_requested,
+        "the pending quit did not run after Save"
+    );
+}
+
+#[test]
+fn machine_wizard_creates_or_skips_profile() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.machine_wizard_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness
+            .query_by_label("Welcome - machine profile")
+            .is_some()
+    );
+    harness.get_by_label("Skip for now").click_accesskit();
+    harness.run();
+    assert!(!harness.state().machine_wizard_open);
+    assert!(harness.state().machines.first_run_done);
+
+    let mut app = ui_test_app();
+    app.machine_wizard_open = true;
+    app.machine_editor.name = "D3 Test Machine".to_string();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Create profile").click_accesskit();
+    harness.run();
+    assert!(!harness.state().machine_wizard_open);
+    assert!(
+        harness
+            .state()
+            .machines
+            .machines
+            .iter()
+            .any(|machine| machine.name == "D3 Test Machine"),
+        "the wizard did not create the profile"
+    );
+    assert!(
+        harness.state().status.contains("D3 Test Machine"),
+        "unexpected status: {}",
+        harness.state().status
+    );
+}
+
+#[test]
+fn tour_walks_all_steps_and_finishes() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.tour_open = true;
+    app.tour_step = 0;
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(harness.query_by_label("Welcome to BeamBurin").is_some());
+    for step in 1..=5 {
+        assert!(
+            harness
+                .query_by_label(&format!("Step {step} of 5"))
+                .is_some(),
+            "missing tour step {step}"
+        );
+        if step < 5 {
+            harness.get_by_label("Next").click_accesskit();
+            harness.run();
+        }
+    }
+    harness.get_by_label("Finish").click_accesskit();
+    harness.run();
+    assert!(!harness.state().tour_open);
+    assert!(harness.state().preferences.general.tour_seen);
+
+    let mut app = ui_test_app();
+    app.tour_open = true;
+    app.tour_step = 2;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Back").click_accesskit();
+    harness.run();
+    assert_eq!(harness.state().tour_step, 1);
+    harness.get_by_label("Skip").click_accesskit();
+    harness.run();
+    assert!(!harness.state().tour_open);
+}
+
+#[test]
+fn panels_toggle_with_function_keys() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    assert!(harness.state().show_layers_panel);
+    assert!(harness.state().show_properties_panel);
+    harness.key_press(egui::Key::F9);
+    harness.run();
+    assert!(!harness.state().show_layers_panel);
+    assert!(harness.state().show_properties_panel);
+    harness.key_press(egui::Key::F10);
+    harness.run();
+    assert!(!harness.state().show_properties_panel);
+    harness.key_press(egui::Key::F9);
+    harness.run();
+    assert!(harness.state().show_layers_panel);
+}
+
+#[test]
+fn nudge_moves_selection_with_and_without_shift() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let id = app
+        .editor
+        .add_rectangle(Point2::new(10.0, 10.0), Point2::new(20.0, 20.0))
+        .expect("rectangle");
+    app.editor.selection.clear();
+    app.editor.selection.add(id.clone());
+    let mut harness = ui_harness(app);
+    harness.run();
+    let (before, _) = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .unwrap()
+        .bounds()
+        .unwrap();
+    let undo_before = harness.state().editor.history.undo_len();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    let (after, _) = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .unwrap()
+        .bounds()
+        .unwrap();
+    assert!(
+        (after.x - before.x - 1.0).abs() < 1e-9,
+        "nudge did not move by the base step: {before:?} -> {after:?}"
+    );
+    assert_eq!(harness.state().editor.history.undo_len(), undo_before + 1);
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowRight);
+    harness.run();
+    let (fine, _) = harness
+        .state()
+        .editor
+        .document
+        .object(&id)
+        .unwrap()
+        .bounds()
+        .unwrap();
+    assert!(
+        (fine.x - after.x - 0.1).abs() < 1e-9,
+        "shift-nudge did not move by the fine step: {after:?} -> {fine:?}"
+    );
+}
+
+#[test]
+fn cursor_readout_shows_document_coordinates() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.cursor_doc = Some(Point2::new(12.5, 33.25));
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("X 12.5").is_some()
+            && harness.query_by_label_contains("Y 33.25").is_some(),
+        "the cursor readout is missing"
+    );
+
+    let mut app = ui_test_app();
+    app.cursor_doc = None;
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("X --  Y -- mm").is_some(),
+        "the empty cursor readout is missing"
+    );
+}
+
+#[test]
+fn theme_toggle_persists_across_save_and_reload() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    assert!(harness.state().dark_mode);
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Dark mode").click_accesskit();
+    harness.run();
+    assert!(!harness.state().dark_mode);
+    let path = harness.state().preferences_path.clone();
+    harness.state_mut().advance(&harness.ctx.clone());
+    let saved = crate::config::preferences::AppPreferences::load_or_default(&path)
+        .expect("cannot read the saved preferences");
+    assert_eq!(saved.general.theme, "light");
+    drop(harness);
+    let reloaded = crate::config::preferences::AppPreferences::load_or_default(&path)
+        .expect("cannot reload the saved preferences");
+    assert_eq!(reloaded.general.theme, "light");
+}
+
+#[test]
+fn autosave_writes_recovery_only_when_dirty_and_due() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let recovery = app.recovery_path.clone();
+    let _ = std::fs::remove_file(&recovery);
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(5.0, 5.0));
+    app.last_autosave = std::time::Instant::now() - std::time::Duration::from_secs(31);
+    let mut harness = ui_harness(app);
+    harness.run();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().autosave(&ctx);
+    assert!(
+        recovery.is_file(),
+        "a dirty document past the interval was not autosaved"
+    );
+
+    let mut app = ui_test_app();
+    let recovery = app.recovery_path.clone();
+    let _ = std::fs::remove_file(&recovery);
+    app.last_autosave = std::time::Instant::now() - std::time::Duration::from_secs(31);
+    let mut harness = ui_harness(app);
+    harness.run();
+    let ctx = harness.ctx.clone();
+    harness.state_mut().autosave(&ctx);
+    assert!(
+        !recovery.exists(),
+        "a clean document must not write a recovery file"
+    );
+}
+
+#[test]
+fn corrupt_preferences_fall_back_to_defaults() {
+    let directory = ui_temp_path("prefs_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("preferences.json");
+    std::fs::write(&path, "{ not json").expect("cannot write the broken fixture");
+    assert!(
+        crate::config::preferences::AppPreferences::load_or_default(&path).is_err(),
+        "a corrupt file must not load"
+    );
+    let fallbacked =
+        crate::config::preferences::AppPreferences::load_or_default(&path).unwrap_or_default();
+    assert_eq!(
+        fallbacked,
+        crate::config::preferences::AppPreferences::default()
+    );
+
+    let mut prefs = crate::config::preferences::AppPreferences::default();
+    prefs.general.theme = "light".to_string();
+    prefs.save(&path).expect("cannot save preferences");
+    let reloaded = crate::config::preferences::AppPreferences::load_or_default(&path)
+        .expect("cannot reload preferences");
+    assert_eq!(reloaded.general.theme, "light");
+}
+
+#[test]
+fn task_window_cancel_discards_the_result() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    app.task = Some(crate::task::BackgroundTask::spawn("Importing", |_| {
+        std::thread::sleep(std::time::Duration::from_millis(750));
+        None
+    }));
+    let mut harness = ui_harness(app);
+    harness.step();
+    assert!(harness.query_by_label("Working").is_some());
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.step();
+    assert!(harness.state().task.is_none());
+    assert!(
+        harness.state().status.contains("Cancelled"),
+        "unexpected status: {}",
+        harness.state().status
+    );
+}
+
+#[test]
+fn paste_from_clipboard_falls_back_without_a_system_clipboard() {
+    let mut app = ui_test_app();
+    app.editor
+        .add_rectangle(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0));
+    let id = app.editor.document.objects[0].id.clone();
+    app.editor.selection.clear();
+    app.editor.selection.add(id);
+    app.clipboard = app.editor.copy_selection();
+    let before = app.editor.document.objects.len();
+    app.paste_from_clipboard();
+    assert!(
+        app.editor.document.objects.len() >= before,
+        "internal paste lost objects"
+    );
+    assert!(app.editor.document.validate().is_ok());
+
+    let mut app = ui_test_app();
+    app.clipboard.clear();
+    let before = app.editor.document.objects.len();
+    app.paste_from_clipboard();
+    assert!(app.editor.document.validate().is_ok());
+    assert!(
+        app.editor.document.objects.len() <= before + 1,
+        "an empty paste created unexpected objects"
+    );
+}
+
+#[test]
+fn merge_imported_reassigns_layers_and_undoes() {
+    let mut app = ui_test_app();
+    let active = app.editor.active_layer_id.clone();
+    let other = app.editor.document.add_layer("Other").id.clone();
+    let mut foreign = crate::document::Document::default();
+    let mut object = crate::document::Object::new(
+        other,
+        crate::document::Shape::Rect {
+            width: 5.0,
+            height: 5.0,
+            corner_radius: 0.0,
+        },
+    );
+    object.operation_id = Some("some-op".to_string());
+    foreign.add_object(object);
+    let before = app.editor.document.objects.len();
+    app.merge_imported(foreign, "Paste SVG");
+    assert_eq!(app.editor.document.objects.len(), before + 1);
+    let pasted = app.editor.document.objects.last().unwrap();
+    assert_eq!(pasted.layer_id, active);
+    assert!(pasted.operation_id.is_none());
+    app.editor.undo();
+    assert_eq!(app.editor.document.objects.len(), before);
+}
+
+#[test]
+fn canvas_pan_moves_the_view_and_toolbar_zoom_works() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let (x0, y0) = (app.editor.canvas.pan_x, app.editor.canvas.pan_y);
+    app.editor.canvas.pan(40.0, -25.0);
+    assert_eq!(app.editor.canvas.pan_x, x0 + 40.0);
+    assert_eq!(app.editor.canvas.pan_y, y0 - 25.0);
+    app.editor.canvas.reset_pan();
+    assert_eq!(app.editor.canvas.pan_x, 0.0);
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    let zoom_before = harness.state().editor.canvas.zoom;
+    harness.get_by_label("+").click();
+    harness.run();
+    assert!(
+        harness.state().editor.canvas.zoom > zoom_before,
+        "toolbar zoom-in did nothing"
+    );
+    harness.get_by_label("-").click();
+    harness.run();
+    assert!(
+        (harness.state().editor.canvas.zoom - zoom_before).abs() < 1e-9,
+        "toolbar zoom-out did not restore the zoom"
+    );
+}
+
+#[test]
+fn project_and_prefs_round_trip_across_instances() {
+    let directory = ui_temp_path("roundtrip_dir");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let project = directory.join("job.bwp");
+    let mut app = ui_test_app();
+    app.editor.document.name = "Round trip".to_string();
+    app.editor
+        .add_rectangle(Point2::new(1.0, 2.0), Point2::new(11.0, 12.0));
+    crate::document::serialization::save_to_file(&app.editor.document, &project)
+        .expect("cannot save the project");
+    app.preferences.general.theme = "light".to_string();
+    let prefs_path = directory.join("preferences.json");
+    app.preferences
+        .save(&prefs_path)
+        .expect("cannot save prefs");
+
+    let mut reopened = ui_test_app();
+    reopened.open_path(&project);
+    assert_eq!(reopened.editor.document.name, "Round trip");
+    assert_eq!(reopened.editor.document.objects.len(), 1);
+    let reloaded = crate::config::preferences::AppPreferences::load_or_default(&prefs_path)
+        .expect("cannot reload prefs");
+    assert_eq!(reloaded.general.theme, "light");
+
+    let missing = directory.join("gone.bwp");
+    let mut app = ui_test_app();
+    let before = app.editor.document.clone();
+    app.open_path(&missing);
+    assert_eq!(app.editor.document, before);
+    assert!(app.status.starts_with("Open failed"), "{}", app.status);
+}
+
+#[test]
+fn keyboard_tab_moves_focus_in_material_test() {
+    use egui_kittest::kittest::Queryable as _;
+
+    fn labels(
+        harness: &mut egui_kittest::Harness<'static, BeamBurinApp>,
+        steps: usize,
+    ) -> Vec<String> {
+        let mut seen = Vec::new();
+        for _ in 0..steps {
+            harness.key_press(egui::Key::Tab);
+            harness.run();
+            let focused = harness
+                .root()
+                .children_recursive()
+                .filter_map(|node| {
+                    use egui_kittest::kittest::NodeT as _;
+                    let accesskit = node.accesskit_node();
+                    accesskit
+                        .focused()
+                        .then(|| accesskit.label().unwrap_or_default())
+                })
+                .next()
+                .unwrap_or_default();
+            seen.push(focused);
+        }
+        seen
+    }
+
+    let mut app = ui_test_app();
+    app.material_test_open = true;
+    let mut harness = ui_harness(app);
+    harness.run();
+    let seen = labels(&mut harness, 6);
+    assert!(
+        seen.iter().any(|label| !label.is_empty()),
+        "Tab never reached a labelled widget: {seen:?}"
+    );
+}
