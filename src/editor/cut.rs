@@ -301,7 +301,7 @@ impl EditorState {
                     let mut piece = object.clone();
                     piece.id = Uuid::new_v4().to_string();
                     piece.name = format!("{} outline {}", object.name, index + 1);
-                    piece.shape = Shape::Path(path);
+                    piece.shape = Shape::Path(path.transform(&object.transform));
                     piece.transform = Transform2::identity();
                     piece.group_id.clone_from(&object.group_id);
                     piece.hole_of = None;
@@ -497,6 +497,33 @@ mod tests {
         let report = editor.break_apart().unwrap();
         assert_eq!(report.released, 1);
         assert!(editor.document.object(&inner).unwrap().hole_of.is_none());
+    }
+
+    #[test]
+    fn break_apart_keeps_a_moved_text_in_place() {
+        let mut editor = editor();
+        let id = editor.add_text(Point2::new(10.0, 20.0)).unwrap();
+        editor.selection.clear();
+        editor.selection.add(id.clone());
+        editor.move_selection(30.0, 40.0);
+        let before = editor.document.object(&id).unwrap().bounds().unwrap();
+        let report = editor.break_apart().unwrap();
+        assert!(report.outlines > 0);
+        let mut min = Point2::new(f64::INFINITY, f64::INFINITY);
+        for object in &editor.document.objects {
+            for point in object.world_path().flatten(0.05) {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+            }
+        }
+        assert!(
+            (min.x - before.0.x).abs() < 1.5,
+            "outlines jumped in x: {min:?} vs {before:?}"
+        );
+        assert!(
+            (min.y - before.0.y).abs() < 1.5,
+            "outlines jumped in y: {min:?} vs {before:?}"
+        );
     }
 
     #[test]

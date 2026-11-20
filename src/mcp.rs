@@ -4639,6 +4639,197 @@ mod tests {
     }
 
     #[test]
+    fn split_path_tool_divides_an_open_path() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "add_line",
+            json!({"x1": 0.0, "y1": 0.0, "x2": 20.0, "y2": 0.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let split = call(
+            &mut server,
+            "split_path",
+            json!({"id": id, "x": 10.0, "y": 0.0}),
+        );
+        assert!(split.get("error").is_none(), "{split}");
+        assert_eq!(split["result"]["pieces"], 2);
+        assert_eq!(server.editor.document.objects.len(), 2);
+        assert!(
+            server
+                .editor
+                .document
+                .objects
+                .iter()
+                .all(|object| matches!(&object.shape, crate::document::Shape::Path(_))),
+            "split pieces must stay paths"
+        );
+        server.editor.undo();
+        assert_eq!(server.editor.document.objects.len(), 1);
+        let bad = call(
+            &mut server,
+            "split_path",
+            json!({"id": "missing", "x": 0.0, "y": 0.0}),
+        );
+        assert!(bad.get("error").is_some(), "{bad}");
+        assert_eq!(server.editor.document.objects.len(), 1);
+    }
+
+    #[test]
+    fn break_apart_tool_outlines_text() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "add_text",
+            json!({"x": 5.0, "y": 5.0, "content": "Hi"}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let broken = call(&mut server, "break_apart", json!({"ids": [id]}));
+        assert!(broken.get("error").is_none(), "{broken}");
+        assert!(broken["result"]["outlines"].as_u64().unwrap() > 0);
+        assert!(
+            server
+                .editor
+                .document
+                .objects
+                .iter()
+                .all(|object| !matches!(object.shape, crate::document::Shape::Text(_))),
+            "the text object must be replaced by outlines"
+        );
+        server.editor.undo();
+        assert_eq!(server.editor.document.objects.len(), 1);
+        assert!(
+            matches!(
+                server.editor.document.objects[0].shape,
+                crate::document::Shape::Text(_)
+            ),
+            "undo must restore the text"
+        );
+
+        let mut plain = McpServer::new();
+        call(
+            &mut plain,
+            "add_rectangle",
+            json!({"width": 4.0, "height": 4.0}),
+        );
+        let nothing = call(&mut plain, "break_apart", json!({}));
+        assert!(nothing.get("error").is_some(), "{nothing}");
+        assert_eq!(plain.editor.document.objects.len(), 1);
+    }
+
+    #[test]
+    fn cut_shapes_tool_keeps_the_inside() {
+        let mut server = McpServer::new();
+        let target = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 0.0, "y": 0.0, "width": 40.0, "height": 20.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cutter = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 15.0, "y": -5.0, "width": 20.0, "height": 30.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cut = call(
+            &mut server,
+            "cut_shapes",
+            json!({"ids": [target.clone(), cutter.clone()], "cutter": cutter.clone()}),
+        );
+        assert!(cut.get("error").is_none(), "{cut}");
+        assert_eq!(cut["result"]["pieces"], 1);
+        assert!(server.editor.document.object(&cutter).is_none());
+        assert_eq!(server.editor.document.objects.len(), 1);
+        server.editor.undo();
+        assert_eq!(server.editor.document.objects.len(), 2);
+
+        let bad = call(
+            &mut server,
+            "cut_shapes",
+            json!({"ids": [target], "cutter": "missing"}),
+        );
+        assert!(bad.get("error").is_some(), "{bad}");
+        assert_eq!(server.editor.document.objects.len(), 2);
+    }
+
+    #[test]
+    fn two_point_tool_rotates_and_optionally_scales() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "add_rectangle",
+            json!({"x": 10.0, "y": 0.0, "width": 10.0, "height": 10.0}),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let rotated = call(
+            &mut server,
+            "two_point_rotate_scale",
+            json!({
+                "ids": [id],
+                "pivot": {"x": 0.0, "y": 0.0},
+                "from": {"x": 10.0, "y": 0.0},
+                "to": {"x": 0.0, "y": 20.0},
+                "scale": false
+            }),
+        );
+        assert!(rotated.get("error").is_none(), "{rotated}");
+        assert!((rotated["result"]["angle_degrees"].as_f64().unwrap() - 90.0).abs() < 1e-6);
+        assert!((rotated["result"]["scale"].as_f64().unwrap() - 1.0).abs() < 1e-9);
+        let (min, _) = server
+            .editor
+            .document
+            .object(&id)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        assert!((min.x + 10.0).abs() < 1e-6, "{min:?}");
+        assert!((min.y - 10.0).abs() < 1e-6, "{min:?}");
+
+        let scaled = call(
+            &mut server,
+            "two_point_rotate_scale",
+            json!({
+                "ids": [id],
+                "pivot": {"x": 0.0, "y": 0.0},
+                "from": {"x": 10.0, "y": 0.0},
+                "to": {"x": 0.0, "y": 20.0},
+                "scale": true
+            }),
+        );
+        assert!(scaled.get("error").is_none(), "{scaled}");
+        assert!((scaled["result"]["scale"].as_f64().unwrap() - 2.0).abs() < 1e-9);
+
+        let short = call(
+            &mut server,
+            "two_point_rotate_scale",
+            json!({
+                "ids": [id],
+                "pivot": {"x": 0.0, "y": 0.0},
+                "from": {"x": 0.1, "y": 0.0},
+                "to": {"x": 0.0, "y": 20.0}
+            }),
+        );
+        assert!(short.get("error").is_some(), "{short}");
+        let missing = call(
+            &mut server,
+            "two_point_rotate_scale",
+            json!({"ids": [id], "from": {"x": 1.0, "y": 0.0}, "to": {"x": 0.0, "y": 1.0}}),
+        );
+        assert!(missing.get("error").is_some(), "{missing}");
+    }
+
+    #[test]
     fn repeat_tool_copies_objects() {
         let mut server = McpServer::new();
         let id = call(

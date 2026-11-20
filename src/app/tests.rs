@@ -4470,6 +4470,86 @@ fn the_image_adjust_shows_the_cut_entry_and_the_estimate() {
 }
 
 #[test]
+fn compare_operations_lists_entries_and_empty_state() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut app = ui_test_app();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Operations").click();
+    harness.run();
+    harness.get_by_label("Compare operations...").click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Compare operations").is_some(),
+        "the compare window did not open"
+    );
+    assert!(
+        harness.query_by_label("No operations yet.").is_some(),
+        "the empty state is missing"
+    );
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+
+    let mut app = ui_test_app();
+    let fast = app.editor.add_operation(
+        "Fast".to_string(),
+        crate::operations::OperationType::OutlineCutting,
+    );
+    let slow = app.editor.add_operation(
+        "Slow".to_string(),
+        crate::operations::OperationType::OutlineCutting,
+    );
+    if let Some(entry) = app
+        .editor
+        .document
+        .operations
+        .iter_mut()
+        .find(|entry| entry.id == fast)
+    {
+        entry.params.speed = 1200.0;
+        entry.params.power = 80.0;
+        entry.params.passes = 3;
+        entry.enabled = false;
+    }
+    if let Some(entry) = app
+        .editor
+        .document
+        .operations
+        .iter_mut()
+        .find(|entry| entry.id == slow)
+    {
+        entry.params.speed = 600.0;
+        entry.params.power = 40.0;
+        entry.params.passes = 1;
+    }
+    let objects_before = app.editor.document.objects.len();
+    let undo_before = app.editor.history.undo_len();
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Operations").click();
+    harness.run();
+    harness.get_by_label("Compare operations...").click();
+    harness.run();
+    for label in ["Fast", "Slow", "1200 mm/min", "80 %", "yes", "no"] {
+        assert!(
+            harness.query_by_label(label).is_some(),
+            "the compare table is missing {label}"
+        );
+    }
+    assert_eq!(
+        harness.state().editor.document.objects.len(),
+        objects_before,
+        "comparing changed the document"
+    );
+    assert_eq!(
+        harness.state().editor.history.undo_len(),
+        undo_before,
+        "comparing recorded an undo step"
+    );
+}
+
+#[test]
 fn the_layer_menu_deletes_an_empty_layer() {
     use egui_kittest::kittest::Queryable as _;
 
