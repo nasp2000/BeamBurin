@@ -23,6 +23,11 @@ impl BeamBurinApp {
             || self.workspaces_open
             || self.interface_presets_open
             || self.external_gcode_open
+            || self.doc_properties_open
+            || self.regmarks_open
+            || self.material_test_open
+            || self.preset_import_open
+            || self.text_editor_open
             || self.palette_open
             || self.export_presets_open
             || self.history_open
