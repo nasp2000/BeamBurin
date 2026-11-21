@@ -255,8 +255,7 @@ impl ContextAction {
             ContextAction::EditNodes => Icon::Nodes,
             ContextAction::EditText => Icon::Text,
             ContextAction::TextToOutlines => Icon::TextOutline,
-            ContextAction::AdjustImage => Icon::Image,
-            ContextAction::TraceImage => Icon::Image,
+            ContextAction::AdjustImage | ContextAction::TraceImage => Icon::Image,
             ContextAction::VectorizeImage => Icon::Bezier,
             ContextAction::CenterlineImage => Icon::Pencil,
             ContextAction::ExportSvg | ContextAction::ExportDxf | ContextAction::ExportGcode => {

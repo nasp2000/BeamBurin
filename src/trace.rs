@@ -403,7 +403,7 @@ mod tests {
             ..TraceOptions::default()
         };
         let outcome = trace_bitmap(&raster, 64.0, 48.0, &placement(), &options).unwrap();
-        assert!(!outcome.objects.is_empty());
+        assert_ne!(outcome.objects.len(), 0, "the trace created no paths");
         let path = outcome.objects[0].shape.to_path();
         assert!(!path.closed, "an open stroke became a closed path");
         assert!(

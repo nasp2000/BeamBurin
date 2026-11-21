@@ -17,6 +17,7 @@ pub struct TraceReport {
 }
 
 impl EditorState {
+    #[allow(clippy::too_many_lines)]
     pub fn trace_image(
         &mut self,
         image_id: Option<&str>,
@@ -197,7 +198,7 @@ mod tests {
             .iter()
             .filter(|object| object.id != image_id)
             .collect::<Vec<_>>();
-        assert!(!traced.is_empty());
+        assert_ne!(traced.len(), 0, "no paths were traced");
         let (min, max) = traced[0].bounds().expect("the traced path has no bounds");
         let third = image_width / 3.0;
         assert!(

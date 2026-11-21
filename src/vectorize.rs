@@ -230,14 +230,11 @@ pub fn to_curved_polyline(points: &[Point2], corner_degrees: f64, closed: bool) 
         let outgoing = (next.x - current.x, next.y - current.y);
         let dot = incoming.0 * outgoing.0 + incoming.1 * outgoing.1;
         let cross = incoming.0 * outgoing.1 - incoming.1 * outgoing.0;
-        dot <= 0.0 || cross.abs().atan2(dot).to_degrees() > corner_limit
+        dot <= 0.0 || cross.abs().atan2(dot).to_degrees() / window as f64 > corner_limit
     };
     let tangent = |index: usize| {
         let current = points[index];
-        let (dx, dy) = if is_end(index) {
-            let next = points[next_index(index)];
-            (next.x - current.x, next.y - current.y)
-        } else if is_corner(index) {
+        let (dx, dy) = if is_end(index) || is_corner(index) {
             let next = points[next_index(index)];
             (next.x - current.x, next.y - current.y)
         } else {

@@ -645,12 +645,12 @@ pub fn process_object_band(
             "the lowest brightness must not be above the highest".to_string(),
         ));
     }
-    let mut settings = image.settings.clone();
+    let mut settings = image.settings;
     settings.mode = crate::objects::ImageMode::Threshold;
     settings.invert = false;
     // Everything darker than `high` burns...
     let mut upper_image = image.clone();
-    upper_image.settings = settings.clone();
+    upper_image.settings = settings;
     upper_image.settings.threshold = high;
     let mut band = process_object_preview(path, &upper_image, max_side)?;
     // ...minus everything darker than `low`, so only the band is left.

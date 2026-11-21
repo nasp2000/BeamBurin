@@ -5435,10 +5435,11 @@ fn the_main_dialogs_keep_a_logical_focus_order() {
     harness.get_by_label("More options").click_accesskit();
     harness.run();
     assert_eq!(
-        focus_labels(&mut harness, "Image mode", 5),
+        focus_labels(&mut harness, "Image mode", 6),
         vec![
             "Image mode",
             "Negative image",
+            "Cells per inch",
             "Line interval (mm)",
             "Halftone angle",
             "Contrast"
@@ -6953,7 +6954,7 @@ fn the_trace_dialog_creates_centreline_paths() {
         .iter()
         .filter(|object| object.id != image_id)
         .collect();
-    assert!(!traced.is_empty(), "the trace created no paths");
+    assert_ne!(traced.len(), 0, "the trace created no paths");
     assert!(
         traced.iter().all(|object| !object.shape.to_path().closed),
         "a centreline trace produced closed outlines"
@@ -6974,8 +6975,8 @@ fn the_trace_dialog_honours_the_smoothing_switch() {
     let path = directory.join("ring.png");
     let mut picture = image::RgbImage::new(48, 48);
     for (x, y, pixel) in picture.enumerate_pixels_mut() {
-        let dx = x as f64 - 24.0;
-        let dy = y as f64 - 24.0;
+        let dx = f64::from(x) - 24.0;
+        let dy = f64::from(y) - 24.0;
         let radius = dx.hypot(dy);
         let ring = (10.0..20.0).contains(&radius);
         *pixel = if ring {
@@ -7004,7 +7005,7 @@ fn the_trace_dialog_honours_the_smoothing_switch() {
         .iter()
         .filter(|object| object.id != image_id)
         .collect();
-    assert!(!straight.is_empty());
+    assert_ne!(straight.len(), 0, "the straight trace created no paths");
     assert!(
         straight.iter().all(|object| object
             .shape
