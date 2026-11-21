@@ -15,6 +15,7 @@ impl BeamBurinApp {
             || self.cuts_open
             || self.row_settings.is_some()
             || self.image_adjust.is_some()
+            || self.trace_open
             || self.modal_open()
             || self.help_shortcuts_open
             || self.assistant_open
@@ -695,6 +696,16 @@ impl BeamBurinApp {
                                 Err(error) => self.status = error,
                             }
                         }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(image_id.is_some(), egui::Button::new("Trace image..."))
+                        .on_hover_text(
+                            "Convert the image into outlines or centreline paths with options",
+                        )
+                        .clicked()
+                    {
+                        self.open_trace_image(image_id.clone());
                         ui.close();
                     }
                     if ui

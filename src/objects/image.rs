@@ -224,6 +224,21 @@ impl Default for ImageSettings {
 }
 
 impl ImageSettings {
+    /// Halftone resolution implied by the line interval.
+    pub fn cells_per_inch(&self) -> f64 {
+        25.4 / self.line_interval_mm.max(0.001)
+    }
+
+    /// Set the line interval from a halftone resolution in cells per inch.
+    ///
+    /// Values that are not finite or not positive leave the interval alone; the
+    /// result is clamped to the interval limits the validator accepts.
+    pub fn set_cells_per_inch(&mut self, cells: f64) {
+        if cells.is_finite() && cells > 0.0 {
+            self.line_interval_mm = (25.4 / cells).clamp(0.01, 2.0);
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !(-100..=100).contains(&self.brightness) {
             return Err("brightness must be between -100 and 100".to_string());
@@ -547,6 +562,26 @@ impl ImageObject {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_halftone_resolution_and_the_line_interval_agree() {
+        let mut settings = ImageSettings::default();
+        settings.set_cells_per_inch(100.0);
+        assert!((settings.line_interval_mm - 0.254).abs() < 1e-9);
+        assert!((settings.cells_per_inch() - 100.0).abs() < 1e-6);
+        settings.set_cells_per_inch(20.0);
+        assert!((settings.line_interval_mm - 1.27).abs() < 1e-9);
+        // The interval limits the resolution instead of accepting nonsense.
+        settings.set_cells_per_inch(1_000_000.0);
+        assert!((settings.line_interval_mm - 0.01).abs() < 1e-12);
+        settings.set_cells_per_inch(1.0);
+        assert!((settings.line_interval_mm - 2.0).abs() < 1e-12);
+        settings.set_cells_per_inch(0.0);
+        assert!((settings.line_interval_mm - 2.0).abs() < 1e-12);
+        settings.set_cells_per_inch(f64::NAN);
+        assert!((settings.line_interval_mm - 2.0).abs() < 1e-12);
+        assert!(settings.validate().is_ok());
+    }
 
     #[test]
     fn the_engraving_resolution_follows_the_target_width_and_dpi() {

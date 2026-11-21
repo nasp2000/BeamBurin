@@ -13,7 +13,16 @@ pub enum TraceMode {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ThresholdSource {
     ImageSettings,
-    Custom { value: u8, invert: bool },
+    /// Trace only the tones inside a brightness band, optionally inverted.
+    ///
+    /// The two ends are the lowest and the highest brightness to include, so a
+    /// mid-grey drawing can be traced without the white paper or the black
+    /// shadows around it.
+    Custom {
+        low: u8,
+        high: u8,
+        invert: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,6 +33,10 @@ pub struct TraceOptions {
     pub tolerance_mm: f64,
     pub corner_degrees: f64,
     pub min_area_mm2: f64,
+    /// Drop holes smaller than this, in square millimetres.
+    pub min_hole_mm2: f64,
+    /// Turn the traced points into curves instead of straight segments.
+    pub smooth: bool,
 }
 
 impl Default for TraceOptions {
@@ -35,6 +48,8 @@ impl Default for TraceOptions {
             tolerance_mm: 0.2,
             corner_degrees: 40.0,
             min_area_mm2: 0.0,
+            min_hole_mm2: 0.0,
+            smooth: true,
         }
     }
 }
@@ -49,6 +64,14 @@ impl TraceOptions {
         }
         if !(0.0..=1000.0).contains(&self.min_area_mm2) {
             return Err("the minimum area must be between 0 and 1000 mm2".to_string());
+        }
+        if !(0.0..=1000.0).contains(&self.min_hole_mm2) {
+            return Err("the minimum hole area must be between 0 and 1000 mm2".to_string());
+        }
+        if let ThresholdSource::Custom { low, high, .. } = self.threshold
+            && low > high
+        {
+            return Err("the lowest brightness must not be above the highest".to_string());
         }
         Ok(())
     }
@@ -119,7 +142,7 @@ fn trace_outline(
             continue;
         }
         contour_count += 1;
-        let outer_path = crate::vectorize::to_curved_path(outer_points, options.corner_degrees);
+        let outer_path = outline_path(outer_points, options);
         let mut outer = object(
             &outer_path,
             placement,
@@ -129,8 +152,18 @@ fn trace_outline(
         outer.hole_of = None;
         objects.push(outer);
         for (index, hole_index) in group.iter().skip(1).enumerate() {
-            let path =
-                crate::vectorize::to_curved_path(&contours[*hole_index], options.corner_degrees);
+            let hole_points = &contours[*hole_index];
+            let hole_area = crate::geometry::boolean::polygon_area(
+                &hole_points
+                    .iter()
+                    .map(|point| (point.x, point.y))
+                    .collect::<Vec<_>>(),
+            )
+            .abs();
+            if hole_area < options.min_hole_mm2 {
+                continue;
+            }
+            let path = outline_path(hole_points, options);
             let mut hole = object(
                 &path,
                 placement,
@@ -168,7 +201,11 @@ fn trace_centerline(
     }
     let mut objects = Vec::new();
     for (index, line) in lines.iter().enumerate() {
-        let path = crate::centerline::to_path(line);
+        let path = if options.smooth {
+            crate::centerline::to_curved_path(line, options.corner_degrees)
+        } else {
+            crate::centerline::to_path(line)
+        };
         objects.push(object(
             &path,
             placement,
@@ -181,6 +218,15 @@ fn trace_centerline(
         holes: 0,
         warnings: Vec::new(),
     })
+}
+
+/// Contour path: curves when smoothing is on, straight segments otherwise.
+fn outline_path(points: &[Point2], options: &TraceOptions) -> Path {
+    if options.smooth {
+        crate::vectorize::to_curved_path(points, options.corner_degrees)
+    } else {
+        crate::vectorize::to_path(points)
+    }
 }
 
 fn object(path: &Path, placement: &TracePlacement, name: String) -> Object {
@@ -196,6 +242,8 @@ fn object(path: &Path, placement: &TracePlacement, name: String) -> Object {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::cast_precision_loss)]
+
     use super::*;
     use crate::raster::RasterBitmap;
 
@@ -262,6 +310,107 @@ mod tests {
                 .objects
                 .iter()
                 .all(|object| !object.shape.to_path().closed)
+        );
+    }
+
+    #[test]
+    fn smoothing_turns_an_outline_into_curves_and_can_be_switched_off() {
+        // A ring: one outer contour with many points.
+        let raster = bitmap(48, 48, |x, y| {
+            let dx = x as f64 - 24.0;
+            let dy = y as f64 - 24.0;
+            let radius = dx.hypot(dy);
+            (10.0..20.0).contains(&radius)
+        });
+        let curved =
+            trace_bitmap(&raster, 48.0, 48.0, &placement(), &TraceOptions::default()).unwrap();
+        assert!(
+            curved.objects[0]
+                .shape
+                .to_path()
+                .segments
+                .iter()
+                .any(|segment| matches!(segment, crate::geometry::path::Segment::Cubic(_))),
+            "smoothing did not produce curves"
+        );
+        let straight_options = TraceOptions {
+            smooth: false,
+            ..TraceOptions::default()
+        };
+        let straight = trace_bitmap(&raster, 48.0, 48.0, &placement(), &straight_options).unwrap();
+        assert!(
+            straight.objects[0]
+                .shape
+                .to_path()
+                .segments
+                .iter()
+                .all(|segment| matches!(segment, crate::geometry::path::Segment::Line { .. })),
+            "smoothing was not switched off"
+        );
+    }
+
+    #[test]
+    fn tiny_holes_can_be_filled_in() {
+        // A square with a big hole and a single-pixel pinhole.
+        let raster = bitmap(64, 64, |x, y| {
+            let inside = (8..56).contains(&x) && (8..56).contains(&y);
+            let big_hole = (20..44).contains(&x) && (20..44).contains(&y);
+            let pinhole = x == 50 && y == 50;
+            inside && !big_hole && !pinhole
+        });
+        let keep_holes =
+            trace_bitmap(&raster, 64.0, 64.0, &placement(), &TraceOptions::default()).unwrap();
+        assert_eq!(keep_holes.holes, 2, "both holes should be kept");
+        let filled_options = TraceOptions {
+            min_hole_mm2: 4.0,
+            ..TraceOptions::default()
+        };
+        let filled = trace_bitmap(&raster, 64.0, 64.0, &placement(), &filled_options).unwrap();
+        assert_eq!(filled.holes, 1, "the pinhole was not filled in");
+    }
+
+    #[test]
+    fn a_reversed_brightness_band_is_rejected() {
+        let options = TraceOptions {
+            threshold: ThresholdSource::Custom {
+                low: 200,
+                high: 20,
+                invert: false,
+            },
+            ..TraceOptions::default()
+        };
+        assert!(options.validate().is_err());
+        assert!(
+            TraceOptions {
+                min_hole_mm2: -1.0,
+                ..TraceOptions::default()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn centreline_smoothing_follows_an_open_stroke() {
+        // A wavy horizontal stroke: a single open chain with many points.
+        let raster = bitmap(64, 48, |x, y| {
+            let wave = 24.0 + 8.0 * ((x as f64 / 63.0) * std::f64::consts::TAU).sin();
+            (y as f64 - wave).abs() < 2.0
+        });
+        let options = TraceOptions {
+            mode: TraceMode::Centerline,
+            smooth: true,
+            ..TraceOptions::default()
+        };
+        let outcome = trace_bitmap(&raster, 64.0, 48.0, &placement(), &options).unwrap();
+        assert!(!outcome.objects.is_empty());
+        let path = outcome.objects[0].shape.to_path();
+        assert!(!path.closed, "an open stroke became a closed path");
+        assert!(
+            path.segments
+                .iter()
+                .any(|segment| matches!(segment, crate::geometry::path::Segment::Cubic(_))),
+            "centreline smoothing did not produce curves"
         );
     }
 

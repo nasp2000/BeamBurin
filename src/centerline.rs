@@ -107,6 +107,24 @@ pub fn to_path(polyline: &[Point2]) -> Path {
     Path { segments, closed }
 }
 
+/// Build a curved path from a traced centreline.
+///
+/// Loops stay closed and open chains stay open. Smoothing keeps every traced
+/// point and only removes the stair-steps between them, except at corners
+/// sharper than `corner_degrees`, which stay straight.
+pub fn to_curved_path(polyline: &[Point2], corner_degrees: f64) -> Path {
+    let closed = polyline.len() > 2 && polyline[0].distance(polyline[polyline.len() - 1]) <= 1e-9;
+    let points = if closed {
+        &polyline[..polyline.len() - 1]
+    } else {
+        polyline
+    };
+    if points.len() < 2 {
+        return Path::new();
+    }
+    crate::vectorize::to_curved_polyline(points, corner_degrees, closed)
+}
+
 /// Reduce the burnable pixels to a one-pixel-wide skeleton.
 fn thin(bitmap: &RasterBitmap) -> HashSet<Pixel> {
     let mut pixels: HashSet<Pixel> = HashSet::new();

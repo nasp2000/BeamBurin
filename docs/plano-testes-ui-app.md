@@ -95,7 +95,7 @@ another native integration are marked **MANUAL** and listed again in section 9.
 | Cuts/operations editors, parameters, constraints, recipes, machines | partial | UI-O |
 | Preferences search/reset, workspaces, interface presets, shortcuts editing | partial | UI-S |
 | Palette ranking, disabled commands, help topics and the tour | partial | UI-Q |
-| Agent/MCP-only actions (dock, print, trace, Shape Maker, presets) | not in the UI | UI-A |
+| Agent/MCP-only actions (dock, print, Shape Maker, presets) | not in the UI | UI-A |
 | Error paths, disabled states, accessibility labels, persistence | scattered | UI-Z |
 
 ### 3.3 Coverage rule
@@ -163,6 +163,10 @@ rest run headlessly with `kittest` and `mcp`.
 | UI-I08 | Preview external G-code | `File > Preview external G-code...`, F6 | preview window opens, layers/paths listed, playback controls work, Cancel closes | kittest |
 | UI-I09 | Import malformed SVG reports without crashing | import the malformed F2 variant | error on the status bar, previous document intact, undo history unchanged | kittest |
 | UI-I10 | Drag and drop a supported file | drag F1 onto the window | confirmation or direct open, same result as `File > Open` | MANUAL |
+| UI-I11 | Trace image to outlines | select an image, `Image > Trace image...`, pick Outline and Trace | contour and hole paths appear on the image layer, group selected, one undo step; brightness band and hole filters respected | kittest |
+| UI-I12 | Trace centreline | same dialog, pick Centerline, Smooth shapes | open paths follow the stroke centre; with smoothing off every segment is a straight line; Delete the image after tracing removes the source | kittest |
+| UI-I13 | Trace rejects an empty trace | choose the image-settings brightness on a blank image | status explains there are no burnable areas, no object created, dialog stays open | kittest |
+| UI-I14 | Adjust image levels and halftone resolution | open Adjust image; drag the histogram handles; type Cells per inch | the clip levels follow the pointer in real time and never cross; the typed resolution sets the line interval; Reset All restores the defaults | kittest (controls) + unit (level mapping) |
 
 ### 5.3 Vector export (UI-V)
 
@@ -324,6 +328,7 @@ rest run headlessly with `kittest` and `mcp`.
 | UI-P11 | Side panel tabs | switch Properties/Tool | tool options and live readout appear; pending drawing state kept | kittest |
 | UI-P12 | Panel widths and reset | resize both docks, Reset layout | widths/sides restore defaults; document unchanged; both docks are draggable | kittest (resize); MANUAL (visual width) |
 
+
 ### 5.12 Operations, materials and machines (UI-O)
 
 | ID | Objective | Steps | Expected | Driver |
@@ -469,10 +474,11 @@ with severity, and the fixture versions.
   document and files, not menu clicks. Menu/dialog cases therefore use the
   in-repo `egui_kittest` harness; MCP is used for document/file assertions and
   for actions that exist only on the agent surface.
-* **Features with no UI path yet.** Docking, `export_print`, Shape Maker and
-  Trace Image are reachable through MCP but not through a menu in this build.
-  They are covered as agent-surface cases (UI-A/UI-T/UI-B) and marked as a gap
-  for a future UI round, not as missing behaviour.
+* **Features with no UI path yet.** Docking, `export_print` and Shape Maker are
+  reachable through MCP but not through a menu in this build. They are covered
+  as agent-surface cases (UI-A/UI-T/UI-B) and marked as a gap for a future UI
+  round, not as missing behaviour. Tracing an image now has its own dialog
+  (UI-I11 to UI-I13) and the same options as the agent surface.
 * **Printing** produces a PDF and hands it to the system viewer; the printer,
   paper and driver are outside the application and manual.
 * **Performance** cases use F5 but thresholds are indicative; a slower runner

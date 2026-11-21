@@ -257,7 +257,11 @@ fn object_context_menu_matches_the_selection() {
 
     let image = object_context_actions(1, false, true);
     assert!(image.contains(&ContextAction::AdjustImage));
+    assert!(image.contains(&ContextAction::TraceImage));
+    assert!(image.contains(&ContextAction::VectorizeImage));
+    assert!(image.contains(&ContextAction::CenterlineImage));
     assert!(!image.contains(&ContextAction::TextToOutlines));
+    assert!(!none.contains(&ContextAction::TraceImage));
 }
 
 #[test]
@@ -5228,10 +5232,16 @@ fn the_main_dialogs_expose_named_accessibility_nodes() {
     let id = document.objects[0].id.clone();
     let mut app = ui_test_app();
     app.editor.set_document(document);
-    app.image_adjust = Some(id);
+    app.image_adjust = Some(id.clone());
     let mut harness = ui_harness(app);
     harness.run();
     audits.push(("adjust image", unnamed_interactive(&harness)));
+
+    let mut app = ui_test_app();
+    app.open_trace_image(Some(id));
+    let mut harness = ui_harness(app);
+    harness.run();
+    audits.push(("trace image", unnamed_interactive(&harness)));
     open_image_more(&mut harness);
     audits.push(("adjust image more", unnamed_interactive(&harness)));
 
@@ -6902,4 +6912,164 @@ fn the_docked_panels_can_be_stretched() {
         narrower < edge - 20.0,
         "the Layers dock did not shrink again: {edge} -> {narrower}"
     );
+}
+
+#[test]
+fn the_trace_dialog_creates_centreline_paths() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("trace_dialog");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("stroke.png");
+    let mut picture = image::RgbImage::new(40, 40);
+    for (x, y, pixel) in picture.enumerate_pixels_mut() {
+        let stroke = (10..30).contains(&x) && (18..22).contains(&y);
+        *pixel = if stroke {
+            image::Rgb([0, 0, 0])
+        } else {
+            image::Rgb([255, 255, 255])
+        };
+    }
+    picture.save(&path).expect("cannot write the fixture");
+
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the image");
+    let image_id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.open_trace_image(Some(image_id.clone()));
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(harness.query_by_label("Trace image").is_some());
+    harness.get_by_label("Centerline").click_accesskit();
+    harness.run();
+    harness.get_by_label("Trace").click_accesskit();
+    harness.run();
+    assert!(!harness.state().trace_open, "the dialog stayed open");
+    let traced: Vec<_> = harness
+        .state()
+        .editor
+        .document
+        .objects
+        .iter()
+        .filter(|object| object.id != image_id)
+        .collect();
+    assert!(!traced.is_empty(), "the trace created no paths");
+    assert!(
+        traced.iter().all(|object| !object.shape.to_path().closed),
+        "a centreline trace produced closed outlines"
+    );
+    assert!(
+        harness.state().status.contains("centre"),
+        "unexpected status: {}",
+        harness.state().status
+    );
+}
+
+#[test]
+fn the_trace_dialog_honours_the_smoothing_switch() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("trace_dialog_smooth");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("ring.png");
+    let mut picture = image::RgbImage::new(48, 48);
+    for (x, y, pixel) in picture.enumerate_pixels_mut() {
+        let dx = x as f64 - 24.0;
+        let dy = y as f64 - 24.0;
+        let radius = dx.hypot(dy);
+        let ring = (10.0..20.0).contains(&radius);
+        *pixel = if ring {
+            image::Rgb([0, 0, 0])
+        } else {
+            image::Rgb([255, 255, 255])
+        };
+    }
+    picture.save(&path).expect("cannot write the fixture");
+
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the image");
+    let image_id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.open_trace_image(Some(image_id.clone()));
+    app.trace_options.smooth = false;
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Trace").click_accesskit();
+    harness.run();
+    let straight: Vec<_> = harness
+        .state()
+        .editor
+        .document
+        .objects
+        .iter()
+        .filter(|object| object.id != image_id)
+        .collect();
+    assert!(!straight.is_empty());
+    assert!(
+        straight.iter().all(|object| object
+            .shape
+            .to_path()
+            .segments
+            .iter()
+            .all(|segment| matches!(segment, crate::geometry::path::Segment::Line { .. }))),
+        "straight tracing still produced curves"
+    );
+}
+
+#[test]
+fn the_image_dialog_exposes_the_halftone_cells_control() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("cells_control");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("photo.png");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([30, 120, 220, 255]))
+        .save(&path)
+        .expect("png");
+    let document = crate::import::raster::import_raster(&path).expect("import");
+    let id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.image_adjust = Some(id);
+    let mut harness = ui_harness(app);
+    harness.run();
+    assert!(
+        harness.query_by_label("Cells per inch").is_some(),
+        "the halftone resolution control is missing"
+    );
+    assert!(
+        harness.query_by_label("Line interval (mm)").is_some(),
+        "the line interval control is missing"
+    );
+}
+
+#[test]
+fn tracing_a_blank_image_reports_and_keeps_the_dialog_open() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let directory = ui_temp_path("trace_blank");
+    std::fs::create_dir_all(&directory).expect("cannot create the temporary directory");
+    let path = directory.join("blank.png");
+    image::RgbImage::from_pixel(16, 16, image::Rgb([255, 255, 255]))
+        .save(&path)
+        .expect("cannot write the fixture");
+    let document = crate::import::raster::import_raster(&path).expect("cannot import the image");
+    let image_id = document.objects[0].id.clone();
+    let mut app = ui_test_app();
+    app.editor.set_document(document);
+    app.open_trace_image(Some(image_id));
+    let mut harness = ui_harness(app);
+    harness.run();
+    harness.get_by_label("Trace").click_accesskit();
+    harness.run();
+    assert!(
+        harness.state().trace_open,
+        "the dialog closed after an empty trace"
+    );
+    assert!(
+        harness.state().status.contains("no burnable"),
+        "unexpected status: {}",
+        harness.state().status
+    );
+    assert_eq!(harness.state().editor.document.objects.len(), 1);
 }

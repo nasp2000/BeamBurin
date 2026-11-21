@@ -36,6 +36,7 @@ mod dialogs_operations;
 mod dialogs_preferences;
 mod dialogs_reports;
 mod dialogs_text;
+mod dialogs_trace;
 mod dialogs_transform;
 mod files;
 mod frame_trace;
@@ -181,6 +182,7 @@ enum ContextAction {
     EditText,
     TextToOutlines,
     AdjustImage,
+    TraceImage,
     VectorizeImage,
     CenterlineImage,
     ExportSvg,
@@ -218,8 +220,9 @@ impl ContextAction {
             ContextAction::EditText => "Edit text...",
             ContextAction::TextToOutlines => "Text to outlines",
             ContextAction::AdjustImage => "Adjust image...",
-            ContextAction::VectorizeImage => "Vectorize image...",
-            ContextAction::CenterlineImage => "Trace centerline...",
+            ContextAction::TraceImage => "Trace image...",
+            ContextAction::VectorizeImage => "Vectorize image (defaults)",
+            ContextAction::CenterlineImage => "Trace centerline (defaults)",
             ContextAction::ExportSvg => "Export selection as SVG...",
             ContextAction::ExportDxf => "Export selection as DXF...",
             ContextAction::ExportGcode => "Export selection as G-code...",
@@ -253,6 +256,7 @@ impl ContextAction {
             ContextAction::EditText => Icon::Text,
             ContextAction::TextToOutlines => Icon::TextOutline,
             ContextAction::AdjustImage => Icon::Image,
+            ContextAction::TraceImage => Icon::Image,
             ContextAction::VectorizeImage => Icon::Bezier,
             ContextAction::CenterlineImage => Icon::Pencil,
             ContextAction::ExportSvg | ContextAction::ExportDxf | ContextAction::ExportGcode => {
@@ -303,6 +307,7 @@ fn object_context_actions(
     }
     if image_selected {
         actions.push(ContextAction::AdjustImage);
+        actions.push(ContextAction::TraceImage);
         actions.push(ContextAction::VectorizeImage);
         actions.push(ContextAction::CenterlineImage);
     }
@@ -447,6 +452,11 @@ pub struct BeamBurinApp {
     invert_preview: Option<InvertPreview>,
     image_original_previews: std::collections::HashMap<String, egui::TextureHandle>,
     image_adjust: Option<String>,
+    /// Trace options window for one image.
+    trace_open: bool,
+    trace_target: Option<String>,
+    trace_options: crate::trace::TraceOptions,
+    trace_delete_source: bool,
     text_editor_open: bool,
     text_editor_object: Option<String>,
     text_editor_draft: crate::objects::TextObject,
@@ -1947,6 +1957,7 @@ impl BeamBurinApp {
             || self.export_vector_open
             || self.export_presets_open
             || self.image_adjust.is_some()
+            || self.trace_open
             || self.text_editor_open
             || self.corner_radius_open
             || self.position_open

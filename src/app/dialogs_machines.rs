@@ -282,161 +282,49 @@ impl BeamBurinApp {
         );
     }
 
+    /// Vectorize the selected image with the shared trace core.
     pub(super) fn vectorize_selected_image(&mut self) {
-        let Some(id) = self.editor.selection.ids().first().cloned() else {
-            return;
-        };
-        let Some(object) = self
-            .editor
-            .document
-            .objects
-            .iter()
-            .find(|object| object.id == id)
-            .cloned()
-        else {
-            return;
-        };
-        let crate::document::Shape::Image(image) = &object.shape else {
-            return;
-        };
-        let Some((min, max)) = object.bounds() else {
-            return;
-        };
-        let bitmap = match crate::raster::process_object_preview(
-            std::path::Path::new(&image.path),
-            image,
-            crate::raster::TRACE_MAX_SIDE,
-        ) {
-            Ok(bitmap) => bitmap,
-            Err(error) => {
-                self.status = format!("Cannot read the image: {error}");
-                return;
-            }
-        };
-        let contours = crate::vectorize::trace(&bitmap, max.x - min.x, max.y - min.y, 0.2);
-        if contours.is_empty() {
-            self.status = "The image has no burnable areas to vectorize".to_string();
-            return;
-        }
-        self.editor.record_action("Vectorize image");
-        let groups = crate::vectorize::group_contours(&contours);
-        let mut created = Vec::new();
-        let mut holes = 0;
-        for group in &groups {
-            let Some(outer_index) = group.first() else {
-                continue;
-            };
-            let operation_id = self
-                .editor
-                .document
-                .objects
-                .iter()
-                .find(|candidate| candidate.id == id)
-                .and_then(|candidate| candidate.operation_id.clone());
-            let mut outline = crate::document::Object::new(
-                object.layer_id.clone(),
-                crate::document::Shape::Path(crate::vectorize::to_curved_path(
-                    &contours[*outer_index],
-                    40.0,
-                )),
-            );
-            outline.name = "Vectorized contour".to_string();
-            outline.transform = crate::geometry::Transform2::translate(min.x, min.y);
-            outline.operation_id.clone_from(&operation_id);
-            outline.style.stroke = Some("#000000".to_string());
-            outline.style.fill = None;
-            let outer_id = self.editor.document.add_object(outline).id.clone();
-            created.push(outer_id.clone());
-            for hole_index in &group[1..] {
-                let mut hole = crate::document::Object::new(
-                    object.layer_id.clone(),
-                    crate::document::Shape::Path(crate::vectorize::to_curved_path(
-                        &contours[*hole_index],
-                        40.0,
-                    )),
-                );
-                hole.name = "Vectorized hole".to_string();
-                hole.transform = crate::geometry::Transform2::translate(min.x, min.y);
-                hole.operation_id.clone_from(&operation_id);
-                hole.hole_of = Some(outer_id.clone());
-                hole.style.stroke = Some("#000000".to_string());
-                hole.style.fill = None;
-                created.push(self.editor.document.add_object(hole).id.clone());
-                holes += 1;
-            }
-        }
-        self.editor.selection.clear();
-        for new_id in &created {
-            self.editor.selection.add(new_id.clone());
-        }
-        self.status = format!(
-            "Vectorized into {} contour(s) with {holes} hole(s)",
-            created.len() - holes
-        );
+        self.trace_selected_image(crate::trace::TraceMode::Outline);
     }
 
+    /// Trace the strokes of the selected image along their centre.
     pub(super) fn centerline_selected_image(&mut self) {
+        self.trace_selected_image(crate::trace::TraceMode::Centerline);
+    }
+
+    /// Run one trace mode with the default options on the selected image.
+    fn trace_selected_image(&mut self, mode: crate::trace::TraceMode) {
         let Some(id) = self.editor.selection.ids().first().cloned() else {
+            self.status = "Select one image to trace".to_string();
             return;
         };
-        let Some(object) = self
+        let is_image = self
             .editor
             .document
-            .objects
-            .iter()
-            .find(|object| object.id == id)
-            .cloned()
-        else {
+            .object(&id)
+            .is_some_and(|object| matches!(object.shape, crate::document::Shape::Image(_)));
+        if !is_image {
+            self.status = "Select one image to trace".to_string();
             return;
+        }
+        let options = crate::trace::TraceOptions {
+            mode,
+            ..crate::trace::TraceOptions::default()
         };
-        let crate::document::Shape::Image(image) = &object.shape else {
-            return;
-        };
-        let Some((min, max)) = object.bounds() else {
-            return;
-        };
-        let bitmap = match crate::raster::process_object_preview(
-            std::path::Path::new(&image.path),
-            image,
-            crate::raster::TRACE_MAX_SIDE,
-        ) {
-            Ok(bitmap) => bitmap,
-            Err(error) => {
-                self.status = format!("Cannot read the image: {error}");
-                return;
+        match self.editor.trace_image(Some(&id), None, &options, false) {
+            Ok(report) => {
+                self.status = match mode {
+                    crate::trace::TraceMode::Outline => format!(
+                        "Vectorized into {} contour(s) with {} hole(s)",
+                        report.contours, report.holes
+                    ),
+                    crate::trace::TraceMode::Centerline => {
+                        format!("Traced {} centreline(s)", report.contours)
+                    }
+                };
             }
-        };
-        let lines = crate::centerline::trace(&bitmap, max.x - min.x, max.y - min.y, 0.2);
-        if lines.is_empty() {
-            self.status = "The image has no strokes to trace".to_string();
-            return;
+            Err(error) => self.status = error,
         }
-        self.editor.record_action("Trace centerline");
-        let operation_id = self
-            .editor
-            .document
-            .objects
-            .iter()
-            .find(|candidate| candidate.id == id)
-            .and_then(|candidate| candidate.operation_id.clone());
-        let mut created = Vec::new();
-        for line in &lines {
-            let mut new_object = crate::document::Object::new(
-                object.layer_id.clone(),
-                crate::document::Shape::Path(crate::centerline::to_path(line)),
-            );
-            new_object.name = "Centerline".to_string();
-            new_object.transform = crate::geometry::Transform2::translate(min.x, min.y);
-            new_object.operation_id.clone_from(&operation_id);
-            new_object.style.stroke = Some("#000000".to_string());
-            new_object.style.fill = None;
-            created.push(self.editor.document.add_object(new_object).id.clone());
-        }
-        self.editor.selection.clear();
-        for new_id in &created {
-            self.editor.selection.add(new_id.clone());
-        }
-        self.status = format!("Traced {} centerline(s)", created.len());
     }
 
     pub(super) fn import_materials_csv(&mut self, path: &Path) {

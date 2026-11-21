@@ -531,7 +531,7 @@ impl BeamBurinApp {
                                         .labelled_by(zoom_label.id);
                                     ui.checkbox(&mut compare, "Compare with original").on_hover_text(crate::ui::icons::description("Compare with original"));
                                 });
-                                draw_histogram(ui, &histogram, &image.settings);
+                                draw_histogram(ui, &histogram, &mut image.settings);
                                 ui.separator();
                                 ui.vertical(|ui| {
                                     egui::Grid::new("image_target_resolution")
@@ -1079,11 +1079,23 @@ impl BeamBurinApp {
                                     )
                                 });
                                 ui.end_row();
-                                ui.label("Cells per inch");
-                                ui.weak(format!(
-                                    "{:.1}",
-                                    25.4 / image.settings.line_interval_mm.max(0.001)
-                                ));
+                                let cells_label = ui.label("Cells per inch");
+                                let mut cells = image.settings.cells_per_inch();
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut cells)
+                                            .speed(1.0)
+                                            .range(13.0..=1000.0)
+                                            .fixed_decimals(1),
+                                    )
+                                    .labelled_by(cells_label.id)
+                                    .on_hover_text(
+                                        "Halftone resolution: typing it sets the line interval",
+                                    )
+                                    .changed()
+                                {
+                                    image.settings.set_cells_per_inch(cells);
+                                }
                                 ui.end_row();
                                 let interval_label = ui.label("Line interval (mm)");
                                 ui.add(
@@ -1440,13 +1452,39 @@ impl BeamBurinApp {
 
 /// Draw the prepared-tone histogram under the previews.
 ///
+/// Tone value under one horizontal position of the histogram.
+fn histogram_value_at(rect: egui::Rect, x: f32) -> u8 {
+    if rect.width() <= 0.0 {
+        return 0;
+    }
+    let fraction = ((x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+    (fraction * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
+/// Drag the nearer clip level to `value`, keeping black below white.
+fn drag_clip_levels(black: u8, white: u8, value: u8) -> (u8, u8) {
+    let to_black = i32::from(value).abs_diff(i32::from(black));
+    let to_white = i32::from(value).abs_diff(i32::from(white));
+    if to_black <= to_white {
+        (value.min(white.saturating_sub(1)), white)
+    } else {
+        (black, value.max(black.saturating_add(1)))
+    }
+}
+
+/// Draw the histogram and let its black and white clip handles be dragged.
+///
 /// Heights use a square-root scale so the long tail of a photo stays visible
 /// instead of collapsing under one dominant tone.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256], settings: &crate::objects::ImageSettings) {
+fn draw_histogram(
+    ui: &mut egui::Ui,
+    bins: &[u64; 256],
+    settings: &mut crate::objects::ImageSettings,
+) {
     ui.label("Histogram");
     let width = ui.available_width().clamp(200.0, 720.0);
-    let (response, painter) = ui.allocate_painter(egui::vec2(width, 64.0), egui::Sense::hover());
+    let (response, painter) =
+        ui.allocate_painter(egui::vec2(width, 64.0), egui::Sense::click_and_drag());
     let rect = response.rect;
     let visuals = ui.visuals();
     painter.rect_filled(rect, 2.0, visuals.extreme_bg_color);
@@ -1500,6 +1538,22 @@ fn draw_histogram(ui: &mut egui::Ui, bins: &[u64; 256], settings: &crate::object
             [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
             egui::Stroke::new(1.0, visuals.text_color()),
         );
+        painter.rect_filled(
+            egui::Rect::from_center_size(egui::pos2(x, rect.top() + 3.0), egui::vec2(9.0, 6.0)),
+            1.0,
+            visuals.text_color(),
+        );
+    }
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if (response.dragged() || response.clicked())
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let value = histogram_value_at(rect, pointer.x);
+        let (black, white) = drag_clip_levels(settings.black_clip, settings.white_clip, value);
+        settings.black_clip = black;
+        settings.white_clip = white;
     }
 }
 
@@ -1544,5 +1598,34 @@ fn image_mask_colour_button(
         } else {
             image.mask_colours.push(colour.to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{drag_clip_levels, histogram_value_at};
+
+    #[test]
+    fn the_histogram_maps_positions_to_tone_values() {
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 0.0), egui::vec2(255.0, 64.0));
+        assert_eq!(histogram_value_at(rect, 10.0), 0);
+        assert_eq!(histogram_value_at(rect, 10.0 + 255.0), 255);
+        assert_eq!(histogram_value_at(rect, 10.0 + 127.5), 128);
+        // Dragging past either end clamps instead of wrapping.
+        assert_eq!(histogram_value_at(rect, -40.0), 0);
+        assert_eq!(histogram_value_at(rect, 900.0), 255);
+    }
+
+    #[test]
+    fn dragging_the_histogram_moves_the_nearer_clip_level() {
+        // The nearer handle follows the pointer...
+        assert_eq!(drag_clip_levels(10, 240, 20), (20, 240));
+        assert_eq!(drag_clip_levels(10, 240, 200), (10, 200));
+        // ...and the two levels can never cross.
+        assert_eq!(drag_clip_levels(10, 240, 255), (10, 255));
+        assert_eq!(drag_clip_levels(10, 240, 0), (0, 240));
+        assert_eq!(drag_clip_levels(100, 101, 200), (100, 200));
+        // A one-level window still keeps black strictly below white.
+        assert_eq!(drag_clip_levels(40, 41, 41), (40, 41));
     }
 }

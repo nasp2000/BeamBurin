@@ -1259,18 +1259,28 @@ impl McpServer {
                     "centerline" => crate::trace::TraceMode::Centerline,
                     _ => crate::trace::TraceMode::Outline,
                 };
-                let threshold =
-                    if let Some(value) = arguments.get("threshold").and_then(Value::as_u64) {
-                        crate::trace::ThresholdSource::Custom {
-                            value: u8::try_from(value).unwrap_or(128),
-                            invert: arguments
-                                .get("invert")
-                                .and_then(Value::as_bool)
-                                .unwrap_or(false),
-                        }
-                    } else {
-                        crate::trace::ThresholdSource::ImageSettings
-                    };
+                let low = arguments
+                    .get("threshold_low")
+                    .and_then(Value::as_u64)
+                    .or_else(|| arguments.get("threshold").and_then(Value::as_u64));
+                let threshold = if let Some(value) = low {
+                    crate::trace::ThresholdSource::Custom {
+                        low: u8::try_from(value).unwrap_or(128),
+                        high: u8::try_from(
+                            arguments
+                                .get("threshold_high")
+                                .and_then(Value::as_u64)
+                                .unwrap_or(255),
+                        )
+                        .unwrap_or(255),
+                        invert: arguments
+                            .get("invert")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    }
+                } else {
+                    crate::trace::ThresholdSource::ImageSettings
+                };
                 let options = crate::trace::TraceOptions {
                     mode,
                     threshold,
@@ -1281,6 +1291,11 @@ impl McpServer {
                     tolerance_mm: number(arguments, "tolerance").unwrap_or(0.2),
                     corner_degrees: number(arguments, "corner_degrees").unwrap_or(40.0),
                     min_area_mm2: number(arguments, "min_area").unwrap_or(0.0),
+                    min_hole_mm2: number(arguments, "min_hole").unwrap_or(0.0),
+                    smooth: arguments
+                        .get("smooth")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
                 };
                 let id = string(arguments, "id");
                 let path = string(arguments, "path").map(std::path::PathBuf::from);
@@ -2585,17 +2600,21 @@ fn tool_definitions() -> Vec<Value> {
         ),
         tool_with(
             "trace_image",
-            "Trace one image from the document or a file into paths.",
+            "Trace one image from the document or a file into outlines or centrelines.",
             json!({"type": "object", "properties": {
                 "id": {"type": "string"},
                 "path": {"type": "string"},
                 "mode": {"type": "string", "enum": ["outline", "centerline"]},
                 "threshold": {"type": "integer"},
+                "threshold_low": {"type": "integer"},
+                "threshold_high": {"type": "integer"},
                 "invert": {"type": "boolean"},
                 "transparency": {"type": "boolean"},
+                "smooth": {"type": "boolean"},
                 "tolerance": {"type": "number"},
                 "corner_degrees": {"type": "number"},
                 "min_area": {"type": "number"},
+                "min_hole": {"type": "number"},
                 "delete_source": {"type": "boolean"}
             }}),
         ),

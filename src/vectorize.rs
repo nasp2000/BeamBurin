@@ -177,15 +177,55 @@ pub fn to_path(contour: &[Point2]) -> Path {
 /// polyline left by the tracer into a small number of curves without moving the
 /// traced outline.
 pub fn to_curved_path(contour: &[Point2], corner_degrees: f64) -> Path {
-    let count = contour.len();
-    if count < 4 {
-        return to_path(contour);
+    to_curved_polyline(contour, corner_degrees, true)
+}
+
+/// Build a path, open or closed, that smooths gentle runs and keeps corners.
+///
+/// Shared by the outline tracer and the centreline tracer: the knots are kept
+/// exactly, so smoothing never moves the traced geometry, and a pair of
+/// consecutive corners stays a straight segment.
+pub fn to_curved_polyline(points: &[Point2], corner_degrees: f64, closed: bool) -> Path {
+    let count = points.len();
+    let segment_count = if closed {
+        count
+    } else {
+        count.saturating_sub(1)
+    };
+    if count < 4 || segment_count == 0 {
+        return polyline_path(points, closed);
     }
     let corner_limit = corner_degrees.max(1.0);
+    // Turns are measured over a couple of points: a raster staircase is a run of
+    // right angles that averages out over two steps, while a real corner keeps
+    // its sharp turn at the same width.
+    let window = 2.min(count.saturating_sub(1)).max(1);
+    let previous_index = |index: usize| {
+        if index >= window {
+            index - window
+        } else if closed {
+            count + index - window
+        } else {
+            0
+        }
+    };
+    let next_index = |index: usize| {
+        if index + window < count {
+            index + window
+        } else if closed {
+            (index + window) % count
+        } else {
+            count - 1
+        }
+    };
+    let is_end = |index: usize| !closed && (index == 0 || index + 1 == count);
     let is_corner = |index: usize| {
-        let previous = contour[(index + count - 1) % count];
-        let current = contour[index];
-        let next = contour[(index + 1) % count];
+        if is_end(index) {
+            return false;
+        }
+        let previous = points[previous_index(index)];
+        let current = points[index];
+        let next = points[next_index(index)];
         let incoming = (current.x - previous.x, current.y - previous.y);
         let outgoing = (next.x - current.x, next.y - current.y);
         let dot = incoming.0 * outgoing.0 + incoming.1 * outgoing.1;
@@ -193,13 +233,16 @@ pub fn to_curved_path(contour: &[Point2], corner_degrees: f64) -> Path {
         dot <= 0.0 || cross.abs().atan2(dot).to_degrees() > corner_limit
     };
     let tangent = |index: usize| {
-        let current = contour[index];
-        let (dx, dy) = if is_corner(index) {
-            let next = contour[(index + 1) % count];
+        let current = points[index];
+        let (dx, dy) = if is_end(index) {
+            let next = points[next_index(index)];
+            (next.x - current.x, next.y - current.y)
+        } else if is_corner(index) {
+            let next = points[next_index(index)];
             (next.x - current.x, next.y - current.y)
         } else {
-            let previous = contour[(index + count - 1) % count];
-            let next = contour[(index + 1) % count];
+            let previous = points[previous_index(index)];
+            let next = points[next_index(index)];
             (next.x - previous.x, next.y - previous.y)
         };
         let length = dx.hypot(dy);
@@ -210,11 +253,11 @@ pub fn to_curved_path(contour: &[Point2], corner_degrees: f64) -> Path {
         }
     };
     let mut path = Path::new();
-    path.closed = true;
-    for index in 0..count {
-        let from = contour[index];
-        let to = contour[(index + 1) % count];
-        let next = (index + 1) % count;
+    path.closed = closed;
+    for index in 0..segment_count {
+        let next = next_index(index);
+        let from = points[index];
+        let to = points[next];
         if is_corner(index) && is_corner(next) {
             path.push(Segment::Line { from, to });
             continue;
@@ -241,6 +284,24 @@ pub fn to_curved_path(contour: &[Point2], corner_degrees: f64) -> Path {
         }));
     }
     path
+}
+
+/// Straight polyline path, closed when asked.
+fn polyline_path(points: &[Point2], closed: bool) -> Path {
+    let mut segments = Vec::new();
+    let pairs = if closed {
+        points.len()
+    } else {
+        points.len().saturating_sub(1)
+    };
+    for index in 0..pairs {
+        let from = points[index];
+        let to = points[(index + 1) % points.len()];
+        if from.distance(to) > 1e-9 {
+            segments.push(Segment::Line { from, to });
+        }
+    }
+    Path { segments, closed }
 }
 
 fn simplify(points: &[Point2], tolerance: f64) -> Vec<Point2> {
@@ -415,6 +476,28 @@ mod tests {
             assert!(curve.p0.distance(circle[index]) < 1e-9);
             assert!(curve.p3.distance(circle[(index + 1) % 16]) < 1e-9);
         }
+    }
+
+    #[test]
+    fn an_open_polyline_keeps_its_ends_straight_and_its_middle_curved() {
+        // A gentle arc: no interior corner, so the middle becomes curves.
+        let arc: Vec<Point2> = (0..8)
+            .map(|index| {
+                let angle = -0.6 + 1.2 * f64::from(index) / 7.0;
+                Point2::new(10.0 * angle.cos(), 10.0 * angle.sin())
+            })
+            .collect();
+        let path = super::to_curved_polyline(&arc, 40.0, false);
+        assert!(!path.closed);
+        assert_eq!(path.segments.len(), 7);
+        assert!(
+            path.segments
+                .iter()
+                .all(|segment| matches!(segment, Segment::Cubic(_))),
+            "the open arc was not smoothed"
+        );
+        assert!(path.segments[0].start().distance(arc[0]) < 1e-9);
+        assert!(path.segments[6].end().distance(arc[7]) < 1e-9);
     }
 
     #[test]

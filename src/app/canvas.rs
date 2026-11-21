@@ -49,7 +49,8 @@ impl BeamBurinApp {
                     || self.machines_open
                     || self.machine_wizard_open
                     || self.cuts_open
-                    || self.palette_open;
+                    || self.palette_open
+                    || self.trace_open;
                 if modal {
                     // A window opened mid-drag must not leave the drag alive:
                     // its release would be ignored and the canvas would keep
@@ -498,6 +499,7 @@ impl BeamBurinApp {
                 ContextAction::EditNodes => count == 1,
                 ContextAction::EditText | ContextAction::TextToOutlines => text_selected,
                 ContextAction::AdjustImage
+                | ContextAction::TraceImage
                 | ContextAction::VectorizeImage
                 | ContextAction::CenterlineImage => image_selected,
                 _ => true,
@@ -628,6 +630,7 @@ impl BeamBurinApp {
             ContextAction::EditText => self.open_text_editor(),
             ContextAction::TextToOutlines => self.apply_text_outlines(),
             ContextAction::AdjustImage => self.open_image_adjust(),
+            ContextAction::TraceImage => self.open_trace_image(None),
             ContextAction::VectorizeImage => self.vectorize_selected_image(),
             ContextAction::CenterlineImage => self.centerline_selected_image(),
             ContextAction::ExportSvg => {

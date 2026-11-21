@@ -626,6 +626,53 @@ pub fn process_object_preview(
     )
 }
 
+/// Burn only the tones inside `[low, high]`, optionally inverted.
+///
+/// The prepared brightness is monotonic in the tone pipeline, so the band is the
+/// difference of two threshold runs: everything darker than `high` minus
+/// everything darker than `low`. Tracing a mid-grey drawing therefore ignores
+/// the white paper and the black shadows around it.
+pub fn process_object_band(
+    path: &std::path::Path,
+    image: &crate::objects::ImageObject,
+    max_side: u32,
+    low: u8,
+    high: u8,
+    invert: bool,
+) -> Result<RasterBitmap> {
+    if low > high {
+        return Err(BeamError::InvalidInput(
+            "the lowest brightness must not be above the highest".to_string(),
+        ));
+    }
+    let mut settings = image.settings.clone();
+    settings.mode = crate::objects::ImageMode::Threshold;
+    settings.invert = false;
+    // Everything darker than `high` burns...
+    let mut upper_image = image.clone();
+    upper_image.settings = settings.clone();
+    upper_image.settings.threshold = high;
+    let mut band = process_object_preview(path, &upper_image, max_side)?;
+    // ...minus everything darker than `low`, so only the band is left.
+    if low > 0 {
+        let mut lower_image = image.clone();
+        lower_image.settings = settings;
+        lower_image.settings.threshold = low;
+        let lower = process_object_preview(path, &lower_image, max_side)?;
+        for (value, below) in band.power.iter_mut().zip(&lower.power) {
+            if *below > 0 {
+                *value = 0;
+            }
+        }
+    }
+    if invert {
+        for value in &mut band.power {
+            *value = if *value > 0 { 0 } else { 255 };
+        }
+    }
+    Ok(band)
+}
+
 /// Largest number of prepared previews kept at once.
 const PREVIEW_CACHE_ENTRIES: usize = 4;
 
@@ -1513,6 +1560,39 @@ mod object_tests {
         let mixed = histogram_preview(&path, &object, 64).unwrap();
         assert_eq!(mixed[128], 64 * 64, "the cache kept the old grey weights");
         assert_ne!(red, mixed);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_brightness_band_selects_only_the_middle_tones() {
+        let path = std::env::temp_dir().join("bw_raster_band.png");
+        let mut picture = image::RgbImage::new(3, 4);
+        for (x, _y, pixel) in picture.enumerate_pixels_mut() {
+            let tone = match x {
+                0 => 50,
+                1 => 128,
+                _ => 220,
+            };
+            *pixel = image::Rgb([tone, tone, tone]);
+        }
+        picture.save(&path).unwrap();
+        let object = ImageObject::new(path.to_string_lossy(), 3, 4, 96.0);
+        let band = process_object_band(&path, &object, 64, 100, 150, false).unwrap();
+        for y in 0..4 {
+            assert!(!band.get(0, y), "the dark column was traced");
+            assert!(band.get(1, y), "the middle column was lost");
+            assert!(!band.get(2, y), "the bright column was traced");
+        }
+        let inverted = process_object_band(&path, &object, 64, 100, 150, true).unwrap();
+        for y in 0..4 {
+            assert!(inverted.get(0, y));
+            assert!(!inverted.get(1, y));
+            assert!(inverted.get(2, y));
+        }
+        assert!(
+            process_object_band(&path, &object, 64, 200, 100, false).is_err(),
+            "a reversed band must be rejected"
+        );
         let _ = std::fs::remove_file(&path);
     }
 

@@ -46,6 +46,9 @@ impl BeamBurinApp {
         if self.image_adjust.is_some() {
             self.image_adjust_window(ctx);
         }
+        if self.trace_open {
+            self.trace_window(ctx);
+        }
         if self.image_test_open {
             self.image_test_window(ctx);
         }
