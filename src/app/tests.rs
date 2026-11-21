@@ -6826,6 +6826,7 @@ fn the_wheel_zooms_in_small_steps() {
     harness.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: egui::vec2(0.0, 6.0),
+        phase: egui::TouchPhase::Move,
         modifiers: egui::Modifiers::NONE,
     });
     harness.step();
@@ -6842,6 +6843,7 @@ fn the_wheel_zooms_in_small_steps() {
     harness.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
         delta: egui::vec2(0.0, -6.0),
+        phase: egui::TouchPhase::Move,
         modifiers: egui::Modifiers::NONE,
     });
     harness.step();
