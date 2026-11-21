@@ -249,10 +249,19 @@ pub fn to_curved_polyline(points: &[Point2], corner_degrees: f64, closed: bool) 
             (dx / length, dy / length)
         }
     };
+    // Curves join consecutive knots; only the corner test and the tangents use
+    // the wider window.
+    let segment_next = |index: usize| {
+        if closed {
+            (index + 1) % count
+        } else {
+            index + 1
+        }
+    };
     let mut path = Path::new();
     path.closed = closed;
     for index in 0..segment_count {
-        let next = next_index(index);
+        let next = segment_next(index);
         let from = points[index];
         let to = points[next];
         if is_corner(index) && is_corner(next) {

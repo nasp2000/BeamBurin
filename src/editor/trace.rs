@@ -186,6 +186,9 @@ mod tests {
                 high: 150,
                 invert: false,
             },
+            // Straight segments keep every traced point, so the bounds are the
+            // band's own edges.
+            smooth: false,
             ..crate::trace::TraceOptions::default()
         };
         let report = editor
