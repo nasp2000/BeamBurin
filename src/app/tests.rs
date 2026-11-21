@@ -6786,3 +6786,118 @@ fn keyboard_tab_moves_focus_in_material_test() {
         "Tab never reached a labelled widget: {seen:?}"
     );
 }
+
+/// Drag the primary pointer from `from` to `to`, one frame per step.
+fn drag_pointer(
+    harness: &mut egui_kittest::Harness<'static, BeamBurinApp>,
+    from: egui::Pos2,
+    to: egui::Pos2,
+) {
+    harness.event(egui::Event::PointerMoved(from));
+    harness.step();
+    harness.event(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.step();
+    harness.event(egui::Event::PointerMoved(to));
+    harness.step();
+    harness.step();
+    harness.event(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.step();
+}
+
+#[test]
+fn the_wheel_zooms_in_small_steps() {
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    let centre = harness.state().canvas_rect.center();
+    harness.event(egui::Event::PointerMoved(centre));
+    harness.step();
+    let before = harness.state().editor.canvas.zoom;
+    // One small wheel event, the size of a trackpad nudge.
+    harness.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, 6.0),
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.step();
+    harness.step();
+    let after = harness.state().editor.canvas.zoom;
+    assert!(after > before, "the wheel did not zoom in");
+    let ratio = after / before;
+    assert!(
+        ratio < 1.03,
+        "one wheel event jumped the zoom by {:.1}%",
+        (ratio - 1.0) * 100.0
+    );
+    // Scrolling back undoes it.
+    harness.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -6.0),
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.step();
+    harness.step();
+    let back = harness.state().editor.canvas.zoom;
+    assert!(
+        (back - before).abs() < before * 0.02,
+        "the wheel zoom is not symmetric: {before} -> {after} -> {back}"
+    );
+}
+
+#[test]
+fn the_toolbar_zoom_readout_does_not_shift_the_controls() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    harness.state_mut().editor.canvas.set_zoom_percent(10.0);
+    harness.step();
+    let narrow = harness.get_by_label("Fit").rect().min.x;
+    harness.state_mut().editor.canvas.set_zoom_percent(400.0);
+    harness.step();
+    let wide = harness.get_by_label("Fit").rect().min.x;
+    assert!(
+        (narrow - wide).abs() < 0.5,
+        "the toolbar shifts with the zoom digits: {narrow} -> {wide}"
+    );
+}
+
+#[test]
+fn the_docked_panels_can_be_stretched() {
+    let mut harness = ui_harness(ui_test_app());
+    harness.run();
+    let edge = harness.state().canvas_rect.min.x;
+    let y = harness.state().canvas_rect.center().y;
+    // The Layers dock used to be locked; its edge is the canvas' left border.
+    drag_pointer(
+        &mut harness,
+        egui::pos2(edge - 2.0, y),
+        egui::pos2(edge + 78.0, y),
+    );
+    let wider = harness.state().canvas_rect.min.x;
+    assert!(
+        wider > edge + 40.0,
+        "the Layers dock did not stretch: {edge} -> {wider}"
+    );
+    // And it can be pulled back in.
+    let edge = wider;
+    drag_pointer(
+        &mut harness,
+        egui::pos2(edge - 2.0, y),
+        egui::pos2(edge - 58.0, y),
+    );
+    let narrower = harness.state().canvas_rect.min.x;
+    assert!(
+        narrower < edge - 20.0,
+        "the Layers dock did not shrink again: {edge} -> {narrower}"
+    );
+}

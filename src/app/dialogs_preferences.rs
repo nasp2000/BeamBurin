@@ -914,7 +914,7 @@ impl BeamBurinApp {
                             .changed();
                         ui.end_row();
 
-                        let wheel_label = ui.label("Wheel zoom step");
+                        let wheel_label = ui.label("Wheel zoom sensitivity");
                         changed |= ui
                             .add(
                                 egui::DragValue::new(
@@ -925,7 +925,7 @@ impl BeamBurinApp {
                                 .fixed_decimals(2),
                             )
                             .labelled_by(wheel_label.id)
-                            .on_hover_text(crate::ui::icons::field("Wheel zoom step"))
+                            .on_hover_text(crate::ui::icons::field("Wheel zoom sensitivity"))
                             .changed();
                         ui.end_row();
                     });

@@ -5,8 +5,9 @@ use super::*;
 impl BeamBurinApp {
     pub(super) fn side_panel(&mut self, ui: &mut Ui) {
         egui::Panel::right("side_panel")
-            .default_size(300.0)
             .resizable(true)
+            .default_size(300.0)
+            .size_range(220.0..=560.0)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     crate::ui::help::button(ui, "properties");
@@ -49,20 +50,22 @@ impl BeamBurinApp {
 
     pub(super) fn properties_contents(&mut self, ui: &mut Ui) {
         let before = self.editor.document.clone();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            if self.editor.selection.is_empty() {
-                self.document_properties(ui);
-            } else if self.editor.selection.len() == 1 {
-                let id = self.editor.selection.ids()[0].clone();
-                self.object_properties(ui, &id);
-            } else {
-                self.multi_selection_properties(ui);
-            }
-            if self.editor.is_editing_nodes() {
-                ui.separator();
-                self.node_properties(ui);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if self.editor.selection.is_empty() {
+                    self.document_properties(ui);
+                } else if self.editor.selection.len() == 1 {
+                    let id = self.editor.selection.ids()[0].clone();
+                    self.object_properties(ui, &id);
+                } else {
+                    self.multi_selection_properties(ui);
+                }
+                if self.editor.is_editing_nodes() {
+                    ui.separator();
+                    self.node_properties(ui);
+                }
+            });
         if self.editor.document != before {
             self.editor.history.record(&before, "Edit properties");
         }

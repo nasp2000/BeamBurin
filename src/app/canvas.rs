@@ -29,6 +29,7 @@ impl BeamBurinApp {
                 if rect.width() < 8.0 || rect.height() < 8.0 {
                     return;
                 }
+                self.canvas_rect = rect;
                 if self.needs_fit {
                     self.editor
                         .fit_view(f64::from(rect.width()), f64::from(rect.height()));
@@ -88,17 +89,17 @@ impl BeamBurinApp {
                     let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
                     if scroll.abs() > 0.0 {
                         if let Some(pos) = pointer {
-                            let step = if self.editor.scroll_zoom_step > 1.0 {
-                                self.editor.scroll_zoom_step
-                            } else {
-                                1.15
-                            };
-                            let factor = if scroll > 0.0 { step } else { 1.0 / step };
-                            self.editor.canvas.zoom_at(
-                                f64::from(pos.x - rect.min.x),
-                                f64::from(pos.y - rect.min.y),
-                                factor,
+                            let factor = crate::editor::canvas::wheel_zoom_factor(
+                                f64::from(scroll),
+                                self.editor.scroll_zoom_step,
                             );
+                            if (factor - 1.0).abs() > f64::EPSILON {
+                                self.editor.canvas.zoom_at(
+                                    f64::from(pos.x - rect.min.x),
+                                    f64::from(pos.y - rect.min.y),
+                                    factor,
+                                );
+                            }
                         }
                     }
                 }

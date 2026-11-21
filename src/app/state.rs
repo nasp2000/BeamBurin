@@ -89,6 +89,8 @@ impl BeamBurinApp {
             licenses_open: false,
             drag: None,
             cursor_doc: None,
+            canvas_rect: egui::Rect::NOTHING,
+            top_chrome_bottom: 0.0,
             needs_fit: true,
             quit_requested: false,
             smoke_frames: None,

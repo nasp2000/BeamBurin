@@ -2,6 +2,42 @@ use std::path::{Path, PathBuf};
 
 use crate::ui::icons::{self, Icon};
 
+/// Largest size the file browser grows to, even on a very tall screen.
+pub const MAX_DIALOG_SIZE: [f32; 2] = [820.0, 1000.0];
+
+/// Smallest useful size; the dialog never shrinks below this.
+pub const MIN_DIALOG_SIZE: [f32; 2] = [640.0, 620.0];
+
+/// Height reserved above and below the dialog.
+const DIALOG_MARGIN: f32 = 64.0;
+
+/// Height of one folder row, used to explain the geometry in tests.
+pub const LISTING_ROW_HEIGHT: f32 = 20.0;
+
+/// Size of the file dialog for the room the app has.
+///
+/// The dialog is taller than it is wide and takes the window height it is
+/// given, so the folder list shows as many entries as the screen allows
+/// instead of stopping at a fixed cap.
+pub fn dialog_size(content: egui::Vec2) -> egui::Vec2 {
+    let width = (content.x * 0.6).clamp(MIN_DIALOG_SIZE[0], MAX_DIALOG_SIZE[0]);
+    let height = (content.y - DIALOG_MARGIN).clamp(MIN_DIALOG_SIZE[1], MAX_DIALOG_SIZE[1]);
+    egui::vec2(width, height)
+}
+
+/// Height of the folder listing for the space the dialog has left.
+///
+/// It only reserves room for the item count line, so the list keeps growing
+/// with the dialog instead of being capped.
+pub fn listing_height(available_height: f32) -> f32 {
+    (available_height - 28.0).max(240.0)
+}
+
+/// How many folder rows fit in a listing of this height.
+pub fn visible_rows(listing_height: f32) -> f32 {
+    (listing_height / LISTING_ROW_HEIGHT).floor().max(0.0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileMode {
     OpenProject,
@@ -264,15 +300,17 @@ impl FileDialog {
     pub fn show(&mut self, ctx: &egui::Context) -> DialogResult {
         let mut result = DialogResult::Pending;
         let mut open = true;
+        let size = dialog_size(ctx.content_rect().size());
         egui::Window::new(self.mode.title())
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
             .collapsible(false)
             .resizable(true)
-            .default_size([800.0, 860.0])
-            .min_width(700.0)
-            .min_height(760.0)
-            .max_width(900.0)
+            .default_size(size)
+            .min_width(MIN_DIALOG_SIZE[0])
+            .min_height(MIN_DIALOG_SIZE[1])
+            .max_width(MAX_DIALOG_SIZE[0])
+            .max_height(MAX_DIALOG_SIZE[1])
             .open(&mut open)
             .show(ctx, |ui| {
                 let mut accept = false;
@@ -340,8 +378,9 @@ impl FileDialog {
                 ui.separator();
                 let mut target: Option<PathBuf> = None;
                 ui.horizontal(|ui| {
+                    let places_height = (ui.available_height() - 8.0).max(200.0);
                     ui.allocate_ui_with_layout(
-                        egui::vec2(150.0, 330.0),
+                        egui::vec2(170.0, places_height),
                         egui::Layout::top_down(egui::Align::LEFT),
                         |ui| {
                             egui::ScrollArea::vertical()
@@ -366,7 +405,7 @@ impl FileDialog {
                     );
                     ui.separator();
                     ui.vertical(|ui| {
-                        let list_height = (ui.available_height() - 56.0).clamp(320.0, 620.0);
+                        let list_height = listing_height(ui.available_height());
                         egui::Frame::group(ui.style()).show(ui, |ui| {
                             egui::ScrollArea::vertical()
                                 .id_salt("dialog_files")
@@ -542,7 +581,7 @@ impl FileDialog {
         let grid = egui::Grid::new("dialog_listing")
             .num_columns(3)
             .striped(true)
-            .spacing([8.0, 2.0])
+            .spacing([8.0, 1.0])
             .show(ui, |ui| {
                 ui.strong("Name");
                 ui.strong("Type");
@@ -555,7 +594,7 @@ impl FileDialog {
                         .unwrap_or("(unnamed)")
                         .to_string();
                     ui.horizontal(|ui| {
-                        ui.add(icons::image_at(ui.ctx(), Icon::Folder, 16.0));
+                        ui.add(icons::image_at(ui.ctx(), Icon::Folder, 14.0));
                         let selected = self.selected.as_deref() == Some(directory.as_path());
                         let response = ui
                             .add(
@@ -585,7 +624,7 @@ impl FileDialog {
                         .and_then(|value| value.to_str())
                         .unwrap_or("(unnamed)");
                     ui.horizontal(|ui| {
-                        ui.add(icons::image_at(ui.ctx(), file_icon(&file), 16.0));
+                        ui.add(icons::image_at(ui.ctx(), file_icon(&file), 14.0));
                         let selected = self.selected.as_deref() == Some(file.as_path());
                         let response = ui
                             .add(
@@ -814,6 +853,51 @@ mod tests {
     use super::{FileDialog, FileMode, file_icon, format_size};
     use crate::ui::icons::Icon;
     use std::path::Path;
+
+    #[test]
+    fn the_open_dialog_is_taller_than_wide_and_uses_the_window_height() {
+        // A laptop window used to cap the dialog at 800 x 860 and the list at
+        // 620 px, wasting the room below it.
+        let laptop = super::dialog_size(egui::vec2(1280.0, 1080.0));
+        assert!(
+            laptop.y >= 960.0,
+            "the dialog ignores the window height: {laptop:?}"
+        );
+        assert!(
+            laptop.x / laptop.y <= 0.85,
+            "the dialog is not squarer than it was: {laptop:?}"
+        );
+        assert!(
+            laptop.y <= 1080.0 - 32.0 && laptop.x <= 1280.0 - 32.0,
+            "the dialog does not fit the window: {laptop:?}"
+        );
+        // A short window still gets a usable dialog.
+        let small = super::dialog_size(egui::vec2(900.0, 700.0));
+        assert!(small.y >= super::MIN_DIALOG_SIZE[1]);
+        assert!(small.x >= super::MIN_DIALOG_SIZE[0]);
+        // A huge screen does not produce an unbounded dialog.
+        let huge = super::dialog_size(egui::vec2(3840.0, 2160.0));
+        assert!((huge.y - super::MAX_DIALOG_SIZE[1]).abs() < 0.5);
+        assert!((huge.x - super::MAX_DIALOG_SIZE[0]).abs() < 0.5);
+    }
+
+    #[test]
+    fn the_folder_list_is_no_longer_capped() {
+        // The old geometry clamped the listing to 620 px, about 31 rows.
+        let old_rows = super::visible_rows(620.0);
+        let new_listing = super::listing_height(900.0);
+        assert!(
+            new_listing > 760.0,
+            "the folder list is still capped at {new_listing} px"
+        );
+        let new_rows = super::visible_rows(new_listing);
+        assert!(
+            new_rows >= old_rows + 8.0,
+            "only {new_rows} rows against the old {old_rows}"
+        );
+        // A tiny dialog keeps a usable list instead of collapsing.
+        assert!(super::listing_height(120.0) >= 240.0);
+    }
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let stamp = std::time::SystemTime::now()

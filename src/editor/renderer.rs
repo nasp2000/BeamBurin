@@ -755,18 +755,23 @@ fn paint_selection(painter: &Painter, rect: Rect, editor: &EditorState, theme: T
         let p0 = screen_pos(rect, editor, Point2::new(min.x, max.y));
         let p1 = screen_pos(rect, editor, Point2::new(max.x, min.y));
         let bounds = Rect::from_two_pos(p0, p1).expand(2.0);
-        painter.extend(egui::Shape::dashed_line(
-            &[
-                bounds.left_top(),
-                bounds.right_top(),
-                bounds.right_bottom(),
-                bounds.left_bottom(),
-                bounds.left_top(),
-            ],
-            stroke,
-            6.0,
-            4.0,
-        ));
+        // One object is marked by its handles alone: a dashed rectangle on top
+        // of a single drawing reads as a second outline. The frame is only
+        // needed to show the shared bounds of a multi-selection.
+        if editor.selection.len() > 1 {
+            painter.extend(egui::Shape::dashed_line(
+                &[
+                    bounds.left_top(),
+                    bounds.right_top(),
+                    bounds.right_bottom(),
+                    bounds.left_bottom(),
+                    bounds.left_top(),
+                ],
+                stroke,
+                6.0,
+                4.0,
+            ));
+        }
         let centre = bounds.center();
         for handle in [
             bounds.left_top(),
@@ -799,10 +804,6 @@ fn paint_selection(painter: &Painter, rect: Rect, editor: &EditorState, theme: T
                 }
                 let handle = corner + direction / length * 18.0;
                 painter.circle_stroke(handle, 5.0, stroke);
-                painter.line_segment(
-                    [handle + Vec2::new(-3.0, 3.0), handle + Vec2::new(3.0, -3.0)],
-                    stroke,
-                );
             }
         }
     }
@@ -922,25 +923,33 @@ mod tests {
         }
     }
 
-    #[test]
-    fn selected_objects_keep_their_colour_with_a_dashed_frame() {
+    /// Paint the fixture and report: red drawing strokes, selection-coloured
+    /// line segments, selection-coloured paths, and selection-coloured filled
+    /// handles.
+    fn selection_paint_counts(widths: &[f64]) -> (usize, usize, usize, usize) {
         let mut document = Document::default();
         let layer = document.layers[0].id.clone();
-        let mut object = Object::new(
-            layer,
-            Shape::Rect {
-                width: 200.0,
-                height: 150.0,
-                corner_radius: 0.0,
-            },
-        );
-        object.transform = Transform2::translate(10.0, 10.0);
-        object.color = Some("#e53935".to_string());
-        let id = object.id.clone();
-        document.add_object(object);
-
+        let mut ids = Vec::new();
+        let mut x = 10.0;
+        for width in widths {
+            let mut object = Object::new(
+                layer.clone(),
+                Shape::Rect {
+                    width: *width,
+                    height: 150.0,
+                    corner_radius: 0.0,
+                },
+            );
+            object.transform = Transform2::translate(x, 10.0);
+            object.color = Some("#e53935".to_string());
+            ids.push(object.id.clone());
+            document.add_object(object);
+            x += 210.0;
+        }
         let mut editor = EditorState::new(document);
-        editor.selection.add(id);
+        for id in ids {
+            editor.selection.add(id);
+        }
         editor.selection_color = "#1e88e5".to_string();
         let images = ImageTextures::new();
 
@@ -957,9 +966,17 @@ mod tests {
         output.textures_delta.clear();
 
         let mut red = 0;
-        let mut selection_segments = 0;
-        let mut selection_paths = 0;
+        let mut segments = 0;
+        let mut paths = 0;
+        let mut handles = 0;
+        let selection = Color32::from_rgb(30, 136, 229);
         for clipped in &output.shapes {
+            if let egui::Shape::Rect(rect) = &clipped.shape {
+                if rect.fill == selection {
+                    handles += 1;
+                    continue;
+                }
+            }
             let Some(color) = colour_of(&clipped.shape) else {
                 continue;
             };
@@ -969,20 +986,45 @@ mod tests {
             }
             if rgb == (30, 136, 229) {
                 match &clipped.shape {
-                    egui::Shape::LineSegment { .. } => selection_segments += 1,
-                    egui::Shape::Path(_) => selection_paths += 1,
+                    egui::Shape::LineSegment { .. } => segments += 1,
+                    egui::Shape::Path(_) => paths += 1,
                     _ => {}
                 }
             }
         }
+        (red, segments, paths, handles)
+    }
+
+    #[test]
+    fn a_single_selection_has_no_second_blue_outline() {
+        let (red, segments, paths, handles) = selection_paint_counts(&[200.0]);
         assert!(red > 0, "the object lost its drawing colour");
-        assert!(
-            selection_segments >= 8,
-            "the selection frame is not dashed ({selection_segments} segments)"
+        assert_eq!(
+            segments, 0,
+            "a single selection drew a second outline over the drawing"
         );
         assert_eq!(
-            selection_paths, 0,
+            paths, 0,
             "a selected object was repainted in the selection colour"
         );
+        assert!(
+            handles >= 8,
+            "the selection handles are missing ({handles} handles)"
+        );
+    }
+
+    #[test]
+    fn a_multi_selection_keeps_the_dashed_frame() {
+        let (red, segments, paths, handles) = selection_paint_counts(&[100.0, 100.0]);
+        assert!(red > 0, "the objects lost their drawing colour");
+        assert!(
+            segments >= 8,
+            "the group bounds frame is not dashed ({segments} segments)"
+        );
+        assert_eq!(
+            paths, 0,
+            "a selected object was repainted in the selection colour"
+        );
+        assert!(handles >= 8, "the selection handles are missing");
     }
 }

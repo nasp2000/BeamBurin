@@ -1662,7 +1662,7 @@ impl BeamBurinApp {
     }
 
     pub(super) fn toolbar(&mut self, ui: &mut Ui) {
-        egui::Panel::top("toolbar").show(ui, |ui| {
+        let bar = egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .add_enabled(
@@ -1691,7 +1691,7 @@ impl BeamBurinApp {
                 {
                     self.editor.zoom_out();
                 }
-                ui.label(format!("{:.0}%", self.editor.canvas.zoom * 100.0));
+                self.zoom_control(ui);
                 if icons::compact_button(ui, "+")
                     .on_hover_text("Zoom in")
                     .clicked()
@@ -1781,6 +1781,8 @@ impl BeamBurinApp {
                 }
             });
         });
+        // Floating notices start below the menu bar and toolbar.
+        self.top_chrome_bottom = bar.response.rect.bottom();
     }
 
     /// The fixed tool panel: options, live readout and the pending path.
@@ -1872,6 +1874,45 @@ impl BeamBurinApp {
                     ui.weak("No selection.");
                 }
             });
+    }
+
+    /// Zoom slider and percentage readout for the toolbar.
+    ///
+    /// The readout sits in a fixed slot so the controls after it never shift
+    /// when the percentage gains or loses a digit, and changing the slider
+    /// keeps the point under the canvas centre in place.
+    fn zoom_control(&mut self, ui: &mut Ui) {
+        use crate::editor::canvas::{MAX_ZOOM, MIN_ZOOM};
+        let min_percent = MIN_ZOOM * 100.0;
+        let max_percent = MAX_ZOOM * 100.0;
+        let mut percent = (self.editor.canvas.zoom * 100.0).clamp(min_percent, max_percent);
+        let before = percent;
+        ui.scope(|ui| {
+            ui.spacing_mut().slider_width = 64.0;
+            ui.add(
+                egui::Slider::new(&mut percent, min_percent..=max_percent)
+                    .logarithmic(true)
+                    .show_value(false)
+                    .text("Zoom"),
+            )
+            .on_hover_text("Zoom: drag the handle");
+        });
+        ui.allocate_ui_with_layout(
+            egui::vec2(58.0, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(format!("{percent:.0}%"))
+                    .on_hover_text("Current zoom percentage");
+            },
+        );
+        if (percent - before).abs() > f64::EPSILON {
+            let rect = self.canvas_rect;
+            let anchor_x = f64::from(rect.center().x - rect.min.x);
+            let anchor_y = f64::from(rect.center().y - rect.min.y);
+            self.editor
+                .canvas
+                .set_zoom_percent_at(percent, anchor_x, anchor_y);
+        }
     }
 
     pub(super) fn status_bar(&mut self, ui: &mut Ui) {

@@ -18,6 +18,40 @@ pub struct CanvasState {
 pub const MIN_ZOOM: f64 = 0.05;
 pub const MAX_ZOOM: f64 = 64.0;
 
+/// Zoom change per scroll point, before the step preference is applied.
+///
+/// The wheel is continuous: a notch arrives as several small scroll events, so
+/// every event only nudges the zoom instead of jumping a fixed step.
+const WHEEL_ZOOM_RATE: f64 = 0.0022;
+
+/// The factor the sensitivity preference refers to (the historic default).
+pub const DEFAULT_SCROLL_ZOOM_STEP: f64 = 1.15;
+
+/// Largest zoom change one wheel event may apply.
+const WHEEL_ZOOM_FACTOR_LIMIT: f64 = 1.35;
+
+/// Zoom factor for one wheel event with `scroll_points` of vertical scroll.
+///
+/// `step` is the sensitivity the preferences expose; it only scales the rate,
+/// so the default stays the familiar one and each event remains a small nudge.
+/// A zero or non-finite scroll leaves the zoom untouched.
+pub fn wheel_zoom_factor(scroll_points: f64, step: f64) -> f64 {
+    if !scroll_points.is_finite() || scroll_points == 0.0 {
+        return 1.0;
+    }
+    let step = if step.is_finite() && step > 1.0 {
+        step
+    } else {
+        DEFAULT_SCROLL_ZOOM_STEP
+    };
+    // Express the multiplicative preference as a relative rate.
+    let sensitivity = step.ln() / DEFAULT_SCROLL_ZOOM_STEP.ln();
+    let rate = WHEEL_ZOOM_RATE * sensitivity.clamp(0.25, 3.0);
+    (scroll_points * rate)
+        .exp()
+        .clamp(1.0 / WHEEL_ZOOM_FACTOR_LIMIT, WHEEL_ZOOM_FACTOR_LIMIT)
+}
+
 impl Default for CanvasState {
     fn default() -> Self {
         Self {
@@ -41,6 +75,23 @@ impl CanvasState {
 
     pub fn reset_zoom(&mut self) {
         self.zoom = 1.0;
+    }
+
+    /// Set the zoom from a toolbar percentage, clamped to the canvas limits.
+    pub fn set_zoom_percent(&mut self, percent: f64) {
+        if percent.is_finite() {
+            self.zoom = (percent / 100.0).clamp(MIN_ZOOM, MAX_ZOOM);
+        }
+    }
+
+    /// Set the percentage while keeping the document point under
+    /// `(anchor_x, anchor_y)` in place.
+    pub fn set_zoom_percent_at(&mut self, percent: f64, anchor_x: f64, anchor_y: f64) {
+        if percent.is_finite() {
+            let target = (percent / 100.0).clamp(MIN_ZOOM, MAX_ZOOM);
+            let factor = target / self.zoom.max(f64::MIN_POSITIVE);
+            self.zoom_at(anchor_x, anchor_y, factor);
+        }
     }
 
     pub fn pan(&mut self, dx: f64, dy: f64) {
@@ -204,6 +255,61 @@ mod tests {
             canvas.zoom_out();
         }
         assert!(canvas.zoom >= super::MIN_ZOOM);
+    }
+
+    #[test]
+    fn wheel_zoom_is_gradual_and_symmetric() {
+        let step = super::DEFAULT_SCROLL_ZOOM_STEP;
+        // A wheel notch is a handful of points, never a fixed 15% jump.
+        let notch = super::wheel_zoom_factor(50.0, step);
+        assert!(
+            (1.02..1.12).contains(&notch),
+            "one notch should nudge the zoom, got {notch}"
+        );
+        // Small deltas nudge proportionally; scrolling back undoes the zoom.
+        let small = super::wheel_zoom_factor(5.0, step);
+        assert!(small > 1.0 && small < notch, "small delta: {small}");
+        let there = super::wheel_zoom_factor(37.0, step);
+        let back = super::wheel_zoom_factor(-37.0, step);
+        assert!((there * back - 1.0).abs() < 1e-9, "{there} * {back}");
+        // Nothing to scroll, nothing to change.
+        assert!((super::wheel_zoom_factor(0.0, step) - 1.0).abs() < 1e-12);
+        assert!((super::wheel_zoom_factor(f64::NAN, step) - 1.0).abs() < 1e-12);
+        // A huge delta in one event still stays a nudge.
+        let huge = super::wheel_zoom_factor(10_000.0, step);
+        assert!(huge <= 1.35 + 1e-9, "a single event jumped: {huge}");
+        // The preference scales sensitivity instead of replacing the step.
+        let fast = super::wheel_zoom_factor(50.0, 1.4);
+        assert!(fast > notch, "higher sensitivity must react more: {fast}");
+    }
+
+    #[test]
+    fn toolbar_percentage_sets_and_clamps_the_zoom() {
+        let mut canvas = CanvasState::default();
+        canvas.set_zoom_percent(250.0);
+        assert!((canvas.zoom - 2.5).abs() < EPS);
+        canvas.set_zoom_percent(1.0);
+        assert!((canvas.zoom - super::MIN_ZOOM).abs() < EPS);
+        canvas.set_zoom_percent(100_000.0);
+        assert!((canvas.zoom - super::MAX_ZOOM).abs() < EPS);
+        canvas.set_zoom_percent(f64::NAN);
+        assert!((canvas.zoom - super::MAX_ZOOM).abs() < EPS);
+    }
+
+    #[test]
+    fn toolbar_percentage_keeps_the_anchor() {
+        let mut canvas = CanvasState {
+            pan_x: 30.0,
+            pan_y: 200.0,
+            zoom: 1.0,
+            ..CanvasState::default()
+        };
+        let (before_x, before_y) = canvas.screen_to_doc(140.0, 90.0);
+        canvas.set_zoom_percent_at(300.0, 140.0, 90.0);
+        assert!((canvas.zoom - 3.0).abs() < EPS);
+        let (after_x, after_y) = canvas.screen_to_doc(140.0, 90.0);
+        assert!((after_x - before_x).abs() < 1e-9, "{before_x} -> {after_x}");
+        assert!((after_y - before_y).abs() < 1e-9, "{before_y} -> {after_y}");
     }
 
     #[test]

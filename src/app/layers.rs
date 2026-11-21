@@ -47,8 +47,9 @@ impl BeamBurinApp {
         use crate::operations::OperationType;
 
         egui::Panel::left("layers_panel")
+            .resizable(true)
             .default_size(310.0)
-            .resizable(false)
+            .size_range(220.0..=460.0)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 self.color_palette(ui);

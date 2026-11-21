@@ -301,7 +301,7 @@ impl EditorState {
             handle_style: HandleStyle::Square,
             zoom_step: 1.25,
             select_whole_group: true,
-            scroll_zoom_step: 1.15,
+            scroll_zoom_step: crate::editor::canvas::DEFAULT_SCROLL_ZOOM_STEP,
             guides_visible: true,
             snap_guides: true,
             transform_center: TransformCenter::Selection,

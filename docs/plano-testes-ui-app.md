@@ -255,9 +255,9 @@ rest run headlessly with `kittest` and `mcp`.
 
 | ID | Objective | Steps | Expected | Driver |
 |---|---|---|---|---|
-| UI-N01 | Zoom in/out, fit, status | toolbar `+`/`-`/Fit and View > Zoom | zoom percentage and status update; fit frames the page | kittest |
+| UI-N01 | Zoom in/out, fit, status | toolbar zoom slider and percentage readout, `+`/`-`/Fit and View > Zoom | zoom percentage and status update; fit frames the page; the wheel nudges the zoom in small steps; the readout keeps the controls after it in the same place | kittest |
 | UI-N02 | Zoom to selection | select a shape, View > Zoom > Zoom to selection | view frames the selection; disabled with no selection | kittest |
-| UI-N03 | Pan and mouse wheel | drag Pan/space, wheel zoom | canvas moves around the cursor; no object created | MANUAL (gestures) |
+| UI-N03 | Pan and mouse wheel | drag Pan/space, wheel zoom | canvas moves around the cursor; no object created; the wheel zoom is gradual and symmetric | kittest (wheel); MANUAL (drag gesture) |
 | UI-N04 | Marquee selection | drag on empty canvas | objects intersecting the marquee selected; Shift adds | kittest |
 | UI-N05 | Nudge with arrows | select object, arrow keys with/without Shift | small/large step, one undo per run, no accidental move of locked object | MANUAL (key repeat) |
 | UI-N06 | Grid and snapping toggles | View > Display/Snapping | grid/rulers/guides/selection visibility toggle; snap targets change cursor behaviour | kittest |
@@ -267,6 +267,7 @@ rest run headlessly with `kittest` and `mcp`.
 | UI-N10 | Insert/delete/convert nodes | double-click segment, Delete, smooth/corner | node count and shape change as expected, labels in the panel update | kittest |
 | UI-N11 | Handles align and simplify | select node, align handles; simplify tolerance | handles straight; path within tolerance; undo restores | kittest |
 | UI-N12 | Context menu on canvas | right-click empty vs object | canvas or object menu with correct enabled states; actions run | kittest |
+| UI-N13 | Selection outline | select one object, then two | one object shows handles only, with no second blue line over the drawing; a group keeps its dashed bounds frame | kittest |
 
 ### 5.9 Transform, arrange and docking (UI-T)
 
@@ -310,7 +311,7 @@ rest run headlessly with `kittest` and `mcp`.
 
 | ID | Objective | Steps | Expected | Driver |
 |---|---|---|---|---|
-| UI-P01 | Layers panel layout and F9 | toggle panels | panel docks/resizes per preferences; F9 hides/shows; width persisted | MANUAL |
+| UI-P01 | Layers panel layout and F9 | drag the dock edge, toggle panels | the dock stretches and shrinks again within its limits; F9 hides/shows | kittest (resize and F9); MANUAL (visual widths) |
 | UI-P02 | Add/delete/reorder layers | add three layers, drag/order buttons, delete empty | order changes, active layer follows, non-empty delete asks/handles objects | kittest |
 | UI-P03 | Layer visibility and lock | toggle eye/lock | canvas and selection honour them; status explains skipped actions | kittest |
 | UI-P04 | Layer colour palette | choose a colour | layer colour changes, object default colour follows, new objects use it | kittest |
@@ -321,7 +322,7 @@ rest run headlessly with `kittest` and `mcp`.
 | UI-P09 | Document properties in the panel | no selection, edit name/size/unit | page/rulers/status update; undo restores | kittest |
 | UI-P10 | Node properties while editing | node selected | coordinates, handles and smooth/corner state editable; changes undo | kittest |
 | UI-P11 | Side panel tabs | switch Properties/Tool | tool options and live readout appear; pending drawing state kept | kittest |
-| UI-P12 | Panel widths and reset | resize, Reset layout | widths/sides restore defaults; document unchanged | MANUAL (visual width) |
+| UI-P12 | Panel widths and reset | resize both docks, Reset layout | widths/sides restore defaults; document unchanged; both docks are draggable | kittest (resize); MANUAL (visual width) |
 
 ### 5.12 Operations, materials and machines (UI-O)
 
@@ -443,11 +444,11 @@ with severity, and the fixture versions.
 | UI-F12 | Closing the real window and the window-manager guard |
 | UI-I10 | Drag and drop from the desktop |
 | UI-E14 | System clipboard (image, SVG, text) |
-| UI-N03 | Pan/zoom gestures and wheel |
+| UI-N03 | Pan gesture (wheel zoom is automated) |
 | UI-N05 | Key-repeat nudge timing |
 | UI-N08 | Visual ruler/cursor alignment |
 | UI-P01 | Visual dock widths and F9 behaviour |
-| UI-P12 | Panel resize appearance |
+| UI-P12 | Panel resize appearance (widths are automated) |
 | UI-S03 | Light/dark contrast and icon legibility |
 | UI-S06 | Autosave/backup timer |
 | UI-S10 | Theme persistence across a restart |

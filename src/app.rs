@@ -408,6 +408,12 @@ pub struct BeamBurinApp {
     licenses_open: bool,
     drag: Option<DragState>,
     cursor_doc: Option<Point2>,
+    /// Canvas rectangle of the last painted frame (used by the interface
+    /// tests to measure panel and zoom geometry).
+    pub(crate) canvas_rect: egui::Rect,
+    /// Bottom edge of the menu bar and toolbar, in screen points. Floating
+    /// notices start below it instead of covering the toolbar.
+    pub(crate) top_chrome_bottom: f32,
     needs_fit: bool,
     quit_requested: bool,
     /// Frames left before a smoke-test run closes itself.
@@ -1790,7 +1796,10 @@ impl BeamBurinApp {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(120));
         egui::Area::new(egui::Id::new("toasts"))
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 48.0))
+            .anchor(
+                egui::Align2::RIGHT_TOP,
+                egui::vec2(-16.0, self.top_chrome_bottom + 8.0),
+            )
             .order(egui::Order::Foreground)
             .interactable(false)
             .show(ctx, |ui| {
