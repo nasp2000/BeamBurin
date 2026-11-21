@@ -1883,6 +1883,8 @@ impl BeamBurinApp {
     /// keeps the point under the canvas centre in place.
     fn zoom_control(&mut self, ui: &mut Ui) {
         use crate::editor::canvas::{MAX_ZOOM, MIN_ZOOM};
+        /// Width reserved for the zoom percentage, wide enough for "6400%".
+        const ZOOM_READOUT_WIDTH: f32 = 58.0;
         let min_percent = MIN_ZOOM * 100.0;
         let max_percent = MAX_ZOOM * 100.0;
         let mut percent = (self.editor.canvas.zoom * 100.0).clamp(min_percent, max_percent);
@@ -1897,14 +1899,15 @@ impl BeamBurinApp {
             )
             .on_hover_text("Zoom: drag the handle");
         });
-        ui.allocate_ui_with_layout(
-            egui::vec2(58.0, 20.0),
-            egui::Layout::left_to_right(egui::Align::Center),
-            |ui| {
-                ui.label(format!("{percent:.0}%"))
-                    .on_hover_text("Current zoom percentage");
-            },
-        );
+        // The readout reserves a fixed width: a plain label would make the
+        // toolbar shift by a digit every time the percentage changes width.
+        let readout = ui
+            .label(format!("{percent:.0}%"))
+            .on_hover_text("Current zoom percentage");
+        let pad = (ZOOM_READOUT_WIDTH - readout.rect.width()).max(0.0);
+        if pad > 0.0 {
+            ui.add_space(pad);
+        }
         if (percent - before).abs() > f64::EPSILON {
             let rect = self.canvas_rect;
             let anchor_x = f64::from(rect.center().x - rect.min.x);
