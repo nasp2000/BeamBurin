@@ -115,10 +115,15 @@ Preparação (uma vez por sessão):
 ```bash
 export REF_DIR="$HOME/Code/rea-work/<pasta-do-artefacto>"   # nome real só nas notas externas
 export REF_EXE="$REF_DIR/<executavel>.exe"
+export PATH="$HOME/tools/node-v24.22.3-linux-arm64/bin:$PATH"   # rea doctor exige >= 24.22.1
 export GHIDRA_INSTALL_DIR="$HOME/tools/ghidra_12.1.4_PUBLIC"
 export JAVA_HOME="/usr/lib/jvm/java-25-openjdk-arm64"
 rea doctor
 ```
+
+`rea doctor` está limpo quando `healthy` é `true` para o âmbito usado
+(`--target "$REF_EXE" --provider ghidra`). Hopper, IDA, JADX e Kuna aparecem
+como informativos e não são necessários para PE + Ghidra.
 
 Alvos e comandos, por ordem de custo crescente:
 
