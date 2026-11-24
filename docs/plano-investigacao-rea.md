@@ -302,3 +302,59 @@ igual».
 | Versão do artefacto diferente da esperada | confirmar no About em runtime e congelar hash antes de comparar |
 | Contaminação clean room | só comportamento observado; nada de código, texto, ícone ou layout copiado; nome do produto fora do repo |
 | Deriva de prioridades | P0 primeiro; P2 só com decisão do Nuno |
+
+---
+
+## 8. Resultados F1a (2026-11-23)
+
+Inventário estático feito no Pi com os parsers de PE do REA, as cadeias do
+executável e os nomes do PDB; as notas completas ficam fora do repositório.
+
+Números medidos:
+
+- **Importações**: 55 DLLs, 4 114 funções; runtime **Qt 6** (Widgets 1 772,
+  Core 1 128, Gui 480, Xml 31, PrintSupport 8); rede/áudio (Network,
+  Multimedia); máquina (SerialPort, libusb, SETUPAPI); `potrace` para
+  vetorização. Isto separa o que é UI do que é controlo de máquina.
+- **Símbolos**: 57 056 nomes decorados, **1 121 classes** (637 com ≥4
+  métodos); 42 classes com slots de controlo → **350 controlos**; a janela
+  principal tem **193 ações** e 224 controlos.
+- **Diálogo de operação** (12 controlos): modo, modo de imagem, *dot mode*,
+  perfuração, *pass-through*, *flood fill*, cut-through no início e no fim,
+  botão de sub-camada, predefinições.
+- **Outros diálogos**: otimização de corte (4), teste de material (7),
+  biblioteca de artes (5), biblioteca de cortes (6), definições (4), ajustar
+  imagem (4).
+- **Etiquetas**: 4 641 cadeias pt → 2 906 curtas → 1 661 sem correspondência
+  lexical. O método por palavras é ruidoso e **não é conclusivo**; a cobertura
+  prova-se pelo inventário de ações e controlos, não pelo diff de etiquetas.
+- `rea search` obriga ao import Ghidra (não terminou em 120 s no Pi): fica
+  para F1b, como planeado.
+
+### Candidatos novos (não estavam nas tabelas de §2)
+
+| ID | Item | Estado no BeamBurin |
+|---|---|---|
+| G-16 | Sub-camadas por entrada de corte | ausente |
+| G-17 | Cut-through no início e no fim | ausente |
+| G-18 | *Flood fill* | ausente |
+| G-19 | *Crop* de imagem como caminho (aplicar, remover, achatar) | ausente (só crop de página em PDF/DXF) |
+| G-20 | Converter em bitmap, caminho ou corte | ausente |
+| G-21 | Cortes por último na ordem do trabalho | ausente |
+| G-22 | Espelhar sobre uma linha | ausente (só flip H/V) |
+| G-23 | Mover para as oito âncoras da página | ausente (só X/Y e centro) |
+| G-24 | Eliminar formas duplicadas na UI | parcial (núcleo e MCP têm remoção; a UI só relata) |
+| G-25 | *Fillet* de cantos | ausente |
+| G-26 | Editar e achatar array paramétrico | ausente |
+| G-27 | *Pass-through* de imagem | ausente |
+| G-28 | *Dot mode* vetorial, distinto da perfuração | ausente |
+| G-29 | *Bundles* de configuração (preferências + bibliotecas) | ausente |
+| G-30 | Destacar formas da camada (*flash*) | ausente |
+| G-31 | Mover a seleção em conjunto (H/V) | ausente |
+
+Prioridade para F2: os P0 de §2 (G-01 a G-04) mais **G-16, G-17, G-18** e
+**G-27**, que mudam o resultado do corte e da imagem; G-25 a G-31 são
+funcionalidade visível, não correção.
+
+Próximo: **F1b** (worker) com o import Ghidra + PDB e o `rea search` dos
+literais; o worker continua offline.
