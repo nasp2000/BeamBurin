@@ -31,7 +31,7 @@ egui. Não se copia código, texto, ícone, layout nem recurso do artefacto.
 | Artefacto da referência | PE32+ x86-64, 23 566 248 B, `sha256 a3fe810e…c9368d` |
 | Símbolos privados | PDB de 17 715 200 B, ao lado do executável |
 | Versão declarada | 2.0.02 no ChangeLog incluído (confirmar no diálogo About em runtime) |
-| Runtime | Qt 5 no diretório (`Qt5Core/Gui/Widgets/…`), 45 DLLs, 76 entradas |
+| Runtime | Qt 6 nas importações (Widgets/Core/Gui/Xml/PrintSupport); as DLLs Qt5 do diretório são sobras de instalação anterior — 55 DLLs importadas, 76 entradas |
 | Traduções | 25 ficheiros `.qm` (~18 MB) — catálogo de texto de UI mais barato que existe |
 | BeamBurin | 98 362 linhas Rust, versão 0.1.0, `master`, CI como única verificação |
 | Já portado (T32) | 7 itens: janelas alinhadas, painel redimensionável, diálogos de ficheiro, zoom gradual, *vectorize* + *trace centerline*, seleção sem linha dupla, *Adjust Image* |
@@ -358,3 +358,86 @@ funcionalidade visível, não correção.
 
 Próximo: **F1b** (worker) com o import Ghidra + PDB e o `rea search` dos
 literais; o worker continua offline.
+
+---
+
+## 9. Resultados F2 (2026-11-24): registo consolidado
+
+O estado de cada item foi medido por leitura de `src/` (sem build, sem testes
+locais) e cruzado com a evidência do artefacto. Escala usada:
+
+- **presente** — existe e é alcançável pela UI, CLI ou MCP;
+- **parcial** — existe no núcleo mas não está exposto, ou é mais estreito;
+- **ausente** — nenhum caminho de código.
+
+Os valores por omissão e as fórmulas da referência só se fixam na observação
+de runtime (F3); até lá ficam como desconhecidos e não se inventam.
+
+### Correções ao §8
+
+| ID | §8 dizia | Estado medido |
+|---|---|---|
+| G-22 | ausente | **presente** — espelhar sobre uma linha existe, com menu e testes |
+| G-26 | ausente | **presente** — editar e achatar array existem, com menu |
+| G-19 | ausente | **parcial** — só crop retangular; falta crop por caminho |
+| G-20 | ausente | **parcial** — converter em caminho existe; faltam bitmap e corte |
+| G-02 | ausente | **parcial** — um só campo de potência, etiquetado como máximo |
+| G-04 | parcial | **parcial** — ordenação interna (vizinho mais próximo) sem UI nem prioridade |
+| G-24 | parcial | **parcial** — remoção existe no núcleo e no MCP; a UI só relata |
+| G-11 | ausente | **presente na função, ausente na forma** — as operações de nó existem; falta a barra contextual |
+
+G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
+
+### P0 — corte e controlo de qualidade
+
+| ID | Item | Estado | Critério de aceitação |
+|---|---|---|---|
+| G-01 | Sobrecorte em contornos fechados | ausente (só entrada/saída) | Com sobrecorte S>0, a última passagem excede o fecho em S mm ou S% do perímetro; S=0 reproduz o G-code atual; negativo é rejeitado; teste mede comprimento e coordenadas |
+| G-02 | Potência mínima e máxima | parcial (um campo) | O job nunca escreve S fora de [mín, máx]; mínimo > máximo é rejeitado; omissão igual à potência atual; projeto antigo abre com mín = máx; teste verifica S e validação |
+| G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
+| G-16 | Sub-camadas por entrada de corte | ausente | Criar e remover com undo; campos vazios herdam do principal; ordem preservada no job; remover a última é rejeitado; teste de serialização e de ordem |
+| G-17 | Cut-through no início e no fim | ausente | Valor > 0 acrescenta esse comprimento em cada extremidade, independente da entrada/saída; 0 desliga; teste mede o extra |
+| G-04 | Prioridade por objeto e otimização | parcial | Prioridade mais alta sai primeiro, empate por vizinho mais próximo; opções de ordem por direção e remoção de sobreposições mudam a sequência; teste compara operações emitidas |
+| G-18 | *Flood fill* | ausente | Preenchimento contido na fronteira (nenhum segmento a cruza); ilhas vazias; teste de área e de interseção |
+| G-27 | *Pass-through* de imagem | ausente | Ligado, a preparação é ignorada e o job emite raster com potência fixa; desligado, resultado atual; aviso ao ajustar com o modo ligado; teste de G-code |
+| G-28 | *Dot mode* vetorial | ausente | Gera pontos na grelha definida, sem linhas contínuas; contagem coerente com área e intervalo; teste conta pontos e confirma S |
+
+### P1 — funcionalidade visível
+
+| ID | Item | Estado | Critério de aceitação |
+|---|---|---|---|
+| G-05 | Biblioteca de artes | ausente (a biblioteca atual é de perfis) | Ficheiro próprio de formas; adicionar seleção, arrastar para o projeto, renomear e apagar; ficheiro inválido não corrompe; round-trip testado |
+| G-06 | Copiar ao longo de um caminho | ausente | N cópias ao longo de caminho aberto ou fechado, com orientação tangente opcional e deslocamento; teste de contagem e posições |
+| G-07 | Trace de vários ficheiros | ausente | Mesmas opções em vários ficheiros, um objeto por imagem, falhas por ficheiro; teste com três fixtures |
+| G-08 | *Wobble* | ausente | Desvio determinístico (mesma semente, mesmo resultado) com comprimento de onda e amplitude; teste de reprodutibilidade |
+| G-09 | Rampa de potência | ausente | Comprimento de rampa sobe e desce S no início e fim de cada linha; 0 desliga; teste do perfil de S |
+| G-10 | Ângulo por passagem | parcial (um ângulo + cruzado) | Ângulo por passagem com incremento; cruzado = duas passagens a 90°; teste dos ângulos emitidos |
+| G-19 | *Crop* de imagem por caminho | parcial (retangular) | Caminho selecionado recorta a imagem; aplicar, remover e achatar com undo; teste de pixels |
+| G-20 | Converter em bitmap, caminho ou corte | parcial (caminho) | Caminho para formas e texto; rasterizar para bitmap; mudar o modo da camada; undo por operação; teste |
+| G-21 | Cortes por último | ausente | Opção que coloca operações de corte depois das de gravação; teste de sequência |
+| G-23 | Mover para as oito âncoras da página | ausente | Mover a seleção para cada âncora com margem; teste de coordenadas nos cantos e nos lados |
+| G-24 | Eliminar duplicadas na UI | parcial (núcleo pronto) | Comando com pré-visualização e undo a chamar a remoção existente; teste de UI |
+| G-25 | *Fillet* de cantos | ausente | Arredondar cantos com raio, incluindo internos, e remover; raio maior que o lado é rejeitado; teste geométrico |
+| G-29 | *Bundles* de configuração | ausente | Pacote com preferências e bibliotecas, com versão e validação; round-trip e ficheiro corrompido testados |
+| G-30 | Destacar formas da camada | ausente | Destaque temporário sem alterar o documento; teste de estado |
+| G-31 | Mover a seleção em conjunto | ausente | Mover em H ou V mantendo distâncias relativas; teste de coordenadas |
+
+### Ordem de implementação (F5)
+
+1. **Lote A — corte**: G-01, G-02, G-03, G-16, G-17 (mesmo modelo de
+   parâmetros e mesmo emissor de G-code; um teste de job cobre os cinco).
+2. **Lote B — ordem e imagem**: G-04, G-18, G-27, G-28.
+3. **Lote C — desenho**: G-05, G-06, G-07, G-09, G-10.
+4. **Lote D — objetos**: G-19, G-20, G-21, G-23, G-25.
+5. **Lote E — acabamento**: G-11, G-24, G-29, G-30, G-31.
+
+Cada lote entrega lógica, UI, persistência, erros e testes, e atualiza o
+`PLAN.md` §33 no mesmo commit.
+
+### Desconhecidos que a observação de runtime tem de fechar
+
+Sobrecorte (percentagem sobre o quê), âmbito do mínimo de potência, unidades e
+alcance da perfuração, herança das sub-camadas, âmbito do cut-through,
+granularidade da prioridade, parâmetros do *flood fill*, o que o
+*pass-through* ignora, espaçamento do *dot mode*, efeito destrutivo de achatar
+o crop e formato do pacote de configuração.
