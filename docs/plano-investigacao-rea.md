@@ -395,7 +395,7 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 | G-01 | Sobrecorte em contornos fechados | ausente (só entrada/saída) | Com sobrecorte S>0, a última passagem excede o fecho em S mm ou S% do perímetro; S=0 reproduz o G-code atual; negativo é rejeitado; teste mede comprimento e coordenadas |
 | G-02 | Potência mínima e máxima | parcial (um campo) | O job nunca escreve S fora de [mín, máx]; mínimo > máximo é rejeitado; omissão igual à potência atual; projeto antigo abre com mín = máx; teste verifica S e validação |
 | G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
-| G-16 | Sub-camadas por entrada de corte | ausente | Criar e remover com undo; campos vazios herdam do principal; ordem preservada no job; remover a última é rejeitado; teste de serialização e de ordem |
+| G-16 | Sub-camadas por entrada de corte | ausente | Criar, duplicar e remover (remover todas volta ao comportamento atual); a sub-camada nasce como cópia independente do principal; ordem preservada no job; teste de serialização e de ordem |
 | G-17 | Cut-through no início e no fim | ausente | Valor > 0 acrescenta esse comprimento em cada extremidade, independente da entrada/saída; 0 desliga; teste mede o extra |
 | G-04 | Prioridade por objeto e otimização | parcial | Prioridade mais alta sai primeiro, empate por vizinho mais próximo; opções de ordem por direção e remoção de sobreposições mudam a sequência; teste compara operações emitidas |
 | G-18 | *Flood fill* | ausente | Preenchimento contido na fronteira (nenhum segmento a cruza); ilhas vazias; teste de área e de interseção |
@@ -441,3 +441,40 @@ alcance da perfuração, herança das sub-camadas, âmbito do cut-through,
 granularidade da prioridade, parâmetros do *flood fill*, o que o
 *pass-through* ignora, espaçamento do *dot mode*, efeito destrutivo de achatar
 o crop e formato do pacote de configuração.
+
+---
+
+## 10. Especificação do lote A (2026-11-24)
+
+Comportamento esperado de G-01, G-02, G-03 e G-16, com limites, erros e testes
+previstos. As notas completas ficam fora do repositório; aqui fica o que muda
+decisões do plano.
+
+### Pré-requisito D-01 — caminho aberto não se fecha
+
+O emissor fecha **todo** o contorno: se o último ponto difere do primeiro,
+acrescenta o primeiro, sem consultar se o caminho está fechado. O indicador
+existe no modelo (`Path::is_closed`) e perde-se na passagem para o emissor.
+Efeito: uma linha ou um traço de lápis ganha um segmento de fecho que não foi
+desenhado. Correção: levar o indicador até ao emissor, fechar só o que é
+fechado e deixar de aplicar tabs a caminhos abertos (com aviso no relatório).
+É pré-requisito do sobrecorte, que só existe em contornos fechados, e corrige
+uma diferença real de G-code.
+
+### Decisões por item
+
+| Item | Decisão | Teste que fecha |
+|---|---|---|
+| G-01 | Campo `overcut` com unidade mm ou percentagem (0–50 mm, 0–100%); só contornos fechados; emitido **uma vez**, depois do ciclo de passagens, no sentido do percurso; percentagem sobre o perímetro depois do kerf; cauda para no início de um vão de tab; 0 reproduz o G-code atual | comprimento extra de 2 mm num quadrado de 10 mm; 10% de 40 mm = 4 mm; uma só cauda com 3 passagens; regressão byte a byte com 0 |
+| G-02 | Mínimo opcional: `None` = sem mínimo (comportamento atual); `Some(v)` exige `0 < v <= máximo`; a imagem em cinzentos mapeia o nível para `[mín, máx]` em vez de `[0, máx]`, eliminando o nível 0 a S0; comentário mostra o intervalo | S nunca abaixo do mínimo; projeto sem o campo corta como hoje; mínimo > máximo recusado |
+| G-03 | `perforation` + comprimento e intervalo (omissão 1/1 mm); traços ancorados no início do contorno; aplica-se a caminhos fechados e abertos; tabs têm precedência e o padrão continua a contar o comprimento; padrão maior que o perímetro vira um traço único com aviso | 10 mm com 1/1 → 5 traços e 5 mm cortados; desligado = G-code atual; comprimento ou intervalo a 0 recusado |
+| G-16 | Sub-camada é **cópia independente** do principal (sem herança por campo, até F3 provar o contrário); mesmo modo do principal; emitida depois do principal e antes da operação seguinte; remover todas volta ao comportamento atual | ordem de emissão; sub-camada desativada ignorada; editar o principal não altera a cópia; round-trip; regressão sem sub-camadas |
+| G-17 | **Adiado para F3.** A evidência só prova que os dois controlos existem; a entrada/saída atual já cobre «corte extra antes e depois». Sem observação, dois parâmetros novos seriam funcionalidade duplicada com semântica inventada | — (reavaliar quando houver G-code observado) |
+
+### Impacto na ordem de implementação
+
+O lote A passa a ser **D-01, G-01, G-02, G-03, G-16**; G-17 sai e volta depois
+da observação de runtime. Cada parâmetro novo usa `#[serde(default)]` com
+omissão que reproduz o G-code atual, entra no diálogo de operação, no modelo,
+no emissor, no esquema do MCP e no `PLAN.md` §33, com um teste de regressão por
+parâmetro desligado.
