@@ -397,10 +397,10 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 | G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
 | G-16 | Sub-camadas por entrada de corte | ausente | Criar, duplicar e remover (remover todas volta ao comportamento atual); a sub-camada nasce como cópia independente do principal; ordem preservada no job; teste de serialização e de ordem |
 | G-17 | Cut-through no início e no fim | ausente | Valor > 0 acrescenta esse comprimento em cada extremidade, independente da entrada/saída; 0 desliga; teste mede o extra |
-| G-04 | Prioridade por objeto e otimização | parcial | Prioridade mais alta sai primeiro, empate por vizinho mais próximo; opções de ordem por direção e remoção de sobreposições mudam a sequência; teste compara operações emitidas |
+| G-04 | Prioridade por objeto e otimização | parcial | Opções de trabalho expostas (velocidade de deslocação, ordenação assistida, deslocar para a origem, origem); remoção de sobreposições corta cada troço coberto uma só vez por potência; prioridade por objeto e «por direção» ficam para a observação de runtime; teste compara comprimentos e sequência |
 | G-18 | *Flood fill* | ausente | Preenchimento contido na fronteira (nenhum segmento a cruza); ilhas vazias; teste de área e de interseção |
-| G-27 | *Pass-through* de imagem | ausente | Ligado, a preparação é ignorada e o job emite raster com potência fixa; desligado, resultado atual; aviso ao ajustar com o modo ligado; teste de G-code |
-| G-28 | *Dot mode* vetorial | ausente | Gera pontos na grelha definida, sem linhas contínuas; contagem coerente com área e intervalo; teste conta pontos e confirma S |
+| G-27 | *Pass-through* de imagem | sem equivalente no formato de saída | Fecha como diferença de formato: a gravação em cinzentos com potência variável é o equivalente em G-code; só falta dizê-lo no manual e no tooltip |
+| G-28 | *Dot mode* vetorial | ausente | Opção com espaçamento (omissão 0,5 mm) e tamanho do ponto (omissão 0,2 mm); pontos só onde a preparação queima; potência por nível em cinzentos; desligado reproduz o raster atual; teste conta pontos |
 
 ### P1 — funcionalidade visível
 
@@ -478,3 +478,64 @@ da observação de runtime. Cada parâmetro novo usa `#[serde(default)]` com
 omissão que reproduz o G-code atual, entra no diálogo de operação, no modelo,
 no emissor, no esquema do MCP e no `PLAN.md` §33, com um teste de regressão por
 parâmetro desligado.
+
+---
+
+## 11. Especificação do lote B (2026-11-24)
+
+Comportamento esperado de G-04, G-18, G-27 e G-28; notas completas fora do
+repositório. Duas conclusões mudam o lote: G-04 divide-se e G-27 não tem
+equivalente no nosso formato de saída.
+
+### G-04 — dividido
+
+- **G-04a, implementável**: expor as opções de trabalho que já existem no
+  motor mas não na UI — velocidade de deslocação, ordenação assistida,
+  deslocar para a origem — a par da origem do trabalho; guardar com o projeto e
+  nos presets de exportação; preset antigo abre com as omissões atuais.
+- **G-04b, implementável**: remover sobreposições, opção de trabalho desligada
+  por omissão. Dentro de cada operação e por potência, cada troço coberto por
+  outro colinear é cortado uma só vez: segmentos divididos nos cruzamentos,
+  intervalo emitido na primeira ocorrência; nunca entre operações, potências
+  diferentes, deslocações ou vãos de tab. Idempotente; o relatório mostra os
+  milímetros poupados. Desligada, G-code atual.
+- **G-04c, adiado**: prioridade por objeto e ordenação «por direção». A
+  evidência não diz se a prioridade é por camada ou por objeto nem o que «por
+  direção» ordena; a ordem do painel já é a prioridade por camada. Sem G-code
+  observado, não se acrescenta semântica inventada.
+
+### G-18 — preenchimento de região
+
+Ligado, o preenchimento passa a ser feito sobre a **união dos contornos
+fechados da operação**, e não objeto a objeto: contornos encostados enchem uma
+só vez, furos ficam vazios. União com os booleanos existentes; sólidos
+preenchidos com o varrimento atual, furos passados como tais; ângulo,
+intervalo, margem e alternância vêm da operação. Caminhos abertos são ignorados
+com aviso. Determinístico (sem clique): enche toda a área limitada pela
+operação. Limite de 64 contornos por operação, acima do qual a validação
+recusa. `FillWithOutline` mantém o contorno por objeto. Desligado, atual.
+
+### G-27 — fechado como diferença de formato
+
+*Pass-through* significa enviar a imagem sem preparação para o controlador a
+interpretar. O BeamBurin entrega G-code, onde não existe esse canal; o
+equivalente observável é a gravação em cinzentos com potência variável, que já
+existe. Nada a implementar no emissor: fica só a nota no manual e no tooltip.
+Se um dia houver exportação raster para controlador, o item volta.
+
+### G-28 — modo de pontos
+
+Opção de imagem com espaçamento (omissão 0,5 mm) e tamanho do ponto (omissão
+0,2 mm); cada ponto é um corte curto do tamanho indicado — o escritor não tem
+pausa, e um segmento é a forma honesta de marcar um ponto. A preparação
+continua a decidir que pixels queimam; em cinzentos cada ponto leva o nível do
+pixel. Desligado reproduz o raster atual. Distinto da perfuração (contornos) e
+compatível com ela. Espaçamento ou tamanho a zero é recusado; tamanho maior que
+o espaçamento avisa sem impedir; os pontos contam para o limite de movimentos
+do raster.
+
+### Lote B final
+
+**G-04a, G-04b, G-18, G-28.** Adiado para F3: G-04c. Fechado por formato:
+G-27. Cada opção nova é guardada com o projeto e nos presets, e cada item traz
+um teste de regressão com a opção desligada.
