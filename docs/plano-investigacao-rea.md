@@ -424,8 +424,9 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 
 ### Ordem de implementação (F5)
 
-1. **Lote A — corte**: G-01, G-02, G-03, G-16, G-17 (mesmo modelo de
+1. **Lote A — corte**: D-01, G-01, G-02, G-03, G-16 (mesmo modelo de
    parâmetros e mesmo emissor de G-code; um teste de job cobre os cinco).
+   G-17 fica para depois da observação de runtime.
 2. **Lote B — ordem e imagem**: G-04, G-18, G-27, G-28.
 3. **Lote C — desenho**: G-05, G-06, G-07, G-09, G-10.
 4. **Lote D — objetos**: G-19, G-20, G-21, G-23, G-25.
@@ -460,6 +461,13 @@ desenhado. Correção: levar o indicador até ao emissor, fechar só o que é
 fechado e deixar de aplicar tabs a caminhos abertos (com aviso no relatório).
 É pré-requisito do sobrecorte, que só existe em contornos fechados, e corrige
 uma diferença real de G-code.
+
+**Implementado.** O indicador é agora levado de `Shape::to_path`/
+`text_to_paths` até `append_contour`: só um contorno fechado recebe o segmento
+de fecho; um caminho aberto é cortado tal como foi desenhado e os tabs são
+ignorados com aviso no relatório. Testes: `an_open_polyline_is_cut_as_drawn`,
+`a_closed_rectangle_still_returns_to_its_start`, `text_outlines_stay_closed`,
+`tabs_are_not_applied_to_an_open_path`, `a_closed_contour_keeps_its_tabs`.
 
 ### Decisões por item
 

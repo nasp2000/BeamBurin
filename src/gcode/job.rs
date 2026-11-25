@@ -331,6 +331,7 @@ pub fn build_toolpaths_cancellable(
                             &outlined,
                             &resolved,
                             &points,
+                            path.closed,
                             is_hole,
                             &holes,
                             &mut warnings,
@@ -339,7 +340,9 @@ pub fn build_toolpaths_cancellable(
                     }
                 }
                 _ => {
-                    let points = object.world_path().flatten(0.2);
+                    let path = object.world_path();
+                    let closed = path.closed;
+                    let points = path.flatten(0.2);
                     if points.len() < 2 {
                         warnings.push(format!("'{}' has no usable geometry", object.name));
                         continue;
@@ -365,6 +368,7 @@ pub fn build_toolpaths_cancellable(
                         object,
                         &resolved,
                         &points,
+                        closed,
                         is_hole,
                         &holes,
                         &mut warnings,
@@ -400,6 +404,7 @@ fn push_path_toolpaths(
     object: &Object,
     resolved: &Resolved,
     points: &[Point2],
+    closed: bool,
     is_hole: bool,
     holes: &[Vec<Point2>],
     warnings: &mut Vec<String>,
@@ -420,11 +425,17 @@ fn push_path_toolpaths(
             resolved.passes,
         );
         let points = kerfed(points, resolved.kerf_mm);
-        append_contour(
-            &mut toolpath,
-            &points,
-            ContourOptions::from_resolved(resolved),
-        );
+        let mut options = ContourOptions::from_resolved(resolved);
+        options.closed = closed;
+        if !closed && (options.tabs > 0 || options.tab_spacing > 0.0) {
+            warnings.push(format!(
+                "'{}' is an open path, so tabs were not applied",
+                object.name
+            ));
+            options.tabs = 0;
+            options.tab_spacing = 0.0;
+        }
+        append_contour(&mut toolpath, &points, options);
         let mut toolpath = toolpath
             .with_operation(object.operation_id.as_deref())
             .with_air_assist(resolved.air_assist)
@@ -1130,6 +1141,9 @@ struct ContourOptions {
     lead_in: f64,
     lead_out: f64,
     curved_leads: bool,
+    /// Whether the contour returns to its first point. An open contour is cut
+    /// exactly as drawn; closing it would add a cut nobody asked for.
+    closed: bool,
 }
 
 impl ContourOptions {
@@ -1140,6 +1154,7 @@ impl ContourOptions {
         lead_in: 0.0,
         lead_out: 0.0,
         curved_leads: false,
+        closed: true,
     };
 
     fn from_resolved(resolved: &Resolved) -> Self {
@@ -1150,6 +1165,7 @@ impl ContourOptions {
             lead_in: resolved.lead_in_mm,
             lead_out: resolved.lead_out_mm,
             curved_leads: resolved.curved_leads,
+            closed: true,
         }
     }
 }
@@ -1214,16 +1230,17 @@ fn outward_normal(forward: (f64, f64), counter_clockwise: bool) -> (f64, f64) {
 
 #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
 fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOptions) {
-    let mut closed = points.to_vec();
-    if closed.len() > 2 && closed[0].distance(closed[closed.len() - 1]) > 1e-9 {
-        closed.push(closed[0]);
+    let mut contour = points.to_vec();
+    if options.closed && contour.len() > 2 && contour[0].distance(contour[contour.len() - 1]) > 1e-9
+    {
+        contour.push(contour[0]);
     }
-    if closed.len() < 2 {
+    if contour.len() < 2 {
         return;
     }
     let mut lengths = Vec::new();
     let mut total = 0.0;
-    for pair in closed.windows(2) {
+    for pair in contour.windows(2) {
         let length = pair[0].distance(pair[1]);
         lengths.push(length);
         total += length;
@@ -1239,10 +1256,10 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
             ));
         }
     }
-    let polygon: Vec<(f64, f64)> = closed.iter().map(|point| (point.x, point.y)).collect();
+    let polygon: Vec<(f64, f64)> = contour.iter().map(|point| (point.x, point.y)).collect();
     let counter_clockwise = crate::geometry::boolean::polygon_area(&polygon) >= 0.0;
-    let first = closed[0];
-    let second = closed[1];
+    let first = contour[0];
+    let second = contour[1];
     let forward = normalized(first, second);
     let outward = outward_normal(forward, counter_clockwise);
     if options.lead_in > 0.0 && options.curved_leads {
@@ -1258,7 +1275,7 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
         }
     }
     let mut travelled = 0.0;
-    for (index, pair) in closed.windows(2).enumerate() {
+    for (index, pair) in contour.windows(2).enumerate() {
         let (from, to) = (pair[0], pair[1]);
         let length = lengths[index];
         if length <= 1e-12 {
@@ -1285,8 +1302,8 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
         travelled += length;
     }
     if options.lead_out > 0.0 {
-        let last = closed[closed.len() - 1];
-        let before = closed[closed.len() - 2];
+        let last = contour[contour.len() - 1];
+        let before = contour[contour.len() - 2];
         let forward = normalized(before, last);
         if options.curved_leads {
             push_lead_arc(
@@ -2173,6 +2190,158 @@ mod tests {
         let (toolpaths, warnings) = build_toolpaths(&document);
         assert_eq!(toolpaths.len(), 0);
         assert_eq!(warnings.len(), 0);
+    }
+
+    fn document_with_path(points: &[(f64, f64)], closed: bool) -> Document {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Path(crate::geometry::Path::from_points(points, closed)),
+        ));
+        document
+    }
+
+    fn cut_points(toolpath: &Toolpath) -> Vec<Point2> {
+        toolpath
+            .moves
+            .iter()
+            .filter(|movement| movement.kind == MoveKind::Cut)
+            .map(|movement| Point2::new(movement.x, movement.y))
+            .collect()
+    }
+
+    fn starts_and_ends_at_the_same_point(toolpath: &Toolpath) -> bool {
+        let Some(start) = toolpath
+            .moves
+            .iter()
+            .find(|movement| movement.kind == MoveKind::Travel)
+        else {
+            return false;
+        };
+        let Some(last) = toolpath
+            .moves
+            .iter()
+            .rev()
+            .find(|movement| movement.kind == MoveKind::Cut)
+        else {
+            return false;
+        };
+        let start = Point2::new(start.x, start.y);
+        let last = Point2::new(last.x, last.y);
+        start.distance(last) < 1e-9
+    }
+
+    #[test]
+    fn an_open_polyline_is_cut_as_drawn() {
+        let document = document_with_path(&[(0.0, 0.0), (10.0, 0.0), (10.0, 5.0)], false);
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert_eq!(toolpaths.len(), 1);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let cuts = cut_points(&toolpaths[0]);
+        // Two drawn segments: the open path is not closed with a third one.
+        assert_eq!(cuts.len(), 2, "{cuts:?}");
+        let last = cuts[cuts.len() - 1];
+        assert!((last.x - 10.0).abs() < 1e-9 && (last.y - 5.0).abs() < 1e-9);
+        assert!(
+            cuts.iter()
+                .all(|point| point.distance(Point2::new(0.0, 0.0)) > 1e-9),
+            "the open path was closed: {cuts:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_rectangle_still_returns_to_its_start() {
+        let document = document_with_rect();
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(toolpaths.len(), 1);
+        let cuts = cut_points(&toolpaths[0]);
+        assert_eq!(cuts.len(), 4, "{cuts:?}");
+        assert!(starts_and_ends_at_the_same_point(&toolpaths[0]));
+    }
+
+    #[test]
+    fn text_outlines_stay_closed() {
+        let mut document = Document::default();
+        let layer_id = document.layers[0].id.clone();
+        document.add_object(Object::new(
+            layer_id,
+            Shape::Text(crate::objects::TextObject {
+                content: "hi".to_string(),
+                font: "sans".to_string(),
+                size: 4.0,
+                x: 0.0,
+                y: 0.0,
+                ..crate::objects::TextObject::default()
+            }),
+        ));
+        let (toolpaths, _) = build_toolpaths(&document);
+        assert!(!toolpaths.is_empty());
+        for toolpath in &toolpaths {
+            assert!(
+                starts_and_ends_at_the_same_point(toolpath),
+                "'{}' no longer closes",
+                toolpath.name
+            );
+        }
+    }
+
+    #[test]
+    fn tabs_are_not_applied_to_an_open_path() {
+        let mut document = document_with_path(&[(0.0, 0.0), (40.0, 0.0)], false);
+        document.operations.push(Operation {
+            id: "op-1".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams {
+                tabs: 2,
+                tab_width_mm: 2.0,
+                ..OperationParams::default()
+            },
+            enabled: true,
+            depends_on: Vec::new(),
+        });
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert_eq!(toolpaths.len(), 1);
+        // Without tabs the 40 mm line is one uninterrupted cut.
+        assert_eq!(cut_points(&toolpaths[0]).len(), 1);
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("open path") && warning.contains("tabs")),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_contour_keeps_its_tabs() {
+        let mut document =
+            document_with_path(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], true);
+        document.operations.push(Operation {
+            id: "op-1".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams {
+                tabs: 2,
+                tab_width_mm: 2.0,
+                ..OperationParams::default()
+            },
+            enabled: true,
+            depends_on: Vec::new(),
+        });
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        // A tab switches the laser off and travels across the gap, so the
+        // closed contour has more than the single approach travel.
+        let travels = toolpaths[0]
+            .moves
+            .iter()
+            .filter(|movement| movement.kind == MoveKind::Travel)
+            .count();
+        assert!(travels > 1, "{travels} travel move(s)");
     }
 
     #[test]
