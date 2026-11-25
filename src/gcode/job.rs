@@ -2277,7 +2277,7 @@ mod tests {
             }),
         ));
         let (toolpaths, _) = build_toolpaths(&document);
-        assert!(!toolpaths.is_empty());
+        assert!(!toolpaths.is_empty(), "the text produced no toolpaths");
         for toolpath in &toolpaths {
             assert!(
                 starts_and_ends_at_the_same_point(toolpath),
