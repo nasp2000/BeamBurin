@@ -392,7 +392,7 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 
 | ID | Item | Estado | Critério de aceitação |
 |---|---|---|---|
-| G-01 | Sobrecorte em contornos fechados | ausente (só entrada/saída) | Com sobrecorte S>0, a última passagem excede o fecho em S mm ou S% do perímetro; S=0 reproduz o G-code atual; negativo é rejeitado; teste mede comprimento e coordenadas |
+| G-01 | Sobrecorte em contornos fechados | implementado (mm ou %) | Com sobrecorte S>0, a última passagem excede o fecho em S mm ou S% do perímetro; S=0 reproduz o G-code atual; negativo é rejeitado; teste mede comprimento e coordenadas |
 | G-02 | Potência mínima e máxima | parcial (um campo) | O job nunca escreve S fora de [mín, máx]; mínimo > máximo é rejeitado; omissão igual à potência atual; projeto antigo abre com mín = máx; teste verifica S e validação |
 | G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
 | G-16 | Sub-camadas por entrada de corte | ausente | Criar, duplicar e remover (remover todas volta ao comportamento atual); a sub-camada nasce como cópia independente do principal; ordem preservada no job; teste de serialização e de ordem |
@@ -480,6 +480,17 @@ ignorados com aviso no relatório. Testes: `an_open_polyline_is_cut_as_drawn`,
 | G-17 | **Adiado para F3.** A evidência só prova que os dois controlos existem; a entrada/saída atual já cobre «corte extra antes e depois». Sem observação, dois parâmetros novos seriam funcionalidade duplicada com semântica inventada | — (reavaliar quando houver G-code observado) |
 
 ### Impacto na ordem de implementação
+
+**G-01 implementado.** `OperationParams` ganhou `overcut` e `overcut_unit`
+(mm ou %), ambos com `#[serde(default)]` e zero por omissão; a cauda é calculada
+em `append_contour` sobre o perímetro já com kerf, guardada em
+`Toolpath::overcut` e emitida uma só vez depois do ciclo de passagens. Testes:
+`a_two_millimetre_overcut_extends_a_ten_millimetre_square`,
+`ten_percent_of_a_forty_millimetre_perimeter_is_four_millimetres`,
+`the_overcut_is_emitted_once_with_three_passes`,
+`the_overcut_tail_stops_at_the_first_tab_gap`,
+`an_open_path_has_no_overcut`,
+`a_zero_overcut_keeps_the_job_byte_for_byte`.
 
 O lote A passa a ser **D-01, G-01, G-02, G-03, G-16**; G-17 sai e volta depois
 da observação de runtime. Cada parâmetro novo usa `#[serde(default)]` com

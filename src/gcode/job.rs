@@ -4,10 +4,10 @@ use crate::document::shape::Shape;
 use crate::document::{Document, Object};
 use crate::errors::{BeamError, Result};
 use crate::gcode::dialect::GCodeOptions;
-use crate::gcode::toolpath::{MoveKind, Toolpath};
+use crate::gcode::toolpath::{Move, MoveKind, Toolpath};
 use crate::geometry::Point2;
 use crate::operations::model::OperationParams;
-use crate::operations::{Operation, OperationType};
+use crate::operations::{Operation, OperationType, OvercutUnit};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
@@ -132,6 +132,8 @@ struct Resolved {
     lead_in_mm: f64,
     lead_out_mm: f64,
     curved_leads: bool,
+    overcut: f64,
+    overcut_unit: OvercutUnit,
     cross_hatch: bool,
     air_assist: bool,
     constant_power: bool,
@@ -165,6 +167,8 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
                 lead_in_mm: operation.params.lead_in_mm.max(0.0),
                 lead_out_mm: operation.params.lead_out_mm.max(0.0),
                 curved_leads: operation.params.curved_leads,
+                overcut: operation.params.overcut.max(0.0),
+                overcut_unit: operation.params.overcut_unit,
                 cross_hatch: operation.params.cross_hatch,
                 air_assist: operation.params.air_assist,
                 constant_power: operation.params.constant_power,
@@ -194,6 +198,8 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
                 lead_in_mm: params.lead_in_mm.max(0.0),
                 lead_out_mm: params.lead_out_mm.max(0.0),
                 curved_leads: params.curved_leads,
+                overcut: params.overcut.max(0.0),
+                overcut_unit: params.overcut_unit,
                 cross_hatch: params.cross_hatch,
                 air_assist: params.air_assist,
                 constant_power: params.constant_power,
@@ -540,9 +546,67 @@ fn rewrite_cuts(
                 }
             }
         }
+        let (overcut, overcut_affected) = rewrite_overcut(&toolpath.overcut, allowed);
+        output.overcut = overcut;
+        affected += overcut_affected;
         *toolpath = output;
     }
     affected
+}
+
+/// Rebuild the one-off overcut tail with only the allowed parts.
+fn rewrite_overcut(
+    overcut: &[Move],
+    allowed: &dyn Fn(Point2, Point2) -> Vec<(f64, f64)>,
+) -> (Vec<Move>, usize) {
+    let mut output = Vec::new();
+    let mut affected = 0;
+    let mut previous: Option<Point2> = None;
+    let mut head: Option<Point2> = None;
+    for movement in overcut {
+        let point = Point2::new(movement.x, movement.y);
+        if movement.kind == MoveKind::Travel {
+            output.push(*movement);
+            previous = Some(point);
+            head = Some(point);
+            continue;
+        }
+        let Some(from) = previous else {
+            previous = Some(point);
+            continue;
+        };
+        previous = Some(point);
+        let intervals = allowed(from, point);
+        if intervals.is_empty() {
+            affected += 1;
+            continue;
+        }
+        let whole =
+            intervals.len() == 1 && intervals[0].0 <= 1e-12 && intervals[0].1 >= 1.0 - 1e-12;
+        if !whole {
+            affected += 1;
+        }
+        for (start, end) in intervals {
+            let entry = lerp(from, point, start);
+            let exit = lerp(from, point, end);
+            if !head.is_some_and(|position| position.distance(entry) <= 1e-9) {
+                output.push(Move {
+                    kind: MoveKind::Travel,
+                    x: entry.x,
+                    y: entry.y,
+                    power: None,
+                });
+            }
+            output.push(Move {
+                kind: MoveKind::Cut,
+                x: exit.x,
+                y: exit.y,
+                power: movement.power,
+            });
+            head = Some(exit);
+        }
+    }
+    (output, affected)
 }
 
 /// The parts of a segment that are outside every restricted area.
@@ -1141,6 +1205,9 @@ struct ContourOptions {
     lead_in: f64,
     lead_out: f64,
     curved_leads: bool,
+    /// Extra distance cut past the closing point, in `overcut_unit`.
+    overcut: f64,
+    overcut_unit: OvercutUnit,
     /// Whether the contour returns to its first point. An open contour is cut
     /// exactly as drawn; closing it would add a cut nobody asked for.
     closed: bool,
@@ -1154,6 +1221,8 @@ impl ContourOptions {
         lead_in: 0.0,
         lead_out: 0.0,
         curved_leads: false,
+        overcut: 0.0,
+        overcut_unit: OvercutUnit::Millimetres,
         closed: true,
     };
 
@@ -1165,6 +1234,8 @@ impl ContourOptions {
             lead_in: resolved.lead_in_mm,
             lead_out: resolved.lead_out_mm,
             curved_leads: resolved.curved_leads,
+            overcut: resolved.overcut,
+            overcut_unit: resolved.overcut_unit,
             closed: true,
         }
     }
@@ -1322,6 +1393,74 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
             toolpath.push(MoveKind::Cut, exit.x, exit.y);
         }
     }
+    toolpath.overcut = overcut_tail(&contour, total, &gaps, options);
+}
+
+/// Moves that continue past the closing point of a closed contour.
+///
+/// The tail starts at the contour start and follows the same direction, so it
+/// retraces material that was just cut. It stops at the start of the first tab
+/// gap, which must stay uncut, and never goes past one full perimeter. An open
+/// contour has no tail: there is no closing point to continue from.
+fn overcut_tail(
+    contour: &[Point2],
+    perimeter: f64,
+    gaps: &[(f64, f64)],
+    options: ContourOptions,
+) -> Vec<Move> {
+    if !options.closed || contour.len() < 2 || perimeter <= 0.0 {
+        return Vec::new();
+    }
+    let requested = match options.overcut_unit {
+        OvercutUnit::Millimetres => options.overcut,
+        OvercutUnit::Percent => perimeter * options.overcut / 100.0,
+    };
+    if requested <= 0.0 {
+        return Vec::new();
+    }
+    let stop = gaps.first().map_or(perimeter, |(start, _)| *start);
+    let length = requested.min(perimeter).min(stop);
+    if length <= 1e-9 {
+        return Vec::new();
+    }
+    let start = contour[0];
+    let mut moves = vec![Move {
+        kind: MoveKind::Travel,
+        x: start.x,
+        y: start.y,
+        power: None,
+    }];
+    let mut travelled = 0.0;
+    for pair in contour.windows(2) {
+        let (from, to) = (pair[0], pair[1]);
+        let segment = from.distance(to);
+        if segment <= 1e-12 {
+            continue;
+        }
+        let remaining = length - travelled;
+        if remaining <= 0.0 {
+            break;
+        }
+        if segment <= remaining {
+            moves.push(Move {
+                kind: MoveKind::Cut,
+                x: to.x,
+                y: to.y,
+                power: None,
+            });
+            travelled += segment;
+        } else {
+            let point = lerp(from, to, remaining / segment);
+            moves.push(Move {
+                kind: MoveKind::Cut,
+                x: point.x,
+                y: point.y,
+                power: None,
+            });
+            break;
+        }
+    }
+    moves
 }
 
 fn normalized(from: Point2, to: Point2) -> (f64, f64) {
@@ -1499,6 +1638,10 @@ pub fn estimate_seconds(toolpaths: &[Toolpath], travel_speed_mm_min: f64) -> f64
         };
         let travel = (approach + toolpath.travel_length()) / travel_speed;
         seconds += (cut + travel) * passes * 60.0;
+        // The overcut tail is emitted once, after the last pass.
+        if toolpath.speed > 0.0 {
+            seconds += toolpath.overcut_length() / toolpath.speed * 60.0;
+        }
         if let Some(end) = toolpath.end() {
             position = end;
         }
@@ -1661,6 +1804,10 @@ fn round_corners(points: &[Point2], radius: f64) -> Vec<Point2> {
 pub fn shift_by(toolpaths: &mut [Toolpath], dx: f64, dy: f64) {
     for toolpath in toolpaths.iter_mut() {
         for movement in &mut toolpath.moves {
+            movement.x += dx;
+            movement.y += dy;
+        }
+        for movement in &mut toolpath.overcut {
             movement.x += dx;
             movement.y += dy;
         }
@@ -2342,6 +2489,121 @@ mod tests {
             .filter(|movement| movement.kind == MoveKind::Travel)
             .count();
         assert!(travels > 1, "{travels} travel move(s)");
+    }
+
+    fn document_with_square(operation: Operation) -> Document {
+        let mut document =
+            document_with_path(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], true);
+        let id = operation.id.clone();
+        document.operations.push(operation);
+        document.objects[0].operation_id = Some(id);
+        document
+    }
+
+    fn overcut_operation(overcut: f64, unit: OvercutUnit, passes: u32) -> Operation {
+        Operation {
+            id: "op-1".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams {
+                passes,
+                overcut,
+                overcut_unit: unit,
+                ..OperationParams::default()
+            },
+            enabled: true,
+            depends_on: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_two_millimetre_overcut_extends_a_ten_millimetre_square() {
+        let document = document_with_square(overcut_operation(2.0, OvercutUnit::Millimetres, 1));
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let toolpath = &toolpaths[0];
+        assert!((toolpath.overcut_length() - 2.0).abs() < 1e-9);
+        let tail = &toolpath.overcut;
+        assert_eq!(tail.len(), 2, "{tail:?}");
+        assert_eq!(tail[0].kind, MoveKind::Travel);
+        assert_eq!(tail[1].kind, MoveKind::Cut);
+        // The square starts at the origin and runs along +X first.
+        assert!((tail[1].x - 2.0).abs() < 1e-9 && tail[1].y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn ten_percent_of_a_forty_millimetre_perimeter_is_four_millimetres() {
+        let document = document_with_square(overcut_operation(10.0, OvercutUnit::Percent, 1));
+        let (toolpaths, _) = build_toolpaths(&document);
+        let toolpath = &toolpaths[0];
+        assert!((toolpath.overcut_length() - 4.0).abs() < 1e-9);
+        let end = toolpath.overcut.last().unwrap();
+        assert!((end.x - 4.0).abs() < 1e-9 && end.y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_overcut_is_emitted_once_with_three_passes() {
+        let document = document_with_square(overcut_operation(2.0, OvercutUnit::Millimetres, 3));
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        // Four cuts per pass, plus the single tail cut.
+        assert_eq!(text.matches("G1 X").count(), 13, "{text}");
+        assert_eq!(text.matches("G1 X2 Y0").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn an_open_path_has_no_overcut() {
+        let mut document = document_with_path(&[(0.0, 0.0), (10.0, 0.0)], false);
+        document
+            .operations
+            .push(overcut_operation(2.0, OvercutUnit::Millimetres, 1));
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(toolpaths[0].overcut.is_empty());
+    }
+
+    #[test]
+    fn the_overcut_tail_stops_at_the_first_tab_gap() {
+        let tail = overcut_tail(
+            &square_contour(),
+            40.0,
+            &[(1.0, 3.0)],
+            ContourOptions {
+                overcut: 2.0,
+                ..ContourOptions::NONE
+            },
+        );
+        let length: f64 = tail
+            .windows(2)
+            .filter(|pair| pair[1].kind == MoveKind::Cut)
+            .map(|pair| {
+                Point2::new(pair[0].x, pair[0].y).distance(Point2::new(pair[1].x, pair[1].y))
+            })
+            .sum();
+        assert!((length - 1.0).abs() < 1e-9);
+        let end = tail.last().unwrap();
+        assert!((end.x - 1.0).abs() < 1e-9 && end.y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_zero_overcut_keeps_the_job_byte_for_byte() {
+        let mut document = document_with_rect();
+        document
+            .operations
+            .push(overcut_operation(0.0, OvercutUnit::Percent, 1));
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        // Drop both fields as an older project would not have them.
+        let mut value = serde_json::to_value(&document).unwrap();
+        for operation in value["operations"].as_array_mut().unwrap() {
+            let fields = operation.as_object_mut().unwrap();
+            fields.remove("overcut");
+            fields.remove("overcut_unit");
+        }
+        let older: Document = serde_json::from_value(value).unwrap();
+        let (without, _) = render_job(&older, &JobOptions::default()).unwrap();
+        assert_eq!(text, without);
+        assert_eq!(text.matches("G1 X").count(), 4, "{text}");
     }
 
     #[test]

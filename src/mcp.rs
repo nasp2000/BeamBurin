@@ -7,7 +7,7 @@ use crate::document::{Document, Object, Shape};
 use crate::editor::EditorState;
 use crate::errors::{BeamError, Result};
 use crate::geometry::{Point2, Transform2};
-use crate::operations::OperationType;
+use crate::operations::{OperationType, OvercutUnit};
 
 /// MCP server state: one open document, mirroring the editor's commands.
 ///
@@ -828,6 +828,12 @@ impl McpServer {
                         arguments.get("fill_alternate").and_then(Value::as_bool)
                     {
                         operation.params.fill_alternate = alternate;
+                    }
+                    if let Some(overcut) = number(arguments, "overcut") {
+                        operation.params.overcut = overcut;
+                    }
+                    if let Some(unit) = string(arguments, "overcut_unit") {
+                        operation.params.overcut_unit = parse_overcut_unit(&unit)?;
                     }
                     operation.validate().map_err(BeamError::InvalidInput)?;
                 }
@@ -2418,7 +2424,9 @@ fn tool_definitions() -> Vec<Value> {
                 "fill_angle_degrees": {"type": "number"},
                 "fill_margin_mm": {"type": "number"},
                 "fill_offset_mm": {"type": "number"},
-                "fill_alternate": {"type": "boolean"}
+                "fill_alternate": {"type": "boolean"},
+                "overcut": {"type": "number"},
+                "overcut_unit": {"type": "string", "enum": ["mm", "percent"]}
             }}),
         ),
         tool_with(
@@ -3416,6 +3424,16 @@ fn parse_operation_type(value: &str) -> Result<OperationType> {
     }
 }
 
+fn parse_overcut_unit(value: &str) -> Result<OvercutUnit> {
+    match value {
+        "mm" | "millimetres" | "millimeters" => Ok(OvercutUnit::Millimetres),
+        "percent" | "percentage" | "%" => Ok(OvercutUnit::Percent),
+        other => Err(BeamError::InvalidInput(format!(
+            "unknown overcut unit: {other}"
+        ))),
+    }
+}
+
 #[allow(dead_code)]
 fn _unused(_: &Path) {}
 
@@ -4375,6 +4393,39 @@ mod tests {
             &mut server,
             "set_operation_dependency",
             json!({"operation": second, "depends_on": "missing"}),
+        );
+        assert!(bad.get("error").is_some());
+    }
+
+    #[test]
+    fn overcut_is_set_through_create_operation() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "create_operation",
+            json!({
+                "name": "Cut",
+                "type": "outline_cutting",
+                "overcut": 10.0,
+                "overcut_unit": "percent"
+            }),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let operation = server
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| operation.id == id)
+            .unwrap();
+        assert!((operation.params.overcut - 10.0).abs() < 1e-9);
+        assert_eq!(operation.params.overcut_unit, OvercutUnit::Percent);
+        let bad = call(
+            &mut server,
+            "create_operation",
+            json!({"name": "Bad", "type": "line", "overcut": 10.0, "overcut_unit": "furlongs"}),
         );
         assert!(bad.get("error").is_some());
     }

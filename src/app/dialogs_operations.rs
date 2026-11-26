@@ -24,7 +24,7 @@ impl BeamBurinApp {
     }
 
     pub(super) fn cuts_window(&mut self, ctx: &egui::Context) {
-        use crate::operations::OperationType;
+        use crate::operations::{OperationType, OvercutUnit};
 
         let mut open = self.cuts_open;
         let mut close_requested = false;
@@ -325,6 +325,43 @@ impl BeamBurinApp {
                                     .range(0.0..=10.0),
                             )
                             .labelled_by(kerf_label.id).on_hover_text(crate::ui::icons::field("Kerf (mm)"));
+                            ui.end_row();
+                            let overcut_label = ui.label("Overcut");
+                            ui.horizontal(|ui| {
+                                let limit = match operation.params.overcut_unit {
+                                    OvercutUnit::Millimetres => 50.0,
+                                    OvercutUnit::Percent => 100.0,
+                                };
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.overcut)
+                                        .speed(0.1)
+                                        .range(0.0..=limit),
+                                )
+                                .labelled_by(overcut_label.id)
+                                .on_hover_text(
+                                    "Continue past the closing point of a closed contour; zero cuts it as drawn",
+                                );
+                                let previous = operation.params.overcut_unit;
+                                egui::ComboBox::from_id_salt("overcut_unit")
+                                    .selected_text(operation.params.overcut_unit.label())
+                                    .show_ui(ui, |ui| {
+                                        for unit in OvercutUnit::all() {
+                                            ui.selectable_value(
+                                                &mut operation.params.overcut_unit,
+                                                unit,
+                                                unit.label(),
+                                            );
+                                        }
+                                    });
+                                if operation.params.overcut_unit != previous {
+                                    let limit = match operation.params.overcut_unit {
+                                        OvercutUnit::Millimetres => 50.0,
+                                        OvercutUnit::Percent => 100.0,
+                                    };
+                                    operation.params.overcut =
+                                        operation.params.overcut.min(limit);
+                                }
+                            });
                             ui.end_row();
                             let tabs_label = ui.label("Holding tabs");
                             ui.add(

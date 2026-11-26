@@ -56,6 +56,29 @@ impl OperationType {
     }
 }
 
+/// How an operation's overcut distance is measured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum OvercutUnit {
+    /// Extra distance in millimetres.
+    #[default]
+    Millimetres,
+    /// Percentage of the contour perimeter.
+    Percent,
+}
+
+impl OvercutUnit {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Millimetres => "mm",
+            Self::Percent => "%",
+        }
+    }
+
+    pub fn all() -> [Self; 2] {
+        [Self::Millimetres, Self::Percent]
+    }
+}
+
 /// Fields that an expression may override.
 pub const EXPRESSION_FIELDS: [&str; 10] = [
     "speed",
@@ -131,6 +154,12 @@ pub struct OperationParams {
     /// Enter and leave along a quarter-circle arc instead of a straight line.
     #[serde(default)]
     pub curved_leads: bool,
+    /// Extra distance cut past the closing point of a closed contour.
+    #[serde(default)]
+    pub overcut: f64,
+    /// Whether `overcut` is millimetres or a percentage of the perimeter.
+    #[serde(default)]
+    pub overcut_unit: OvercutUnit,
     /// Expressions that override numeric fields, keyed by field name.
     #[serde(default)]
     pub expressions: BTreeMap<String, String>,
@@ -273,6 +302,11 @@ impl OperationParams {
             format!("{:.2} mm", self.kerf_mm),
             format!("{:.2} mm", target.kerf_mm),
         );
+        push(
+            "Overcut",
+            format!("{:.2} {}", self.overcut, self.overcut_unit.label()),
+            format!("{:.2} {}", target.overcut, target.overcut_unit.label()),
+        );
         changes
     }
 }
@@ -301,6 +335,8 @@ impl Default for OperationParams {
             lead_in_mm: 0.0,
             lead_out_mm: 0.0,
             curved_leads: false,
+            overcut: 0.0,
+            overcut_unit: OvercutUnit::Millimetres,
             expressions: BTreeMap::new(),
         }
     }
@@ -372,6 +408,19 @@ impl Operation {
         if !self.params.overscan_mm.is_finite() || !(0.0..=50.0).contains(&self.params.overscan_mm)
         {
             return Err("overscan must be between 0 and 50 mm".to_string());
+        }
+        if !self.params.overcut.is_finite() || self.params.overcut < 0.0 {
+            return Err("overcut must be zero or positive".to_string());
+        }
+        let overcut_limit = match self.params.overcut_unit {
+            OvercutUnit::Millimetres => 50.0,
+            OvercutUnit::Percent => 100.0,
+        };
+        if self.params.overcut > overcut_limit {
+            return Err(format!(
+                "overcut must be at most {overcut_limit:.0} {}",
+                self.params.overcut_unit.label()
+            ));
         }
         for (field, expression) in &self.params.expressions {
             if !EXPRESSION_FIELDS.contains(&field.as_str()) {
@@ -462,6 +511,36 @@ mod tests {
         let mut o = sample();
         o.params.power = -1.0;
         assert!(o.validate().is_err());
+    }
+
+    #[test]
+    fn overcut_accepts_both_units_within_their_range() {
+        let mut operation = sample();
+        operation.params.overcut = 50.0;
+        assert!(operation.validate().is_ok());
+        operation.params.overcut = 50.1;
+        assert!(operation.validate().is_err());
+        operation.params.overcut_unit = OvercutUnit::Percent;
+        operation.params.overcut = 100.0;
+        assert!(operation.validate().is_ok());
+        operation.params.overcut = 100.1;
+        assert!(operation.validate().is_err());
+        operation.params.overcut = -1.0;
+        assert!(operation.validate().is_err());
+    }
+
+    #[test]
+    fn an_operation_without_overcut_fields_defaults_to_no_overcut() {
+        let params: OperationParams = serde_json::from_value(serde_json::json!({
+            "speed": 1000.0,
+            "power": 20.0,
+            "passes": 1,
+            "line_interval_mm": 0.1
+        }))
+        .unwrap();
+        assert!(params.overcut.abs() < f64::EPSILON);
+        assert_eq!(params.overcut_unit, OvercutUnit::Millimetres);
+        assert_eq!(params, OperationParams::default());
     }
 
     #[test]

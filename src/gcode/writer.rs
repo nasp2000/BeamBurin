@@ -89,12 +89,14 @@ impl GCodeWriter {
         }
         let _ = write!(out, "S0{newline}");
         let mut position: Option<(f64, f64)> = None;
+        let mut laser_on = false;
+        let mut current_power = 0.0;
         for pass in 0..toolpath.passes {
             if pass > 0 {
                 let _ = write!(out, "S0{newline}");
             }
-            let mut laser_on = false;
-            let mut current_power = 0.0;
+            laser_on = false;
+            current_power = 0.0;
             let mut index = 0;
             while index < toolpath.moves.len() {
                 let movement = toolpath.moves[index];
@@ -182,6 +184,56 @@ impl GCodeWriter {
                             index += 1;
                         }
                     }
+                }
+            }
+        }
+        // The overcut tail is emitted once, after every pass has run.
+        for movement in &toolpath.overcut {
+            match movement.kind {
+                MoveKind::Travel => {
+                    if position.is_some_and(|(x, y)| {
+                        (x - movement.x).abs() <= 1e-9 && (y - movement.y).abs() <= 1e-9
+                    }) {
+                        continue;
+                    }
+                    if laser_on {
+                        let _ = write!(out, "S0{newline}");
+                        laser_on = false;
+                        current_power = 0.0;
+                    }
+                    let _ = write!(
+                        out,
+                        "G0 X{} Y{}{newline}",
+                        fmt_num(movement.x, precision),
+                        fmt_num(movement.y, precision)
+                    );
+                    position = Some((movement.x, movement.y));
+                }
+                MoveKind::Cut => {
+                    let power = movement.power.unwrap_or(toolpath.power);
+                    if laser_on {
+                        if (power - current_power).abs() > 0.5 {
+                            let _ = write!(out, "S{power:.0}{newline}");
+                            current_power = power;
+                        }
+                        let _ = write!(
+                            out,
+                            "G1 X{} Y{}{newline}",
+                            fmt_num(movement.x, precision),
+                            fmt_num(movement.y, precision)
+                        );
+                    } else {
+                        let _ = write!(
+                            out,
+                            "G1 X{} Y{} F{:.0} S{power:.0}{newline}",
+                            fmt_num(movement.x, precision),
+                            fmt_num(movement.y, precision),
+                            toolpath.speed
+                        );
+                        laser_on = true;
+                        current_power = power;
+                    }
+                    position = Some((movement.x, movement.y));
                 }
             }
         }
@@ -345,6 +397,40 @@ mod tests {
         let writer = GCodeWriter::new(GCodeOptions::default());
         let text = writer.render(&[toolpath]);
         assert_eq!(text.matches("G1 X").count(), 4);
+    }
+
+    #[test]
+    fn the_overcut_tail_is_emitted_once_after_the_passes() {
+        let mut toolpath = sample();
+        toolpath.passes = 3;
+        toolpath.overcut = vec![
+            Move {
+                kind: MoveKind::Travel,
+                x: 0.0,
+                y: 0.0,
+                power: None,
+            },
+            Move {
+                kind: MoveKind::Cut,
+                x: 2.0,
+                y: 0.0,
+                power: None,
+            },
+        ];
+        let text = GCodeWriter::new(GCodeOptions::default()).render(&[toolpath]);
+        // Two cuts per pass, plus the tail once.
+        assert_eq!(text.matches("G1 X").count(), 7, "{text}");
+        assert_eq!(text.matches("G1 X2 Y0").count(), 1, "{text}");
+        assert!(text.contains("G1 X2 Y0 F1000 S500"), "{text}");
+    }
+
+    #[test]
+    fn an_empty_overcut_adds_no_moves() {
+        let plain = GCodeWriter::new(GCodeOptions::default()).render(&[sample()]);
+        let mut with_empty = sample();
+        with_empty.overcut = Vec::new();
+        let empty = GCodeWriter::new(GCodeOptions::default()).render(&[with_empty]);
+        assert_eq!(plain, empty);
     }
 
     #[test]

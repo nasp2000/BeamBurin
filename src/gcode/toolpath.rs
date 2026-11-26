@@ -38,6 +38,9 @@ pub struct Toolpath {
     pub air_assist: bool,
     /// Use M3 (constant power) instead of M4 for this toolpath.
     pub constant_power: bool,
+    /// Extra cut emitted once after the last pass, retracing the start of a
+    /// closed contour. Empty when the operation has no overcut.
+    pub overcut: Vec<Move>,
 }
 
 impl Toolpath {
@@ -52,6 +55,7 @@ impl Toolpath {
             operation_name: None,
             air_assist: false,
             constant_power: false,
+            overcut: Vec::new(),
         }
     }
 
@@ -116,10 +120,19 @@ impl Toolpath {
         self.length_of(MoveKind::Travel)
     }
 
+    /// Total length of the one-off overcut tail, in millimetres.
+    pub fn overcut_length(&self) -> f64 {
+        Self::length_in(&self.overcut, MoveKind::Cut)
+    }
+
     fn length_of(&self, kind: MoveKind) -> f64 {
+        Self::length_in(&self.moves, kind)
+    }
+
+    fn length_in(moves: &[Move], kind: MoveKind) -> f64 {
         let mut length = 0.0;
         let mut previous: Option<Move> = None;
-        for movement in &self.moves {
+        for movement in moves {
             if let Some(previous) = previous {
                 if movement.kind == kind {
                     let dx = movement.x - previous.x;

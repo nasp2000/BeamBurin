@@ -1,4 +1,4 @@
-use crate::gcode::toolpath::{MoveKind, Toolpath};
+use crate::gcode::toolpath::{Move, MoveKind, Toolpath};
 use crate::geometry::Point2;
 
 /// Upper bound on the preview timeline. Beyond this the preview merges
@@ -77,9 +77,14 @@ impl Playback {
         };
         let passes = toolpath.passes.max(1);
         for pass in 1..=passes {
+            let tail: &[Move] = if pass == passes {
+                &toolpath.overcut
+            } else {
+                &[]
+            };
             let mut previous: Option<Point2> = None;
             let mut first_segment = true;
-            for movement in &toolpath.moves {
+            for movement in toolpath.moves.iter().chain(tail.iter()) {
                 let to = Point2::new(movement.x, movement.y);
                 if let Some(from) = previous {
                     let length = from.distance(to);

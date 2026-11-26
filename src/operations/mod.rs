@@ -1,3 +1,3 @@
 pub mod model;
 
-pub use model::{Operation, OperationParams, OperationType};
+pub use model::{Operation, OperationParams, OperationType, OvercutUnit};
