@@ -807,6 +807,9 @@ impl McpServer {
                     if let Some(power) = number(arguments, "power") {
                         operation.params.power = power;
                     }
+                    if let Some(min_power) = arguments.get("min_power") {
+                        operation.params.min_power = min_power.as_f64();
+                    }
                     if let Some(passes) = number(arguments, "passes") {
                         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         let passes = passes.max(1.0) as u32;
@@ -2419,6 +2422,7 @@ fn tool_definitions() -> Vec<Value> {
                 "type": {"type": "string"},
                 "speed": {"type": "number"},
                 "power": {"type": "number"},
+                "min_power": {"type": ["number", "null"]},
                 "passes": {"type": "integer"},
                 "line_interval_mm": {"type": "number"},
                 "fill_angle_degrees": {"type": "number"},
@@ -4428,6 +4432,38 @@ mod tests {
             json!({"name": "Bad", "type": "line", "overcut": 10.0, "overcut_unit": "furlongs"}),
         );
         assert!(bad.get("error").is_some());
+    }
+
+    #[test]
+    fn min_power_is_set_through_create_operation() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "create_operation",
+            json!({
+                "name": "Photo",
+                "type": "image_processing",
+                "power": 40.0,
+                "min_power": 10.0
+            }),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let operation = server
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| operation.id == id)
+            .unwrap();
+        assert_eq!(operation.params.min_power, Some(10.0));
+        let bad = call(
+            &mut server,
+            "create_operation",
+            json!({"name": "Bad", "type": "line", "power": 20.0, "min_power": 30.0}),
+        );
+        assert!(bad.get("error").is_some(), "{bad}");
     }
 
     #[test]

@@ -98,6 +98,12 @@ pub const EXPRESSION_FIELDS: [&str; 10] = [
 pub struct OperationParams {
     pub speed: f64,
     pub power: f64,
+    /// Lowest power used by a grayscale level, as a percentage.
+    ///
+    /// `None` keeps the historical range from zero, so an older project
+    /// without the field cuts exactly as before.
+    #[serde(default)]
+    pub min_power: Option<f64>,
     pub passes: u32,
     pub line_interval_mm: f64,
     /// Rotation of a linear fill, in degrees.
@@ -206,6 +212,14 @@ impl OperationParams {
             "Power",
             format!("{:.0} %", self.power),
             format!("{:.0} %", target.power),
+        );
+        let min_power = |value: Option<f64>| {
+            value.map_or_else(|| "off".to_string(), |power| format!("{power:.0} %"))
+        };
+        push(
+            "Min power",
+            min_power(self.min_power),
+            min_power(target.min_power),
         );
         push("Passes", self.passes.to_string(), target.passes.to_string());
         push(
@@ -316,6 +330,7 @@ impl Default for OperationParams {
         Self {
             speed: 1000.0,
             power: 20.0,
+            min_power: None,
             passes: 1,
             line_interval_mm: 0.1,
             fill_angle_degrees: 0.0,
@@ -386,6 +401,16 @@ impl Operation {
         }
         if self.params.power < 0.0 {
             return Err("power must be non-negative".to_string());
+        }
+        if let Some(min_power) = self.params.min_power {
+            if !min_power.is_finite() || min_power <= 0.0 {
+                return Err(
+                    "minimum power must be positive; leave it unset for no minimum".to_string(),
+                );
+            }
+            if min_power > self.params.power {
+                return Err("minimum power must not exceed maximum power".to_string());
+            }
         }
         if self.params.passes == 0 {
             return Err("passes must be >= 1".to_string());
@@ -511,6 +536,34 @@ mod tests {
         let mut o = sample();
         o.params.power = -1.0;
         assert!(o.validate().is_err());
+    }
+
+    #[test]
+    fn minimum_above_maximum_is_rejected() {
+        let mut operation = sample();
+        operation.params.min_power = Some(30.0);
+        assert!(operation.validate().is_ok());
+        operation.params.min_power = Some(20.0);
+        assert!(operation.validate().is_ok());
+        operation.params.min_power = Some(20.1);
+        assert!(operation.validate().is_err());
+        operation.params.min_power = Some(0.0);
+        assert!(operation.validate().is_err());
+        operation.params.min_power = Some(-5.0);
+        assert!(operation.validate().is_err());
+    }
+
+    #[test]
+    fn a_project_without_the_field_opens_and_cuts_as_before() {
+        let params: OperationParams = serde_json::from_value(serde_json::json!({
+            "speed": 1000.0,
+            "power": 20.0,
+            "passes": 1,
+            "line_interval_mm": 0.1
+        }))
+        .unwrap();
+        assert_eq!(params.min_power, None);
+        assert_eq!(params, OperationParams::default());
     }
 
     #[test]

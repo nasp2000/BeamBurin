@@ -252,6 +252,40 @@ impl BeamBurinApp {
                             )
                             .labelled_by(power_label.id).on_hover_text(crate::ui::icons::field("Max power (%)"));
                             ui.end_row();
+                            let min_power_label = ui.label("Min power (%)");
+                            ui.horizontal(|ui| {
+                                let can_range = operation.params.power >= 0.1;
+                                let mut enabled =
+                                    operation.params.min_power.is_some() && can_range;
+                                ui.add_enabled(
+                                    can_range,
+                                    egui::Checkbox::new(&mut enabled, "Power range"),
+                                )
+                                .on_hover_text(
+                                    "Engrave grayscale images between the minimum and maximum power",
+                                );
+                                if enabled && can_range {
+                                    let maximum = operation.params.power;
+                                    let mut value = operation
+                                        .params
+                                        .min_power
+                                        .unwrap_or(maximum)
+                                        .clamp(0.1, maximum);
+                                    ui.add(
+                                        egui::DragValue::new(&mut value)
+                                            .speed(1.0)
+                                            .range(0.1..=maximum),
+                                    )
+                                    .labelled_by(min_power_label.id)
+                                    .on_hover_text(
+                                        "Lowest power a grayscale level can use; white burns at this power",
+                                    );
+                                    operation.params.min_power = Some(value);
+                                } else {
+                                    operation.params.min_power = None;
+                                }
+                            });
+                            ui.end_row();
                             let passes_label = ui.label("Number of passes");
                             ui.add(
                                 egui::DragValue::new(&mut operation.params.passes)

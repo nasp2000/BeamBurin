@@ -76,14 +76,17 @@ impl GCodeWriter {
                 .operation_name
                 .as_deref()
                 .unwrap_or("Default parameters");
+            let power = match toolpath.min_power {
+                Some(min) => format!("S{min:.0}-S{:.0}", toolpath.power),
+                None => format!("S{:.0}", toolpath.power),
+            };
             let _ = write!(
                 out,
-                "(Operation {}: {} - {} | F{:.0} S{:.0} x{}){newline}",
+                "(Operation {}: {} - {} | F{:.0} {power} x{}){newline}",
                 state.index + 1,
                 operation.replace(['(', ')'], " "),
                 toolpath.name.replace(['(', ')'], " "),
                 toolpath.speed,
-                toolpath.power,
                 toolpath.passes
             );
         }
@@ -358,6 +361,17 @@ mod tests {
         let text = writer.render(&[sample()]);
         assert!(text.contains("G1 X10 Y0 F1000 S500"));
         assert_eq!(text.matches("G1 X").count(), 2);
+    }
+
+    #[test]
+    fn the_comment_shows_the_power_range_when_there_is_a_minimum() {
+        let writer = GCodeWriter::new(GCodeOptions::default());
+        let text = writer.render(&[sample()]);
+        assert!(text.contains("S500 x1"), "{text}");
+
+        let ranged = sample().with_min_power(Some(200.0));
+        let text = writer.render(&[ranged]);
+        assert!(text.contains("S200-S500 x1"), "{text}");
     }
 
     #[test]

@@ -29,6 +29,11 @@ pub struct Toolpath {
     pub speed: f64,
     /// Laser power in the writer's `S` range (0–1000).
     pub power: f64,
+    /// Lowest power a grayscale level may use, in the writer's `S` range.
+    ///
+    /// `None` keeps the historical mapping from zero; a value turns the level
+    /// range into `min..=power` and is only shown in the job comment.
+    pub min_power: Option<f64>,
     pub passes: u32,
     /// Operation the toolpath belongs to, when one was assigned.
     pub operation_id: Option<String>,
@@ -50,6 +55,7 @@ impl Toolpath {
             moves: Vec::new(),
             speed,
             power,
+            min_power: None,
             passes: passes.max(1),
             operation_id: None,
             operation_name: None,
@@ -68,6 +74,12 @@ impl Toolpath {
     /// Turn air assist on or off for this toolpath.
     pub fn with_air_assist(mut self, air_assist: bool) -> Self {
         self.air_assist = air_assist;
+        self
+    }
+
+    /// Set the lowest power a grayscale level may use.
+    pub fn with_min_power(mut self, min_power: Option<f64>) -> Self {
+        self.min_power = min_power;
         self
     }
 

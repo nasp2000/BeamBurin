@@ -117,6 +117,7 @@ pub struct JobReport {
 struct Resolved {
     speed: f64,
     power: f64,
+    min_power: Option<f64>,
     passes: u32,
     line_interval_mm: f64,
     op_type: OperationType,
@@ -153,6 +154,10 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
             let mut resolved = Resolved {
                 speed: operation.params.speed,
                 power: operation.params.power.clamp(0.0, 100.0) * 10.0,
+                min_power: operation
+                    .params
+                    .min_power
+                    .map(|power| power.clamp(0.0, 100.0) * 10.0),
                 passes: operation.params.passes.max(1),
                 line_interval_mm: operation.params.line_interval_mm.max(0.01),
                 op_type: operation.op_type,
@@ -183,6 +188,7 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
             Some(Resolved {
                 speed: params.speed,
                 power: params.power.clamp(0.0, 100.0) * 10.0,
+                min_power: params.min_power.map(|power| power.clamp(0.0, 100.0) * 10.0),
                 passes: params.passes.max(1),
                 line_interval_mm: params.line_interval_mm.max(0.01),
                 op_type: OperationType::Line,
@@ -226,6 +232,7 @@ fn apply_expressions(resolved: &mut Resolved, params: &OperationParams, document
     }
     if let Some(value) = value("power") {
         resolved.power = value.clamp(0.0, 100.0) * 10.0;
+        resolved.min_power = resolved.min_power.map(|min| min.min(resolved.power));
     }
     if let Some(value) = value("passes") {
         resolved.passes = value.round().max(1.0) as u32;
@@ -445,7 +452,8 @@ fn push_path_toolpaths(
         let mut toolpath = toolpath
             .with_operation(object.operation_id.as_deref())
             .with_air_assist(resolved.air_assist)
-            .with_constant_power(resolved.constant_power);
+            .with_constant_power(resolved.constant_power)
+            .with_min_power(resolved.min_power);
         toolpath.operation_name.clone_from(&resolved.operation_name);
         toolpaths.push(toolpath);
     }
@@ -739,24 +747,25 @@ impl RasterJob {
         for row in row_start..row_end.min(self.bitmap.height) {
             if self.variable {
                 let mut run: Option<(usize, u8)> = None;
+                // A minimum power burns level zero too, so white is no longer
+                // left at S0 and a row can start with a cut.
+                let floor = self.resolved.min_power.is_some();
                 for column in 0..=self.bitmap.width {
-                    let level = if column < self.bitmap.width {
-                        grayscale_level(self.bitmap.power_at(column, row))
-                    } else {
-                        0
-                    };
+                    let level = (column < self.bitmap.width)
+                        .then(|| grayscale_level(self.bitmap.power_at(column, row)));
                     match (level, run) {
-                        (0, None) => {}
-                        (0, Some((start, current))) => {
+                        (None, Some((start, current))) => {
                             push_raster_run(&mut toolpath, &local, start, column, row, current);
                             run = None;
                         }
-                        (next, Some((_, current))) if next == current => {}
-                        (next, Some((start, current))) => {
+                        (None, None) => {}
+                        (Some(0), None) if !floor => {}
+                        (Some(next), Some((_, current))) if next == current => {}
+                        (Some(next), Some((start, current))) => {
                             push_raster_run(&mut toolpath, &local, start, column, row, current);
                             run = Some((column, next));
                         }
-                        (next, None) => run = Some((column, next)),
+                        (Some(next), None) => run = Some((column, next)),
                     }
                 }
             } else {
@@ -783,7 +792,8 @@ impl RasterJob {
         Some(
             toolpath
                 .with_operation(self.object.operation_id.as_deref())
-                .with_operation_name(self.resolved.operation_name.as_deref()),
+                .with_operation_name(self.resolved.operation_name.as_deref())
+                .with_min_power(self.resolved.min_power),
         )
     }
 }
@@ -854,6 +864,9 @@ fn grayscale_level(power: u8) -> u8 {
 }
 
 /// Append one grayscale run, with the toolpath power scaled by `level`/16.
+///
+/// A minimum power moves the range from `0..=power` to `min..=power`, so level
+/// zero burns at the minimum instead of turning the laser off.
 fn push_raster_run(
     toolpath: &mut Toolpath,
     local: &TransformBake,
@@ -865,7 +878,10 @@ fn push_raster_run(
     let (x0, y0) = local.point(start, row);
     let (x1, y1) = local.point(end, row);
     toolpath.push(MoveKind::Travel, x0, y0);
-    let power = toolpath.power * f64::from(level) / 16.0;
+    let power = match toolpath.min_power {
+        Some(min) => min + (toolpath.power - min) * f64::from(level) / 16.0,
+        None => toolpath.power * f64::from(level) / 16.0,
+    };
     toolpath.push_powered(MoveKind::Cut, x1, y1, power);
 }
 
@@ -1021,7 +1037,8 @@ fn push_fill_toolpath(
                 toolpath
                     .with_operation(object.operation_id.as_deref())
                     .with_air_assist(resolved.air_assist)
-                    .with_constant_power(resolved.constant_power),
+                    .with_constant_power(resolved.constant_power)
+                    .with_min_power(resolved.min_power),
             );
         }
         return Ok(());
@@ -1122,7 +1139,8 @@ fn push_fill_toolpath(
         let mut toolpath = toolpath
             .with_operation(object.operation_id.as_deref())
             .with_air_assist(resolved.air_assist)
-            .with_constant_power(resolved.constant_power);
+            .with_constant_power(resolved.constant_power)
+            .with_min_power(resolved.min_power);
         toolpath.operation_name.clone_from(&resolved.operation_name);
         toolpaths.push(toolpath);
     }
@@ -2618,9 +2636,9 @@ mod tests {
         // Drop both fields as an older project would not have them.
         let mut value = serde_json::to_value(&document).unwrap();
         for operation in value["operations"].as_array_mut().unwrap() {
-            let fields = operation.as_object_mut().unwrap();
-            fields.remove("overcut");
-            fields.remove("overcut_unit");
+            let params = operation["params"].as_object_mut().unwrap();
+            params.remove("overcut");
+            params.remove("overcut_unit");
         }
         let older: Document = serde_json::from_value(value).unwrap();
         let (without, _) = render_job(&older, &JobOptions::default()).unwrap();
@@ -3310,6 +3328,83 @@ mod tests {
         assert!((cuts[1] - 150.0).abs() < 1e-9);
         assert!((cuts[2] - 100.0).abs() < 1e-9);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn grayscale_never_goes_below_the_minimum_power() {
+        let path = std::env::temp_dir().join("beamburin_job_grayscale_minimum.png");
+        let mut picture = image::GrayImage::new(4, 1);
+        picture.put_pixel(0, 0, image::Luma([0]));
+        picture.put_pixel(1, 0, image::Luma([64]));
+        picture.put_pixel(2, 0, image::Luma([128]));
+        picture.put_pixel(3, 0, image::Luma([255]));
+        picture.save(&path).unwrap();
+        let mut document = image_document(&path);
+        if let Shape::Image(image) = &mut document.objects[0].shape {
+            image.settings.mode = crate::objects::ImageMode::Grayscale;
+        }
+        document.operations[0].params.min_power = Some(5.0);
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let cuts: Vec<f64> = toolpaths[0]
+            .moves
+            .iter()
+            .filter(|movement| movement.kind == MoveKind::Cut)
+            .map(|movement| movement.power.unwrap())
+            .collect();
+        assert!(!cuts.is_empty(), "the image produced no cuts");
+        assert!(
+            cuts.iter().all(|power| *power >= 50.0 - 1e-9),
+            "a level went below the minimum: {cuts:?}"
+        );
+        assert!(
+            cuts.iter().any(|power| (*power - 50.0).abs() < 1e-9),
+            "level zero did not burn at the minimum: {cuts:?}"
+        );
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        assert!(text.contains("S50-S200"), "{text}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn grayscale_without_a_minimum_keeps_the_current_output() {
+        let path = std::env::temp_dir().join("beamburin_job_grayscale_regression.png");
+        let mut picture = image::GrayImage::new(4, 1);
+        picture.put_pixel(0, 0, image::Luma([0]));
+        picture.put_pixel(1, 0, image::Luma([128]));
+        picture.put_pixel(2, 0, image::Luma([255]));
+        picture.put_pixel(3, 0, image::Luma([255]));
+        picture.save(&path).unwrap();
+        let mut document = image_document(&path);
+        if let Shape::Image(image) = &mut document.objects[0].shape {
+            image.settings.mode = crate::objects::ImageMode::Grayscale;
+        }
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        // Drop the field as an older project would not have it.
+        let mut value = serde_json::to_value(&document).unwrap();
+        for operation in value["operations"].as_array_mut().unwrap() {
+            operation["params"]
+                .as_object_mut()
+                .unwrap()
+                .remove("min_power");
+        }
+        let older: Document = serde_json::from_value(value).unwrap();
+        let (without, _) = render_job(&older, &JobOptions::default()).unwrap();
+        assert_eq!(text, without);
+        assert!(
+            !text.contains("S50-S200"),
+            "a job without a minimum shows a power range\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_minimum_power_leaves_vector_cuts_at_the_maximum() {
+        let mut operation = overcut_operation(0.0, OvercutUnit::Millimetres, 1);
+        operation.params.min_power = Some(5.0);
+        let document = document_with_square(operation);
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        assert!(text.contains("S200"), "{text}");
+        assert!(text.contains("S50-S200"), "{text}");
     }
 
     fn square_contour() -> Vec<Point2> {

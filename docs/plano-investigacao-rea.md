@@ -499,6 +499,18 @@ omissão que reproduz o G-code atual, entra no diálogo de operação, no modelo
 no emissor, no esquema do MCP e no `PLAN.md` §33, com um teste de regressão por
 parâmetro desligado.
 
+**G-02 implementado.** `OperationParams` ganhou `min_power: Option<f64>` com
+`#[serde(default)]` (`None` = sem mínimo), validado como `0 < min <= power`;
+`Resolved` e `Toolpath` levam o mínimo em S. Na gravação em cinzentos o nível
+`l` passa a mapear para `min + (max - min) * l / 16`, pelo que o nível 0 queima
+no mínimo em vez de S0; fora da gravação o corte continua no máximo. O
+comentário mostra `Smin-Smax` e o diálogo ganhou «Min power (%)» com a casinha
+«Power range». Testes: `grayscale_never_goes_below_the_minimum_power`,
+`grayscale_without_a_minimum_keeps_the_current_output`,
+`a_minimum_power_leaves_vector_cuts_at_the_maximum`,
+`minimum_above_maximum_is_rejected`,
+`a_project_without_the_field_opens_and_cuts_as_before`.
+
 ---
 
 ## 11. Especificação do lote B (2026-11-24)
