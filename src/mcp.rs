@@ -838,6 +838,16 @@ impl McpServer {
                     if let Some(unit) = string(arguments, "overcut_unit") {
                         operation.params.overcut_unit = parse_overcut_unit(&unit)?;
                     }
+                    if let Some(perforation) = arguments.get("perforation").and_then(Value::as_bool)
+                    {
+                        operation.params.perforation = perforation;
+                    }
+                    if let Some(length) = number(arguments, "perforation_length_mm") {
+                        operation.params.perforation_length_mm = length;
+                    }
+                    if let Some(gap) = number(arguments, "perforation_gap_mm") {
+                        operation.params.perforation_gap_mm = gap;
+                    }
                     operation.validate().map_err(BeamError::InvalidInput)?;
                 }
                 Ok(json!({"id": id, "operations": self.editor.document.operations.len()}))
@@ -2430,7 +2440,10 @@ fn tool_definitions() -> Vec<Value> {
                 "fill_offset_mm": {"type": "number"},
                 "fill_alternate": {"type": "boolean"},
                 "overcut": {"type": "number"},
-                "overcut_unit": {"type": "string", "enum": ["mm", "percent"]}
+                "overcut_unit": {"type": "string", "enum": ["mm", "percent"]},
+                "perforation": {"type": "boolean"},
+                "perforation_length_mm": {"type": "number"},
+                "perforation_gap_mm": {"type": "number"}
             }}),
         ),
         tool_with(
@@ -4462,6 +4475,46 @@ mod tests {
             &mut server,
             "create_operation",
             json!({"name": "Bad", "type": "line", "power": 20.0, "min_power": 30.0}),
+        );
+        assert!(bad.get("error").is_some(), "{bad}");
+    }
+
+    #[test]
+    fn perforation_is_set_through_create_operation() {
+        let mut server = McpServer::new();
+        let id = call(
+            &mut server,
+            "create_operation",
+            json!({
+                "name": "Dashed",
+                "type": "outline_cutting",
+                "perforation": true,
+                "perforation_length_mm": 2.0,
+                "perforation_gap_mm": 1.5
+            }),
+        )["result"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let operation = server
+            .editor
+            .document
+            .operations
+            .iter()
+            .find(|operation| operation.id == id)
+            .unwrap();
+        assert!(operation.params.perforation);
+        assert!((operation.params.perforation_length_mm - 2.0).abs() < 1e-9);
+        assert!((operation.params.perforation_gap_mm - 1.5).abs() < 1e-9);
+        let bad = call(
+            &mut server,
+            "create_operation",
+            json!({
+                "name": "Bad",
+                "type": "line",
+                "perforation": true,
+                "perforation_length_mm": 0.0
+            }),
         );
         assert!(bad.get("error").is_some(), "{bad}");
     }

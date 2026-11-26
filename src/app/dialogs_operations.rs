@@ -429,6 +429,47 @@ impl BeamBurinApp {
                                 "Distance between tabs along each contour; zero uses the tab count above",
                             );
                             ui.end_row();
+                            ui.label("Perforation");
+                            let perforation = ui
+                                .checkbox(&mut operation.params.perforation, "")
+                                .on_hover_text(
+                                    "Break every cut into strokes separated by uncut gaps",
+                                );
+                            perforation.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Checkbox,
+                                    true,
+                                    operation.params.perforation,
+                                    "Perforation",
+                                )
+                            });
+                            ui.end_row();
+                            let perforation_length_label =
+                                ui.label("Perforation length (mm)");
+                            ui.add_enabled(
+                                operation.params.perforation,
+                                egui::DragValue::new(
+                                    &mut operation.params.perforation_length_mm,
+                                )
+                                .speed(0.1)
+                                .range(0.1..=100.0),
+                            )
+                            .labelled_by(perforation_length_label.id)
+                            .on_hover_text("Length of each cut stroke");
+                            ui.end_row();
+                            let perforation_gap_label =
+                                ui.label("Perforation gap (mm)");
+                            ui.add_enabled(
+                                operation.params.perforation,
+                                egui::DragValue::new(
+                                    &mut operation.params.perforation_gap_mm,
+                                )
+                                .speed(0.1)
+                                .range(0.1..=100.0),
+                            )
+                            .labelled_by(perforation_gap_label.id)
+                            .on_hover_text("Uncut gap between two strokes");
+                            ui.end_row();
                             let lead_label = ui.label("Lead-in / out (mm)");
                             ui.horizontal(|ui| {
                                 ui.add(

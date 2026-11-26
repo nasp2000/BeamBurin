@@ -135,6 +135,9 @@ struct Resolved {
     curved_leads: bool,
     overcut: f64,
     overcut_unit: OvercutUnit,
+    perforation: bool,
+    perforation_length_mm: f64,
+    perforation_gap_mm: f64,
     cross_hatch: bool,
     air_assist: bool,
     constant_power: bool,
@@ -174,6 +177,9 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
                 curved_leads: operation.params.curved_leads,
                 overcut: operation.params.overcut.max(0.0),
                 overcut_unit: operation.params.overcut_unit,
+                perforation: operation.params.perforation,
+                perforation_length_mm: operation.params.perforation_length_mm.max(0.0),
+                perforation_gap_mm: operation.params.perforation_gap_mm.max(0.0),
                 cross_hatch: operation.params.cross_hatch,
                 air_assist: operation.params.air_assist,
                 constant_power: operation.params.constant_power,
@@ -206,6 +212,9 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
                 curved_leads: params.curved_leads,
                 overcut: params.overcut.max(0.0),
                 overcut_unit: params.overcut_unit,
+                perforation: params.perforation,
+                perforation_length_mm: params.perforation_length_mm.max(0.0),
+                perforation_gap_mm: params.perforation_gap_mm.max(0.0),
                 cross_hatch: params.cross_hatch,
                 air_assist: params.air_assist,
                 constant_power: params.constant_power,
@@ -448,7 +457,12 @@ fn push_path_toolpaths(
             options.tabs = 0;
             options.tab_spacing = 0.0;
         }
-        append_contour(&mut toolpath, &points, options);
+        if append_contour(&mut toolpath, &points, options) {
+            warnings.push(format!(
+                "'{}' is shorter than its perforation pattern, so it is cut in one stroke",
+                object.name
+            ));
+        }
         let mut toolpath = toolpath
             .with_operation(object.operation_id.as_deref())
             .with_air_assist(resolved.air_assist)
@@ -1133,11 +1147,16 @@ fn push_fill_toolpath(
     }
     if resolved.op_type == OperationType::FillWithOutline {
         let points = kerfed(points, resolved.kerf_mm);
-        append_contour(
+        if append_contour(
             &mut toolpath,
             &points,
             ContourOptions::from_resolved(resolved),
-        );
+        ) {
+            warnings.push(format!(
+                "'{}' is shorter than its perforation pattern, so it is cut in one stroke",
+                object.name
+            ));
+        }
     }
     if !toolpath.is_empty() {
         let mut toolpath = toolpath
@@ -1230,6 +1249,10 @@ struct ContourOptions {
     /// Extra distance cut past the closing point, in `overcut_unit`.
     overcut: f64,
     overcut_unit: OvercutUnit,
+    /// Break every cut into strokes separated by uncut gaps.
+    perforation: bool,
+    perforation_length: f64,
+    perforation_gap: f64,
     /// Whether the contour returns to its first point. An open contour is cut
     /// exactly as drawn; closing it would add a cut nobody asked for.
     closed: bool,
@@ -1245,6 +1268,9 @@ impl ContourOptions {
         curved_leads: false,
         overcut: 0.0,
         overcut_unit: OvercutUnit::Millimetres,
+        perforation: false,
+        perforation_length: 0.0,
+        perforation_gap: 0.0,
         closed: true,
     };
 
@@ -1258,6 +1284,9 @@ impl ContourOptions {
             curved_leads: resolved.curved_leads,
             overcut: resolved.overcut,
             overcut_unit: resolved.overcut_unit,
+            perforation: resolved.perforation,
+            perforation_length: resolved.perforation_length_mm,
+            perforation_gap: resolved.perforation_gap_mm,
             closed: true,
         }
     }
@@ -1322,14 +1351,14 @@ fn outward_normal(forward: (f64, f64), counter_clockwise: bool) -> (f64, f64) {
 }
 
 #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
-fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOptions) {
+fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOptions) -> bool {
     let mut contour = points.to_vec();
     if options.closed && contour.len() > 2 && contour[0].distance(contour[contour.len() - 1]) > 1e-9
     {
         contour.push(contour[0]);
     }
     if contour.len() < 2 {
-        return;
+        return false;
     }
     let mut lengths = Vec::new();
     let mut total = 0.0;
@@ -1349,6 +1378,38 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
             ));
         }
     }
+    let mut pattern_exceeded = false;
+    if total > 0.0
+        && options.perforation
+        && options.perforation_length > 0.0
+        && options.perforation_gap > 0.0
+    {
+        // Anchored at the start point: cut first, then leave a gap.
+        if options.perforation_length + options.perforation_gap > total {
+            // The pattern does not fit, so the contour is cut in one stroke.
+            pattern_exceeded = true;
+        } else {
+            let step = options.perforation_length + options.perforation_gap;
+            let mut start = options.perforation_length;
+            while start < total - 1e-12 {
+                gaps.push((start, (start + options.perforation_gap).min(total)));
+                start += step;
+            }
+        }
+    }
+    // Tabs win over perforation gaps: merge overlaps so a tab is always open.
+    gaps.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut merged: Vec<(f64, f64)> = Vec::with_capacity(gaps.len());
+    for (start, end) in gaps {
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 + 1e-12 {
+                last.1 = last.1.max(end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+    let gaps = merged;
     let polygon: Vec<(f64, f64)> = contour.iter().map(|point| (point.x, point.y)).collect();
     let counter_clockwise = crate::geometry::boolean::polygon_area(&polygon) >= 0.0;
     let first = contour[0];
@@ -1416,6 +1477,7 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
         }
     }
     toolpath.overcut = overcut_tail(&contour, total, &gaps, options);
+    pattern_exceeded
 }
 
 /// Moves that continue past the closing point of a closed contour.
@@ -2648,6 +2710,168 @@ mod tests {
         let (without, _) = render_job(&older, &JobOptions::default()).unwrap();
         assert_eq!(text, without);
         assert_eq!(text.matches("G1 X").count(), 4, "{text}");
+    }
+
+    #[test]
+    fn perforation_alternates_cut_and_travel() {
+        let mut toolpath = Toolpath::new("Dash", 1000.0, 200.0, 1);
+        let exceeded = append_contour(
+            &mut toolpath,
+            &[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)],
+            ContourOptions {
+                perforation: true,
+                perforation_length: 1.0,
+                perforation_gap: 1.0,
+                closed: false,
+                ..ContourOptions::NONE
+            },
+        );
+        assert!(!exceeded);
+        let cuts = toolpath
+            .moves
+            .iter()
+            .filter(|movement| movement.kind == MoveKind::Cut)
+            .count();
+        assert_eq!(cuts, 5, "a 10 mm line at 1/1 has five strokes");
+        let cut: f64 = toolpath
+            .moves
+            .windows(2)
+            .filter(|pair| pair[1].kind == MoveKind::Cut)
+            .map(|pair| {
+                Point2::new(pair[0].x, pair[0].y).distance(Point2::new(pair[1].x, pair[1].y))
+            })
+            .sum();
+        assert!((cut - 5.0).abs() < 1e-9, "{cut}");
+    }
+
+    #[test]
+    fn perforation_pattern_starts_at_the_start_point() {
+        let mut toolpath = Toolpath::new("Dash", 1000.0, 200.0, 1);
+        append_contour(
+            &mut toolpath,
+            &[Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)],
+            ContourOptions {
+                perforation: true,
+                perforation_length: 1.0,
+                perforation_gap: 1.0,
+                closed: false,
+                ..ContourOptions::NONE
+            },
+        );
+        assert_eq!(toolpath.moves[0].kind, MoveKind::Travel);
+        assert!(toolpath.moves[0].x.abs() < 1e-9);
+        assert_eq!(toolpath.moves[1].kind, MoveKind::Cut);
+        assert!((toolpath.moves[1].x - 1.0).abs() < 1e-9);
+        assert_eq!(toolpath.moves[2].kind, MoveKind::Travel);
+        assert!((toolpath.moves[2].x - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn perforation_applies_to_a_closed_contour() {
+        let mut toolpath = Toolpath::new("Square", 1000.0, 200.0, 1);
+        let exceeded = append_contour(
+            &mut toolpath,
+            &square_contour(),
+            ContourOptions {
+                perforation: true,
+                perforation_length: 2.0,
+                perforation_gap: 2.0,
+                ..ContourOptions::NONE
+            },
+        );
+        assert!(!exceeded);
+        let cut: f64 = toolpath
+            .moves
+            .windows(2)
+            .filter(|pair| pair[1].kind == MoveKind::Cut)
+            .map(|pair| {
+                Point2::new(pair[0].x, pair[0].y).distance(Point2::new(pair[1].x, pair[1].y))
+            })
+            .sum();
+        // A 40 mm perimeter at 2/2 keeps ten 2 mm strokes.
+        assert!((cut - 20.0).abs() < 1e-9, "{cut}");
+    }
+
+    #[test]
+    fn tabs_win_over_perforation_gaps() {
+        let mut toolpath = Toolpath::new("Tabs", 1000.0, 200.0, 1);
+        append_contour(
+            &mut toolpath,
+            &[Point2::new(0.0, 0.0), Point2::new(40.0, 0.0)],
+            ContourOptions {
+                tabs: 1,
+                tab_width: 2.0,
+                perforation: true,
+                perforation_length: 5.0,
+                perforation_gap: 1.0,
+                closed: false,
+                ..ContourOptions::NONE
+            },
+        );
+        // The tab sits at 19..21, inside a stroke that would run 18..23.
+        let pair = toolpath
+            .moves
+            .windows(2)
+            .find(|pair| pair[1].kind == MoveKind::Travel && (pair[1].x - 21.0).abs() < 1e-9)
+            .expect("the tab gap ends with a travel");
+        assert!((pair[0].x - 19.0).abs() < 1e-9);
+        assert!(
+            toolpath.moves.iter().all(|movement| {
+                movement.kind != MoveKind::Cut
+                    || movement.x <= 19.0 + 1e-9
+                    || movement.x >= 21.0 - 1e-9
+            }),
+            "a cut crossed the tab gap"
+        );
+    }
+
+    #[test]
+    fn a_pattern_longer_than_the_contour_cuts_it_once() {
+        let mut document = document_with_path(&[(0.0, 0.0), (10.0, 0.0)], false);
+        document.operations.push(perforation_operation(8.0, 8.0));
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (toolpaths, warnings) = build_toolpaths(&document);
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("perforation")),
+            "{warnings:?}"
+        );
+        let cuts = toolpaths[0]
+            .moves
+            .iter()
+            .filter(|movement| movement.kind == MoveKind::Cut)
+            .count();
+        assert_eq!(cuts, 1, "the contour is cut in one stroke");
+    }
+
+    #[test]
+    fn perforation_off_keeps_the_current_gcode() {
+        let mut document = document_with_rect();
+        document
+            .operations
+            .push(overcut_operation(0.0, OvercutUnit::Millimetres, 1));
+        document.objects[0].operation_id = Some("op-1".to_string());
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        // Drop the fields as an older project would not have them.
+        let mut value = serde_json::to_value(&document).unwrap();
+        for operation in value["operations"].as_array_mut().unwrap() {
+            let params = operation["params"].as_object_mut().unwrap();
+            params.remove("perforation");
+            params.remove("perforation_length_mm");
+            params.remove("perforation_gap_mm");
+        }
+        let older: Document = serde_json::from_value(value).unwrap();
+        let (without, _) = render_job(&older, &JobOptions::default()).unwrap();
+        assert_eq!(text, without);
+    }
+
+    fn perforation_operation(length: f64, gap: f64) -> Operation {
+        let mut operation = overcut_operation(0.0, OvercutUnit::Millimetres, 1);
+        operation.params.perforation = true;
+        operation.params.perforation_length_mm = length;
+        operation.params.perforation_gap_mm = gap;
+        operation
     }
 
     #[test]

@@ -166,6 +166,15 @@ pub struct OperationParams {
     /// Whether `overcut` is millimetres or a percentage of the perimeter.
     #[serde(default)]
     pub overcut_unit: OvercutUnit,
+    /// Break every cut into strokes separated by uncut gaps.
+    #[serde(default)]
+    pub perforation: bool,
+    /// Length of each perforation stroke, in millimetres.
+    #[serde(default = "default_one")]
+    pub perforation_length_mm: f64,
+    /// Uncut gap between perforation strokes, in millimetres.
+    #[serde(default = "default_one")]
+    pub perforation_gap_mm: f64,
     /// Expressions that override numeric fields, keyed by field name.
     #[serde(default)]
     pub expressions: BTreeMap<String, String>,
@@ -173,6 +182,10 @@ pub struct OperationParams {
 
 fn default_tab_width() -> f64 {
     2.0
+}
+
+fn default_one() -> f64 {
+    1.0
 }
 
 fn default_cut_color() -> String {
@@ -321,6 +334,21 @@ impl OperationParams {
             format!("{:.2} {}", self.overcut, self.overcut_unit.label()),
             format!("{:.2} {}", target.overcut, target.overcut_unit.label()),
         );
+        push(
+            "Perforation",
+            yes_no(self.perforation),
+            yes_no(target.perforation),
+        );
+        push(
+            "Perforation length",
+            format!("{:.2} mm", self.perforation_length_mm),
+            format!("{:.2} mm", target.perforation_length_mm),
+        );
+        push(
+            "Perforation gap",
+            format!("{:.2} mm", self.perforation_gap_mm),
+            format!("{:.2} mm", target.perforation_gap_mm),
+        );
         changes
     }
 }
@@ -352,6 +380,9 @@ impl Default for OperationParams {
             curved_leads: false,
             overcut: 0.0,
             overcut_unit: OvercutUnit::Millimetres,
+            perforation: false,
+            perforation_length_mm: 1.0,
+            perforation_gap_mm: 1.0,
             expressions: BTreeMap::new(),
         }
     }
@@ -446,6 +477,16 @@ impl Operation {
                 "overcut must be at most {overcut_limit:.0} {}",
                 self.params.overcut_unit.label()
             ));
+        }
+        if self.params.perforation {
+            if !(self.params.perforation_length_mm > 0.0
+                && self.params.perforation_length_mm <= 100.0)
+            {
+                return Err("perforation length must be between 0 and 100 mm".to_string());
+            }
+            if !(self.params.perforation_gap_mm > 0.0 && self.params.perforation_gap_mm <= 100.0) {
+                return Err("perforation gap must be between 0 and 100 mm".to_string());
+            }
         }
         for (field, expression) in &self.params.expressions {
             if !EXPRESSION_FIELDS.contains(&field.as_str()) {
@@ -564,6 +605,28 @@ mod tests {
         .unwrap();
         assert_eq!(params.min_power, None);
         assert_eq!(params, OperationParams::default());
+    }
+
+    #[test]
+    fn perforation_requires_positive_length_and_gap() {
+        let mut operation = sample();
+        operation.params.perforation = true;
+        operation.params.perforation_length_mm = 0.0;
+        assert!(operation.validate().is_err());
+        operation.params.perforation_length_mm = 101.0;
+        assert!(operation.validate().is_err());
+        operation.params.perforation_length_mm = 1.0;
+        operation.params.perforation_gap_mm = 0.0;
+        assert!(operation.validate().is_err());
+        operation.params.perforation_gap_mm = 100.1;
+        assert!(operation.validate().is_err());
+        operation.params.perforation_gap_mm = 1.0;
+        assert!(operation.validate().is_ok());
+        // Off ignores the values, so an older project still validates.
+        operation.params.perforation = false;
+        operation.params.perforation_length_mm = 0.0;
+        operation.params.perforation_gap_mm = 0.0;
+        assert!(operation.validate().is_ok());
     }
 
     #[test]

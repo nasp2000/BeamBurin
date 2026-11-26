@@ -511,6 +511,23 @@ comentário mostra `Smin-Smax` e o diálogo ganhou «Min power (%)» com a casin
 `minimum_above_maximum_is_rejected`,
 `a_project_without_the_field_opens_and_cuts_as_before`.
 
+**G-03 implementado.** `OperationParams` ganhou `perforation: bool` (omissão
+`false`) e `perforation_length_mm`/`perforation_gap_mm` (omissão 1 mm), todos
+com `#[serde(default)]`; com `perforation` ligado ambos têm de ficar em
+`0 < v <= 100`. O emissor divide cada contorno em traços ancorados no início
+(corta primeiro), juntando os vãos de perfuração aos vãos de tab — o tab
+prevalece, porque as sobreposições são fundidas antes de emitir. Aplica-se a
+contornos fechados e abertos e repete-se em todas as passagens. Um padrão maior
+que o contorno cai para um único traço do perímetro, com aviso no relatório.
+Desligado, o G-code fica byte a byte igual. Testes:
+`perforation_alternates_cut_and_travel`,
+`perforation_pattern_starts_at_the_start_point`,
+`perforation_applies_to_a_closed_contour`,
+`tabs_win_over_perforation_gaps`,
+`a_pattern_longer_than_the_contour_cuts_it_once`,
+`perforation_off_keeps_the_current_gcode`,
+`perforation_requires_positive_length_and_gap`.
+
 ---
 
 ## 11. Especificação do lote B (2026-11-24)
