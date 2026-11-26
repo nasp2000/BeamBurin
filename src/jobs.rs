@@ -234,6 +234,7 @@ mod tests {
             params: crate::operations::OperationParams::default(),
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let layer_id = document.layers[0].id.clone();
         let mut object = Object::new(

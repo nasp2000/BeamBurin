@@ -4234,6 +4234,7 @@ impl EditorState {
             params: profile.params.clone(),
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         };
         let id = operation.id.clone();
         self.document.operations.push(operation);

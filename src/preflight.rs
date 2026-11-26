@@ -383,6 +383,7 @@ mod tests {
             params: OperationParams::default(),
             enabled: true,
             depends_on: vec!["cut".to_string()],
+            sub_layers: Vec::new(),
         });
         document.operations[0].depends_on = vec!["second".to_string()];
         let report = check(&document);
