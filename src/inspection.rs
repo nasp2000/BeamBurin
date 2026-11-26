@@ -392,6 +392,7 @@ mod tests {
             params: OperationParams::default(),
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let layer_id = document.layers[0].id.clone();
         let mut rectangle = Object::new(

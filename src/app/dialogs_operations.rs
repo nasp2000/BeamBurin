@@ -572,6 +572,120 @@ impl BeamBurinApp {
                                     }
                                 });
                         });
+
+                    ui.add_space(4.0);
+                    egui::CollapsingHeader::new("Sub-layers")
+                        .default_open(!operation.sub_layers.is_empty())
+                        .show(ui, |ui| {
+                            ui.weak(
+                                "Extra passes emitted after the main cut, in order. Each sub-layer is an independent copy of the parameters.",
+                            );
+                            let mut remove_sub: Option<usize> = None;
+                            let mut duplicate_sub: Option<usize> = None;
+                            let mut move_up: Option<usize> = None;
+                            let mut move_down: Option<usize> = None;
+                            for sub_index in 0..operation.sub_layers.len() {
+                                let sub_id = operation.sub_layers[sub_index].id.clone();
+                                let header = format!(
+                                    "{}{}",
+                                    operation.sub_layers[sub_index].name,
+                                    if operation.sub_layers[sub_index].enabled {
+                                        ""
+                                    } else {
+                                        " (disabled)"
+                                    }
+                                );
+                                egui::CollapsingHeader::new(header)
+                                    .id_salt(("sub_layer", &sub_id))
+                                    .default_open(false)
+                                    .show(ui, |ui| {
+                                        let sub = &mut operation.sub_layers[sub_index];
+                                        egui::Grid::new(format!("sub_layer_grid_{sub_id}"))
+                                            .num_columns(2)
+                                            .spacing([12.0, 6.0])
+                                            .show(ui, |ui| {
+                                                let name_label = ui.label("Name");
+                                                ui.text_edit_singleline(&mut sub.name)
+                                                    .labelled_by(name_label.id);
+                                                ui.end_row();
+                                                ui.label("Enabled");
+                                                ui.checkbox(&mut sub.enabled, "")
+                                                    .widget_info(|| {
+                                                        egui::WidgetInfo::selected(
+                                                            egui::WidgetType::Checkbox,
+                                                            true,
+                                                            sub.enabled,
+                                                            "Sub-layer enabled",
+                                                        )
+                                                    });
+                                                ui.end_row();
+                                                let speed_label = ui.label("Speed (mm/min)");
+                                                ui.add(
+                                                    egui::DragValue::new(&mut sub.params.speed)
+                                                        .speed(10.0)
+                                                        .range(1.0..=100_000.0),
+                                                )
+                                                .labelled_by(speed_label.id);
+                                                ui.end_row();
+                                                let power_label = ui.label("Max power (%)");
+                                                ui.add(
+                                                    egui::DragValue::new(&mut sub.params.power)
+                                                        .speed(1.0)
+                                                        .range(0.0..=100.0),
+                                                )
+                                                .labelled_by(power_label.id);
+                                                ui.end_row();
+                                                let passes_label = ui.label("Passes");
+                                                ui.add(
+                                                    egui::DragValue::new(&mut sub.params.passes)
+                                                        .range(1..=1000),
+                                                )
+                                                .labelled_by(passes_label.id);
+                                                ui.end_row();
+                                            });
+                                        ui.horizontal(|ui| {
+                                            if ui.small_button("Duplicate").clicked() {
+                                                duplicate_sub = Some(sub_index);
+                                            }
+                                            if ui.small_button("Up").clicked() {
+                                                move_up = Some(sub_index);
+                                            }
+                                            if ui.small_button("Down").clicked() {
+                                                move_down = Some(sub_index);
+                                            }
+                                            if ui.small_button("Remove").clicked() {
+                                                remove_sub = Some(sub_index);
+                                            }
+                                        });
+                                    });
+                            }
+                            if let Some(index) = duplicate_sub {
+                                let mut copy = operation.sub_layers[index].clone();
+                                copy.id = uuid::Uuid::new_v4().to_string();
+                                copy.name = format!("{} copy", copy.name);
+                                operation.sub_layers.insert(index + 1, copy);
+                            }
+                            if let Some(index) = move_up {
+                                if index > 0 {
+                                    operation.sub_layers.swap(index, index - 1);
+                                }
+                            }
+                            if let Some(index) = move_down {
+                                if index + 1 < operation.sub_layers.len() {
+                                    operation.sub_layers.swap(index, index + 1);
+                                }
+                            }
+                            if let Some(index) = remove_sub {
+                                operation.sub_layers.remove(index);
+                            }
+                            if ui.button("+ Sub-layer").clicked() {
+                                let sub = crate::operations::SubLayer::new(
+                                    format!("Sub-layer {}", operation.sub_layers.len() + 1),
+                                    operation.params.clone(),
+                                );
+                                operation.sub_layers.push(sub);
+                            }
+                        });
                 }
             } else {
                 ui.weak("No cut selected. Add one below.");

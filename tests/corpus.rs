@@ -95,6 +95,7 @@ fn with_cut(mut document: Document) -> Document {
         },
         enabled: true,
         depends_on: Vec::new(),
+        sub_layers: Vec::new(),
     });
     for object in &mut document.objects {
         object.operation_id = Some("corpus-cut".to_string());

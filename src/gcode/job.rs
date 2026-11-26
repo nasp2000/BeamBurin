@@ -111,7 +111,7 @@ pub struct JobReport {
     pub warnings: Vec<String>,
 }
 
-/// Parameters resolved for one object.
+/// Parameters resolved for one object or sub-layer.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::struct_excessive_bools)]
 struct Resolved {
@@ -144,6 +144,45 @@ struct Resolved {
     operation_name: Option<String>,
 }
 
+fn resolve_params(
+    params: &OperationParams,
+    op_type: OperationType,
+    operation_name: Option<String>,
+    document: &Document,
+) -> Resolved {
+    let mut resolved = Resolved {
+        speed: params.speed,
+        power: params.power.clamp(0.0, 100.0) * 10.0,
+        min_power: params.min_power.map(|power| power.clamp(0.0, 100.0) * 10.0),
+        passes: params.passes.max(1),
+        line_interval_mm: params.line_interval_mm.max(0.01),
+        op_type,
+        fill_angle_degrees: params.fill_angle_degrees,
+        fill_alternate: params.fill_alternate,
+        fill_margin_mm: params.fill_margin_mm.max(0.0),
+        overscan_mm: params.overscan_mm.max(0.0),
+        kerf_mm: params.kerf_mm.max(0.0),
+        tabs: params.tabs,
+        tab_width_mm: params.tab_width_mm.max(0.0),
+        tab_spacing_mm: params.tab_spacing_mm.max(0.0),
+        lead_in_mm: params.lead_in_mm.max(0.0),
+        lead_out_mm: params.lead_out_mm.max(0.0),
+        curved_leads: params.curved_leads,
+        overcut: params.overcut.max(0.0),
+        overcut_unit: params.overcut_unit,
+        perforation: params.perforation,
+        perforation_length_mm: params.perforation_length_mm.max(0.0),
+        perforation_gap_mm: params.perforation_gap_mm.max(0.0),
+        cross_hatch: params.cross_hatch,
+        air_assist: params.air_assist,
+        constant_power: params.constant_power,
+        fill_offset_mm: params.fill_offset_mm,
+        operation_name,
+    };
+    apply_expressions(&mut resolved, params, document);
+    resolved
+}
+
 fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
     let operation: Option<&Operation> = object.operation_id.as_deref().and_then(|id| {
         document
@@ -153,75 +192,42 @@ fn resolve(object: &Object, document: &Document) -> Option<Resolved> {
     });
     match operation {
         Some(operation) if !operation.enabled => None,
-        Some(operation) => {
-            let mut resolved = Resolved {
-                speed: operation.params.speed,
-                power: operation.params.power.clamp(0.0, 100.0) * 10.0,
-                min_power: operation
-                    .params
-                    .min_power
-                    .map(|power| power.clamp(0.0, 100.0) * 10.0),
-                passes: operation.params.passes.max(1),
-                line_interval_mm: operation.params.line_interval_mm.max(0.01),
-                op_type: operation.op_type,
-                fill_angle_degrees: operation.params.fill_angle_degrees,
-                fill_alternate: operation.params.fill_alternate,
-                fill_margin_mm: operation.params.fill_margin_mm.max(0.0),
-                overscan_mm: operation.params.overscan_mm.max(0.0),
-                kerf_mm: operation.params.kerf_mm.max(0.0),
-                tabs: operation.params.tabs,
-                tab_width_mm: operation.params.tab_width_mm.max(0.0),
-                tab_spacing_mm: operation.params.tab_spacing_mm.max(0.0),
-                lead_in_mm: operation.params.lead_in_mm.max(0.0),
-                lead_out_mm: operation.params.lead_out_mm.max(0.0),
-                curved_leads: operation.params.curved_leads,
-                overcut: operation.params.overcut.max(0.0),
-                overcut_unit: operation.params.overcut_unit,
-                perforation: operation.params.perforation,
-                perforation_length_mm: operation.params.perforation_length_mm.max(0.0),
-                perforation_gap_mm: operation.params.perforation_gap_mm.max(0.0),
-                cross_hatch: operation.params.cross_hatch,
-                air_assist: operation.params.air_assist,
-                constant_power: operation.params.constant_power,
-                fill_offset_mm: operation.params.fill_offset_mm,
-                operation_name: Some(operation.name.clone()),
-            };
-            apply_expressions(&mut resolved, &operation.params, document);
-            Some(resolved)
-        }
+        Some(operation) => Some(resolve_params(
+            &operation.params,
+            operation.op_type,
+            Some(operation.name.clone()),
+            document,
+        )),
         None => {
             let params = OperationParams::default();
-            Some(Resolved {
-                speed: params.speed,
-                power: params.power.clamp(0.0, 100.0) * 10.0,
-                min_power: params.min_power.map(|power| power.clamp(0.0, 100.0) * 10.0),
-                passes: params.passes.max(1),
-                line_interval_mm: params.line_interval_mm.max(0.01),
-                op_type: OperationType::Line,
-                fill_angle_degrees: params.fill_angle_degrees,
-                fill_alternate: params.fill_alternate,
-                fill_margin_mm: params.fill_margin_mm.max(0.0),
-                fill_offset_mm: params.fill_offset_mm,
-                overscan_mm: params.overscan_mm.max(0.0),
-                kerf_mm: params.kerf_mm.max(0.0),
-                tabs: params.tabs,
-                tab_width_mm: params.tab_width_mm.max(0.0),
-                tab_spacing_mm: params.tab_spacing_mm.max(0.0),
-                lead_in_mm: params.lead_in_mm.max(0.0),
-                lead_out_mm: params.lead_out_mm.max(0.0),
-                curved_leads: params.curved_leads,
-                overcut: params.overcut.max(0.0),
-                overcut_unit: params.overcut_unit,
-                perforation: params.perforation,
-                perforation_length_mm: params.perforation_length_mm.max(0.0),
-                perforation_gap_mm: params.perforation_gap_mm.max(0.0),
-                cross_hatch: params.cross_hatch,
-                air_assist: params.air_assist,
-                constant_power: params.constant_power,
-                operation_name: None,
-            })
+            Some(resolve_params(&params, OperationType::Line, None, document))
         }
     }
+}
+
+fn resolve_sub_layers(object: &Object, document: &Document) -> Vec<Resolved> {
+    let Some(operation) = object.operation_id.as_deref().and_then(|id| {
+        document
+            .operations
+            .iter()
+            .find(|operation| operation.id == id && operation.enabled)
+    }) else {
+        return Vec::new();
+    };
+    operation
+        .sub_layers
+        .iter()
+        .filter(|sub| sub.enabled)
+        .enumerate()
+        .map(|(index, sub)| {
+            resolve_params(
+                &sub.params,
+                operation.op_type,
+                Some(format!("{} sub-layer {}", operation.name, index + 1)),
+                document,
+            )
+        })
+        .collect()
 }
 
 /// Override numeric fields with the operation's expressions.
@@ -303,14 +309,23 @@ pub fn build_toolpaths_cancellable(
             let Some(resolved) = resolve(object, document) else {
                 continue;
             };
+            let sub_layers = resolve_sub_layers(object, document);
+            let passes: Vec<&Resolved> = std::iter::once(&resolved)
+                .chain(sub_layers.iter())
+                .collect();
             match &object.shape {
-                Shape::Image(image) => match raster_toolpath(object, image, &resolved, cancel) {
-                    Ok(Some(toolpath)) => toolpaths.push(toolpath),
-                    Ok(None) => {}
-                    Err(error) => {
-                        warnings.push(format!("image '{}' was omitted: {error}", object.name));
+                Shape::Image(image) => {
+                    for pass in passes {
+                        match raster_toolpath(object, image, pass, cancel) {
+                            Ok(Some(toolpath)) => toolpaths.push(toolpath),
+                            Ok(None) => {}
+                            Err(error) => {
+                                warnings
+                                    .push(format!("image '{}' was omitted: {error}", object.name));
+                            }
+                        }
                     }
-                },
+                }
                 Shape::Text(text) => {
                     let paths = match crate::objects::text_to_paths(text) {
                         Ok(paths) if !paths.is_empty() => paths,
@@ -348,17 +363,19 @@ pub fn build_toolpaths_cancellable(
                                 .filter(|hole| hole.len() >= 3)
                                 .collect()
                         };
-                        push_path_toolpaths(
-                            &mut toolpaths,
-                            &outlined,
-                            &resolved,
-                            &points,
-                            path.closed,
-                            is_hole,
-                            &holes,
-                            &mut warnings,
-                            cancel,
-                        )?;
+                        for pass in &passes {
+                            push_path_toolpaths(
+                                &mut toolpaths,
+                                &outlined,
+                                pass,
+                                &points,
+                                path.closed,
+                                is_hole,
+                                &holes,
+                                &mut warnings,
+                                cancel,
+                            )?;
+                        }
                     }
                 }
                 _ => {
@@ -385,17 +402,19 @@ pub fn build_toolpaths_cancellable(
                             })
                             .collect()
                     };
-                    push_path_toolpaths(
-                        &mut toolpaths,
-                        object,
-                        &resolved,
-                        &points,
-                        closed,
-                        is_hole,
-                        &holes,
-                        &mut warnings,
-                        cancel,
-                    )?;
+                    for pass in &passes {
+                        push_path_toolpaths(
+                            &mut toolpaths,
+                            object,
+                            pass,
+                            &points,
+                            closed,
+                            is_hole,
+                            &holes,
+                            &mut warnings,
+                            cancel,
+                        )?;
+                    }
                 }
             }
         }
@@ -2042,11 +2061,14 @@ fn stream_job<W: Write>(
             let Some(resolved) = resolve(object, document) else {
                 continue;
             };
-            match prepare_raster(object, image, &resolved) {
-                Ok(Some(job)) => items.push(JobItem::Raster(Box::new(job))),
-                Ok(None) => {}
-                Err(error) => {
-                    warnings.push(format!("image '{}' was omitted: {error}", object.name));
+            let sub_layers = resolve_sub_layers(object, document);
+            for pass in std::iter::once(&resolved).chain(sub_layers.iter()) {
+                match prepare_raster(object, image, pass) {
+                    Ok(Some(job)) => items.push(JobItem::Raster(Box::new(job))),
+                    Ok(None) => {}
+                    Err(error) => {
+                        warnings.push(format!("image '{}' was omitted: {error}", object.name));
+                    }
                 }
             }
         }
@@ -2398,6 +2420,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         };
         document.operations.push(operation);
         document.objects[0].operation_id = Some("op-1".to_string());
@@ -2416,6 +2439,7 @@ mod tests {
             params: OperationParams::default(),
             enabled: false,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.objects[0].operation_id = Some("op-1".to_string());
         let (toolpaths, warnings) = build_toolpaths(&document);
@@ -2532,6 +2556,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.objects[0].operation_id = Some("op-1".to_string());
         let (toolpaths, warnings) = build_toolpaths(&document);
@@ -2561,6 +2586,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.objects[0].operation_id = Some("op-1".to_string());
         let (toolpaths, warnings) = build_toolpaths(&document);
@@ -2597,6 +2623,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         }
     }
 
@@ -2918,6 +2945,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.objects[0].operation_id = Some("fill".to_string());
         let (toolpaths, _) = build_toolpaths(&document);
@@ -2979,6 +3007,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.operations.push(Operation {
             id: "engrave".to_string(),
@@ -2993,6 +3022,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document
     }
@@ -3074,6 +3104,7 @@ mod tests {
             params,
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let mut object = Object::new(
             layer_id,
@@ -3182,6 +3213,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         };
         document.operations.push(operation);
         let mut object = Object::new(
@@ -3224,6 +3256,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let mut object = Object::new(
             layer_id,
@@ -3332,6 +3365,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         document.objects[0].operation_id = Some("engrave".to_string());
         document
@@ -3666,6 +3700,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let layer_id = document.layers[0].id.clone();
         let mut object = Object::new(
@@ -3715,6 +3750,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         let layer_id = document.layers[0].id.clone();
         let mut outer = Object::new(
@@ -4202,6 +4238,117 @@ mod tests {
         assert_eq!(report.lines, text.lines().count());
         assert!(!path.with_extension("nc.tmp").exists());
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn sub_layer_document() -> Document {
+        let mut document = Document::default();
+        let operation = crate::operations::Operation {
+            id: "op1".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams {
+                speed: 1000.0,
+                power: 20.0,
+                passes: 1,
+                ..OperationParams::default()
+            },
+            enabled: true,
+            depends_on: Vec::new(),
+            sub_layers: vec![
+                crate::operations::SubLayer {
+                    id: "sub1".to_string(),
+                    name: "Second".to_string(),
+                    params: OperationParams {
+                        speed: 500.0,
+                        power: 80.0,
+                        passes: 1,
+                        ..OperationParams::default()
+                    },
+                    enabled: true,
+                },
+                crate::operations::SubLayer {
+                    id: "sub2".to_string(),
+                    name: "Third".to_string(),
+                    params: OperationParams {
+                        speed: 200.0,
+                        power: 10.0,
+                        passes: 1,
+                        ..OperationParams::default()
+                    },
+                    enabled: true,
+                },
+            ],
+        };
+        let layer = document.layers[0].clone();
+        let mut object = Object::new(
+            layer.id.clone(),
+            Shape::Rect {
+                width: 10.0,
+                height: 10.0,
+                corner_radius: 0.0,
+            },
+        );
+        object.operation_id = Some(operation.id.clone());
+        document.operations.push(operation);
+        document.add_object(object);
+        document
+    }
+
+    #[test]
+    fn sub_layers_are_emitted_in_order_after_the_parent() {
+        let document = sub_layer_document();
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        let parent = text.find("Operation 1: Cut - Rect").unwrap();
+        let sub1 = text.find("Operation 2: Cut sub-layer 1 - Rect").unwrap();
+        let sub2 = text.find("Operation 3: Cut sub-layer 2 - Rect").unwrap();
+        assert!(
+            parent < sub1 && sub1 < sub2,
+            "sub-layers out of order:\n{text}"
+        );
+        assert!(text.contains("F1000 S200"));
+        assert!(text.contains("F500 S800"));
+        assert!(text.contains("F200 S100"));
+    }
+
+    #[test]
+    fn a_disabled_sub_layer_is_skipped() {
+        let mut document = sub_layer_document();
+        document.operations[0].sub_layers[0].enabled = false;
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        assert!(!text.contains("sub-layer 1"));
+        assert!(text.contains("Cut sub-layer 2 - Rect"));
+    }
+
+    #[test]
+    fn a_sub_layer_is_an_independent_copy_of_the_parent() {
+        let mut document = sub_layer_document();
+        document.operations[0].params.speed = 3000.0;
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        assert!(text.contains("F3000 S200"));
+        assert!(
+            text.contains("F500 S800"),
+            "sub-layer inherited parent edit:\n{text}"
+        );
+    }
+
+    #[test]
+    fn removing_every_sub_layer_restores_the_current_output() {
+        let mut document = sub_layer_document();
+        let (with_sub, _) = render_job(&document, &JobOptions::default()).unwrap();
+        document.operations[0].sub_layers.clear();
+        let (without, _) = render_job(&document, &JobOptions::default()).unwrap();
+        assert_ne!(with_sub, without);
+        assert!(!without.contains("sub-layer"));
+        assert_eq!(without.matches("G1 X").count(), 4);
+    }
+
+    #[test]
+    fn an_operation_without_sub_layers_keeps_the_current_gcode() {
+        let document = document_with_rect();
+        let (text, report) = render_job(&document, &JobOptions::default()).unwrap();
+        assert_eq!(report.paths, 1);
+        assert!(!text.contains("sub-layer"));
+        assert_eq!(text.matches("G1 X").count(), 4);
     }
 }
 

@@ -396,6 +396,40 @@ pub struct ParamChange {
     pub to: String,
 }
 
+/// An extra pass over the same geometry, with its own independent parameters.
+///
+/// Sub-layers are emitted after the parent operation, in order, before the next
+/// operation. They are copies, not live links to the parent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubLayer {
+    pub id: String,
+    pub name: String,
+    pub params: OperationParams,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl SubLayer {
+    pub fn new(name: impl Into<String>, params: OperationParams) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: name.into(),
+            params,
+            enabled: true,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("sub-layer name must not be empty".to_string());
+        }
+        if self.id.trim().is_empty() {
+            return Err("sub-layer id must not be empty".to_string());
+        }
+        validate_params(&self.params)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Operation {
     pub id: String,
@@ -406,6 +440,79 @@ pub struct Operation {
     /// Operations that must run before this one.
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// Extra passes emitted after the parent, in order.
+    #[serde(default)]
+    pub sub_layers: Vec<SubLayer>,
+}
+
+fn validate_params(params: &OperationParams) -> Result<(), String> {
+    if params.speed <= 0.0 {
+        return Err("speed must be positive".to_string());
+    }
+    if params.power < 0.0 {
+        return Err("power must be non-negative".to_string());
+    }
+    if let Some(min_power) = params.min_power {
+        if !min_power.is_finite() || min_power <= 0.0 {
+            return Err(
+                "minimum power must be positive; leave it unset for no minimum".to_string(),
+            );
+        }
+        if min_power > params.power {
+            return Err("minimum power must not exceed maximum power".to_string());
+        }
+    }
+    if params.passes == 0 {
+        return Err("passes must be >= 1".to_string());
+    }
+    if params.line_interval_mm <= 0.0 {
+        return Err("line interval must be positive".to_string());
+    }
+    if !params.fill_angle_degrees.is_finite() {
+        return Err("fill angle must be finite".to_string());
+    }
+    if !params.fill_margin_mm.is_finite() || params.fill_margin_mm < 0.0 {
+        return Err("fill margin must be zero or positive".to_string());
+    }
+    if !params.fill_offset_mm.is_finite() {
+        return Err("fill offset must be finite".to_string());
+    }
+    if crate::color::normalize_hex_color(&params.color).is_none() {
+        return Err(format!("invalid cut colour: {}", params.color));
+    }
+    if !params.overscan_mm.is_finite() || !(0.0..=50.0).contains(&params.overscan_mm) {
+        return Err("overscan must be between 0 and 50 mm".to_string());
+    }
+    if !params.overcut.is_finite() || params.overcut < 0.0 {
+        return Err("overcut must be zero or positive".to_string());
+    }
+    let overcut_limit = match params.overcut_unit {
+        OvercutUnit::Millimetres => 50.0,
+        OvercutUnit::Percent => 100.0,
+    };
+    if params.overcut > overcut_limit {
+        return Err(format!(
+            "overcut must be at most {overcut_limit:.0} {}",
+            params.overcut_unit.label()
+        ));
+    }
+    if params.perforation {
+        if !(params.perforation_length_mm > 0.0 && params.perforation_length_mm <= 100.0) {
+            return Err("perforation length must be between 0 and 100 mm".to_string());
+        }
+        if !(params.perforation_gap_mm > 0.0 && params.perforation_gap_mm <= 100.0) {
+            return Err("perforation gap must be between 0 and 100 mm".to_string());
+        }
+    }
+    for (field, expression) in &params.expressions {
+        if !EXPRESSION_FIELDS.contains(&field.as_str()) {
+            return Err(format!("unknown expression field: {field}"));
+        }
+        if expression.trim().is_empty() {
+            return Err(format!("the expression for '{field}' is empty"));
+        }
+    }
+    Ok(())
 }
 
 impl Operation {
@@ -417,6 +524,7 @@ impl Operation {
             params: OperationParams::default(),
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         }
     }
 
@@ -427,73 +535,12 @@ impl Operation {
         if self.id.is_empty() {
             return Err("operation id must not be empty".to_string());
         }
-        if self.params.speed <= 0.0 {
-            return Err("speed must be positive".to_string());
-        }
-        if self.params.power < 0.0 {
-            return Err("power must be non-negative".to_string());
-        }
-        if let Some(min_power) = self.params.min_power {
-            if !min_power.is_finite() || min_power <= 0.0 {
-                return Err(
-                    "minimum power must be positive; leave it unset for no minimum".to_string(),
-                );
-            }
-            if min_power > self.params.power {
-                return Err("minimum power must not exceed maximum power".to_string());
-            }
-        }
-        if self.params.passes == 0 {
-            return Err("passes must be >= 1".to_string());
-        }
-        if self.params.line_interval_mm <= 0.0 {
-            return Err("line interval must be positive".to_string());
-        }
-        if !self.params.fill_angle_degrees.is_finite() {
-            return Err("fill angle must be finite".to_string());
-        }
-        if !self.params.fill_margin_mm.is_finite() || self.params.fill_margin_mm < 0.0 {
-            return Err("fill margin must be zero or positive".to_string());
-        }
-        if !self.params.fill_offset_mm.is_finite() {
-            return Err("fill offset must be finite".to_string());
-        }
-        if crate::color::normalize_hex_color(&self.params.color).is_none() {
-            return Err(format!("invalid cut colour: {}", self.params.color));
-        }
-        if !self.params.overscan_mm.is_finite() || !(0.0..=50.0).contains(&self.params.overscan_mm)
-        {
-            return Err("overscan must be between 0 and 50 mm".to_string());
-        }
-        if !self.params.overcut.is_finite() || self.params.overcut < 0.0 {
-            return Err("overcut must be zero or positive".to_string());
-        }
-        let overcut_limit = match self.params.overcut_unit {
-            OvercutUnit::Millimetres => 50.0,
-            OvercutUnit::Percent => 100.0,
-        };
-        if self.params.overcut > overcut_limit {
-            return Err(format!(
-                "overcut must be at most {overcut_limit:.0} {}",
-                self.params.overcut_unit.label()
-            ));
-        }
-        if self.params.perforation {
-            if !(self.params.perforation_length_mm > 0.0
-                && self.params.perforation_length_mm <= 100.0)
-            {
-                return Err("perforation length must be between 0 and 100 mm".to_string());
-            }
-            if !(self.params.perforation_gap_mm > 0.0 && self.params.perforation_gap_mm <= 100.0) {
-                return Err("perforation gap must be between 0 and 100 mm".to_string());
-            }
-        }
-        for (field, expression) in &self.params.expressions {
-            if !EXPRESSION_FIELDS.contains(&field.as_str()) {
-                return Err(format!("unknown expression field: {field}"));
-            }
-            if expression.trim().is_empty() {
-                return Err(format!("the expression for '{field}' is empty"));
+        validate_params(&self.params)?;
+        let mut sub_layer_ids = std::collections::HashSet::new();
+        for sub_layer in &self.sub_layers {
+            sub_layer.validate()?;
+            if !sub_layer_ids.insert(sub_layer.id.as_str()) {
+                return Err(format!("duplicate sub-layer id: {}", sub_layer.id));
             }
         }
         for (index, dependency) in self.depends_on.iter().enumerate() {
@@ -523,6 +570,7 @@ mod tests {
             params: OperationParams::default(),
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         }
     }
 
@@ -697,5 +745,52 @@ mod tests {
         let mut o = sample();
         o.params.line_interval_mm = 0.0;
         assert!(o.validate().is_err());
+    }
+
+    #[test]
+    fn sub_layers_round_trip_through_json() {
+        let mut op = sample();
+        let mut sub = SubLayer::new("Second pass", op.params.clone());
+        sub.params.speed = 500.0;
+        sub.params.power = 80.0;
+        op.sub_layers.push(sub);
+        let json = serde_json::to_value(&op).unwrap();
+        let loaded: Operation = serde_json::from_value(json).unwrap();
+        assert_eq!(loaded.sub_layers.len(), 1);
+        assert_eq!(loaded.sub_layers[0].name, "Second pass");
+        assert!((loaded.sub_layers[0].params.speed - 500.0).abs() < 1e-9);
+        assert!(loaded.sub_layers[0].enabled);
+    }
+
+    #[test]
+    fn an_operation_without_sub_layers_defaults_to_empty() {
+        let op: Operation = serde_json::from_value(serde_json::json!({
+            "id": "op-1",
+            "name": "Cut",
+            "op_type": "OutlineCutting",
+            "params": {"speed": 1000.0, "power": 20.0, "passes": 1, "line_interval_mm": 0.1},
+            "enabled": true
+        }))
+        .unwrap();
+        assert!(op.sub_layers.is_empty());
+        assert!(op.validate().is_ok());
+    }
+
+    #[test]
+    fn sub_layer_validation_rejects_bad_params_and_duplicate_ids() {
+        let mut op = sample();
+        let mut bad = SubLayer::new("Bad", op.params.clone());
+        bad.params.speed = 0.0;
+        op.sub_layers.push(bad);
+        assert!(op.validate().is_err());
+
+        let mut op = sample();
+        let a = SubLayer::new("A", op.params.clone());
+        let mut b = SubLayer::new("B", op.params.clone());
+        b.id = a.id.clone();
+        op.sub_layers.push(a);
+        op.sub_layers.push(b);
+        let err = op.validate().unwrap_err();
+        assert!(err.contains("duplicate sub-layer id"));
     }
 }

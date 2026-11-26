@@ -584,6 +584,16 @@ impl Document {
                     format!("operation '{}' field '{field}': {error}", operation.name)
                 })?;
             }
+            for sub_layer in &operation.sub_layers {
+                for (field, expression) in &sub_layer.params.expressions {
+                    crate::parameters::evaluate(expression, &self.parameters).map_err(|error| {
+                        format!(
+                            "operation '{}' sub-layer '{}' field '{field}': {error}",
+                            operation.name, sub_layer.name
+                        )
+                    })?;
+                }
+            }
         }
         Ok(())
     }
@@ -788,6 +798,7 @@ mod tests {
             },
             enabled: true,
             depends_on: Vec::new(),
+            sub_layers: Vec::new(),
         });
         assert!(document.validate().is_ok());
         let json = serde_json::to_string(&document).unwrap();

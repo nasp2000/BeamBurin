@@ -848,6 +848,27 @@ impl McpServer {
                     if let Some(gap) = number(arguments, "perforation_gap_mm") {
                         operation.params.perforation_gap_mm = gap;
                     }
+                    if let Some(sub_layers) = arguments.get("sub_layers").and_then(Value::as_array)
+                    {
+                        operation.sub_layers.clear();
+                        for (index, entry) in sub_layers.iter().enumerate() {
+                            let mut sub = crate::operations::SubLayer::new(
+                                entry
+                                    .get("name")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or(&format!("Sub-layer {}", index + 1)),
+                                operation.params.clone(),
+                            );
+                            if let Some(enabled) = entry.get("enabled").and_then(Value::as_bool) {
+                                sub.enabled = enabled;
+                            }
+                            if let Some(params) = entry.get("params").and_then(Value::as_object) {
+                                apply_operation_params(&mut sub.params, params)?;
+                            }
+                            sub.validate().map_err(BeamError::InvalidInput)?;
+                            operation.sub_layers.push(sub);
+                        }
+                    }
                     operation.validate().map_err(BeamError::InvalidInput)?;
                 }
                 Ok(json!({"id": id, "operations": self.editor.document.operations.len()}))
@@ -2443,7 +2464,18 @@ fn tool_definitions() -> Vec<Value> {
                 "overcut_unit": {"type": "string", "enum": ["mm", "percent"]},
                 "perforation": {"type": "boolean"},
                 "perforation_length_mm": {"type": "number"},
-                "perforation_gap_mm": {"type": "number"}
+                "perforation_gap_mm": {"type": "number"},
+                "sub_layers": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "enabled": {"type": "boolean"},
+                            "params": {"type": "object"}
+                        }
+                    }
+                }
             }}),
         ),
         tool_with(
@@ -3451,6 +3483,97 @@ fn parse_overcut_unit(value: &str) -> Result<OvercutUnit> {
     }
 }
 
+fn apply_operation_params(
+    params: &mut crate::operations::OperationParams,
+    values: &serde_json::Map<String, Value>,
+) -> Result<()> {
+    if let Some(speed) = values.get("speed").and_then(Value::as_f64) {
+        params.speed = speed;
+    }
+    if let Some(power) = values.get("power").and_then(Value::as_f64) {
+        params.power = power;
+    }
+    if let Some(min_power) = values.get("min_power") {
+        params.min_power = min_power.as_f64();
+    }
+    if let Some(passes) = values.get("passes").and_then(Value::as_f64) {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            params.passes = passes.max(1.0) as u32;
+        }
+    }
+    if let Some(interval) = values.get("line_interval_mm").and_then(Value::as_f64) {
+        params.line_interval_mm = interval;
+    }
+    if let Some(angle) = values.get("fill_angle_degrees").and_then(Value::as_f64) {
+        params.fill_angle_degrees = angle;
+    }
+    if let Some(margin) = values.get("fill_margin_mm").and_then(Value::as_f64) {
+        params.fill_margin_mm = margin;
+    }
+    if let Some(offset) = values.get("fill_offset_mm").and_then(Value::as_f64) {
+        params.fill_offset_mm = offset;
+    }
+    if let Some(alternate) = values.get("fill_alternate").and_then(Value::as_bool) {
+        params.fill_alternate = alternate;
+    }
+    if let Some(overcut) = values.get("overcut").and_then(Value::as_f64) {
+        params.overcut = overcut;
+    }
+    if let Some(unit) = values.get("overcut_unit").and_then(Value::as_str) {
+        params.overcut_unit = parse_overcut_unit(unit)?;
+    }
+    if let Some(perforation) = values.get("perforation").and_then(Value::as_bool) {
+        params.perforation = perforation;
+    }
+    if let Some(length) = values.get("perforation_length_mm").and_then(Value::as_f64) {
+        params.perforation_length_mm = length;
+    }
+    if let Some(gap) = values.get("perforation_gap_mm").and_then(Value::as_f64) {
+        params.perforation_gap_mm = gap;
+    }
+    if let Some(tabs) = values.get("tabs").and_then(Value::as_f64) {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            params.tabs = tabs.round().clamp(0.0, 20.0) as u32;
+        }
+    }
+    if let Some(width) = values.get("tab_width_mm").and_then(Value::as_f64) {
+        params.tab_width_mm = width;
+    }
+    if let Some(spacing) = values.get("tab_spacing_mm").and_then(Value::as_f64) {
+        params.tab_spacing_mm = spacing;
+    }
+    if let Some(lead_in) = values.get("lead_in_mm").and_then(Value::as_f64) {
+        params.lead_in_mm = lead_in;
+    }
+    if let Some(lead_out) = values.get("lead_out_mm").and_then(Value::as_f64) {
+        params.lead_out_mm = lead_out;
+    }
+    if let Some(curved) = values.get("curved_leads").and_then(Value::as_bool) {
+        params.curved_leads = curved;
+    }
+    if let Some(air) = values.get("air_assist").and_then(Value::as_bool) {
+        params.air_assist = air;
+    }
+    if let Some(constant) = values.get("constant_power").and_then(Value::as_bool) {
+        params.constant_power = constant;
+    }
+    if let Some(cross_hatch) = values.get("cross_hatch").and_then(Value::as_bool) {
+        params.cross_hatch = cross_hatch;
+    }
+    if let Some(overscan) = values.get("overscan_mm").and_then(Value::as_f64) {
+        params.overscan_mm = overscan;
+    }
+    if let Some(kerf) = values.get("kerf_mm").and_then(Value::as_f64) {
+        params.kerf_mm = kerf;
+    }
+    if let Some(color) = values.get("color").and_then(Value::as_str) {
+        params.color = color.to_string();
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn _unused(_: &Path) {}
 
@@ -4053,6 +4176,7 @@ mod tests {
                 params: crate::operations::OperationParams::default(),
                 enabled: true,
                 depends_on: Vec::new(),
+                sub_layers: Vec::new(),
             });
         server.editor.document.objects[0].operation_id = Some("gone".to_string());
         server.editor.document.operations.clear();

@@ -352,7 +352,7 @@ Números medidos:
 | G-30 | Destacar formas da camada (*flash*) | ausente |
 | G-31 | Mover a seleção em conjunto (H/V) | ausente |
 
-Prioridade para F2: os P0 de §2 (G-01 a G-04) mais **G-16, G-17, G-18** e
+Prioridade para F2: os P0 de §2 (G-01 a G-04) mais **G-17, G-18** e
 **G-27**, que mudam o resultado do corte e da imagem; G-25 a G-31 são
 funcionalidade visível, não correção.
 
@@ -395,7 +395,7 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 | G-01 | Sobrecorte em contornos fechados | implementado (mm ou %) | Com sobrecorte S>0, a última passagem excede o fecho em S mm ou S% do perímetro; S=0 reproduz o G-code atual; negativo é rejeitado; teste mede comprimento e coordenadas |
 | G-02 | Potência mínima e máxima | parcial (um campo) | O job nunca escreve S fora de [mín, máx]; mínimo > máximo é rejeitado; omissão igual à potência atual; projeto antigo abre com mín = máx; teste verifica S e validação |
 | G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
-| G-16 | Sub-camadas por entrada de corte | ausente | Criar, duplicar e remover (remover todas volta ao comportamento atual); a sub-camada nasce como cópia independente do principal; ordem preservada no job; teste de serialização e de ordem |
+| G-16 | Sub-camadas por entrada de corte | **implementado** | Cada entrada pode ter sub-camadas independentes (cópia dos parâmetros); duplicar/remover; remover todas volta ao comportamento de camada única; ordem preservada no job e no G-code; round-trip, ordem, desativada ignorada, regressão sem sub-camadas |
 | G-17 | Cut-through no início e no fim | ausente | Valor > 0 acrescenta esse comprimento em cada extremidade, independente da entrada/saída; 0 desliga; teste mede o extra |
 | G-04 | Prioridade por objeto e otimização | parcial | Opções de trabalho expostas (velocidade de deslocação, ordenação assistida, deslocar para a origem, origem); remoção de sobreposições corta cada troço coberto uma só vez por potência; prioridade por objeto e «por direção» ficam para a observação de runtime; teste compara comprimentos e sequência |
 | G-18 | *Flood fill* | ausente | Preenchimento contido na fronteira (nenhum segmento a cruza); ilhas vazias; teste de área e de interseção |
@@ -425,8 +425,8 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 ### Ordem de implementação (F5)
 
 1. **Lote A — corte**: D-01, G-01, G-02, G-03, G-16 (mesmo modelo de
-   parâmetros e mesmo emissor de G-code; um teste de job cobre os cinco).
-   G-17 fica para depois da observação de runtime.
+   parâmetros e mesmo emissor de G-code). G-17 fica para depois da observação
+   de runtime.
 2. **Lote B — ordem e imagem**: G-04, G-18, G-27, G-28.
 3. **Lote C — desenho**: G-05, G-06, G-07, G-09, G-10.
 4. **Lote D — objetos**: G-19, G-20, G-21, G-23, G-25.
@@ -492,6 +492,38 @@ em `append_contour` sobre o perímetro já com kerf, guardada em
 `the_overcut_tail_stops_at_the_first_tab_gap`,
 `an_open_path_has_no_overcut`,
 `a_zero_overcut_keeps_the_job_byte_for_byte`.
+
+**G-02 implementado.** `OperationParams.min_power: Option<f64>` (omissão
+`None`) define o piso da gama em percentagem; o raster em cinzentos mapeia o
+nível l para `min + (max-min)*l/16` e o comentário do job mostra `Smin-Smax`.
+Testes de validação/modelo e de job (`grayscale_with_minimum_power_never_writes_s_below_it`,
+`a_project_without_the_min_power_field_keeps_the_gcode_unchanged`).
+
+**G-03 implementado.** `OperationParams.perforation`,
+`perforation_length_mm` e `perforation_gap_mm` (omissão `false, 1.0, 1.0`).
+Vãos de perfuração são fundidos com vãos de tab (tab prevalece); padrão maior
+que o contorno cai para um traço único com aviso. Testes
+(`perforation_breaks_a_closed_contour_into_strokes_and_gaps`,
+`perforation_applies_to_an_open_path`,
+`tabs_win_over_perforation_gaps`,
+`a_pattern_longer_than_the_contour_falls_back_to_one_stroke`,
+`turning_perforation_off_keeps_the_gcode_unchanged`).
+
+**G-16 implementado.** `Operation.sub_layers: Vec<SubLayer>` com
+`#[serde(default)]` (vazio nos projetos existentes). `SubLayer { id, name,
+params, enabled }` é cópia independente dos parâmetros do principal; `op_type`
+fica na operação. Emissão: principal e depois cada sub-camada ativa, pela
+ordem, antes da operação seguinte; comentário `Operação N: <nome> sub-layer k -
+<objeto>`. UI: secção «Sub-layers» com adicionar, duplicar, mover, remover e
+edição de campos básicos. MCP: `create_operation.sub_layers[]`. Testes:
+`sub_layers_round_trip_through_json`,
+`an_operation_without_sub_layers_defaults_to_empty`,
+`sub_layer_validation_rejects_bad_params_and_duplicate_ids`,
+`sub_layers_are_emitted_in_order_after_the_parent`,
+`a_disabled_sub_layer_is_skipped`,
+`a_sub_layer_is_an_independent_copy_of_the_parent`,
+`removing_every_sub_layer_restores_the_current_output`,
+`an_operation_without_sub_layers_keeps_the_current_gcode`.
 
 O lote A passa a ser **D-01, G-01, G-02, G-03, G-16**; G-17 sai e volta depois
 da observação de runtime. Cada parâmetro novo usa `#[serde(default)]` com
