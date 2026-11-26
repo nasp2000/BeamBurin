@@ -731,7 +731,8 @@ impl RasterJob {
             self.resolved.speed,
             self.resolved.power,
             self.resolved.passes,
-        );
+        )
+        .with_min_power(self.resolved.min_power);
         #[allow(clippy::cast_precision_loss)]
         let pixel_x = self.width_mm / self.bitmap.width as f64;
         #[allow(clippy::cast_precision_loss)]
@@ -760,6 +761,10 @@ impl RasterJob {
                         }
                         (None, None) => {}
                         (Some(0), None) if !floor => {}
+                        (Some(0), Some((start, current))) if !floor => {
+                            push_raster_run(&mut toolpath, &local, start, column, row, current);
+                            run = None;
+                        }
                         (Some(next), Some((_, current))) if next == current => {}
                         (Some(next), Some((start, current))) => {
                             push_raster_run(&mut toolpath, &local, start, column, row, current);
@@ -792,8 +797,7 @@ impl RasterJob {
         Some(
             toolpath
                 .with_operation(self.object.operation_id.as_deref())
-                .with_operation_name(self.resolved.operation_name.as_deref())
-                .with_min_power(self.resolved.min_power),
+                .with_operation_name(self.resolved.operation_name.as_deref()),
         )
     }
 }

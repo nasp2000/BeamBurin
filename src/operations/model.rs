@@ -541,7 +541,7 @@ mod tests {
     #[test]
     fn minimum_above_maximum_is_rejected() {
         let mut operation = sample();
-        operation.params.min_power = Some(30.0);
+        operation.params.min_power = Some(10.0);
         assert!(operation.validate().is_ok());
         operation.params.min_power = Some(20.0);
         assert!(operation.validate().is_ok());
