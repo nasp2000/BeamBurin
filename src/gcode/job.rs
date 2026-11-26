@@ -2542,6 +2542,25 @@ mod tests {
     }
 
     #[test]
+    fn a_percentage_overcut_uses_the_kerfed_perimeter() {
+        let mut operation = overcut_operation(10.0, OvercutUnit::Percent, 1);
+        operation.params.kerf_mm = 1.0;
+        let document = document_with_square(operation);
+        let (toolpaths, _) = build_toolpaths(&document);
+        // Ten percent of the path the kerf actually leaves, not of the drawn
+        // square: the tail follows the inset geometry.
+        let kerfed: f64 = toolpaths[0]
+            .moves
+            .windows(2)
+            .filter(|pair| pair[1].kind == MoveKind::Cut)
+            .map(|pair| {
+                Point2::new(pair[0].x, pair[0].y).distance(Point2::new(pair[1].x, pair[1].y))
+            })
+            .sum();
+        assert!((toolpaths[0].overcut_length() - kerfed * 0.1).abs() < 1e-6);
+    }
+
+    #[test]
     fn the_overcut_is_emitted_once_with_three_passes() {
         let document = document_with_square(overcut_operation(2.0, OvercutUnit::Millimetres, 3));
         let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
@@ -2559,7 +2578,10 @@ mod tests {
         document.objects[0].operation_id = Some("op-1".to_string());
         let (toolpaths, warnings) = build_toolpaths(&document);
         assert!(warnings.is_empty(), "{warnings:?}");
-        assert!(toolpaths[0].overcut.is_empty());
+        assert!(
+            toolpaths[0].overcut.is_empty(),
+            "an open path has no overcut tail"
+        );
     }
 
     #[test]

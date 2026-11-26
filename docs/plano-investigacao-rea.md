@@ -487,6 +487,7 @@ em `append_contour` sobre o perímetro já com kerf, guardada em
 `Toolpath::overcut` e emitida uma só vez depois do ciclo de passagens. Testes:
 `a_two_millimetre_overcut_extends_a_ten_millimetre_square`,
 `ten_percent_of_a_forty_millimetre_perimeter_is_four_millimetres`,
+`a_percentage_overcut_uses_the_kerfed_perimeter`,
 `the_overcut_is_emitted_once_with_three_passes`,
 `the_overcut_tail_stops_at_the_first_tab_gap`,
 `an_open_path_has_no_overcut`,

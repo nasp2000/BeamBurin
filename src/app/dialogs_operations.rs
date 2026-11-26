@@ -352,7 +352,9 @@ impl BeamBurinApp {
                                                 unit.label(),
                                             );
                                         }
-                                    });
+                                    })
+                                    .response
+                                    .labelled_by(overcut_label.id);
                                 if operation.params.overcut_unit != previous {
                                     let limit = match operation.params.overcut_unit {
                                         OvercutUnit::Millimetres => 50.0,
