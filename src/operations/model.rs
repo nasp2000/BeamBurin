@@ -772,7 +772,7 @@ mod tests {
             "enabled": true
         }))
         .unwrap();
-        assert!(op.sub_layers.is_empty());
+        assert_eq!(op.sub_layers.len(), 0);
         assert!(op.validate().is_ok());
     }
 

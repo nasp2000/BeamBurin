@@ -4315,8 +4315,12 @@ mod tests {
         let mut document = sub_layer_document();
         document.operations[0].sub_layers[0].enabled = false;
         let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
-        assert!(!text.contains("sub-layer 1"));
-        assert!(text.contains("Cut sub-layer 2 - Rect"));
+        assert!(
+            !text.contains("F500 S800"),
+            "disabled sub-layer was emitted:\n{text}"
+        );
+        assert!(text.contains("Cut sub-layer 1 - Rect"));
+        assert!(text.contains("F200 S100"));
     }
 
     #[test]
