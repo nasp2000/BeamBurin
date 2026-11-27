@@ -4424,8 +4424,8 @@ mod tests {
         let layer_id = document.layers[0].id.clone();
         let mut object = Object::new(
             layer_id,
-            Shape::Path(crate::geometry::path::Path::new(
-                vec![Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)],
+            Shape::Path(crate::geometry::path::Path::from_points(
+                &[(0.0, 0.0), (10.0, 0.0)],
                 false,
             )),
         );
