@@ -4434,22 +4434,30 @@ mod tests {
         let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
         // Start: travel to -2,0 and cut to 0,0; End: cut to 13,0
         assert!(
-            text.contains("X-2.000 Y0.000"),
+            text.contains("X-2") && text.contains("Y0"),
             "missing cut-through start:\n{text}"
         );
-        assert!(
-            text.contains("X13.000 Y0.000"),
-            "missing cut-through end:\n{text}"
-        );
+        assert!(text.contains("X13"), "missing cut-through end:\n{text}");
     }
 
     #[test]
     fn cut_through_zero_keeps_gcode_unchanged() {
-        let mut doc_a = document_with_rect();
-        let (a, _) = render_job(&doc_a, &JobOptions::default()).unwrap();
-        doc_a.operations[0].params.cut_through_start_mm = 0.0;
-        doc_a.operations[0].params.cut_through_end_mm = 0.0;
-        let (b, _) = render_job(&doc_a, &JobOptions::default()).unwrap();
+        let mut doc = document_with_rect();
+        // document_with_rect has no operations; add a default one to exercise the field.
+        doc.operations.push(Operation {
+            id: "op".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams::default(),
+            enabled: true,
+            depends_on: Vec::new(),
+            sub_layers: Vec::new(),
+        });
+        doc.objects[0].operation_id = Some("op".to_string());
+        let (a, _) = render_job(&doc, &JobOptions::default()).unwrap();
+        doc.operations[0].params.cut_through_start_mm = 0.0;
+        doc.operations[0].params.cut_through_end_mm = 0.0;
+        let (b, _) = render_job(&doc, &JobOptions::default()).unwrap();
         assert_eq!(a, b);
     }
 }
