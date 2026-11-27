@@ -336,7 +336,7 @@ Números medidos:
 | ID | Item | Estado no BeamBurin |
 |---|---|---|
 | G-16 | Sub-camadas por entrada de corte | ausente |
-| G-17 | Cut-through no início e no fim | ausente |
+| G-17 | Cut-through no início e no fim | **implementado (assunção F3)** |
 | G-18 | *Flood fill* | ausente |
 | G-19 | *Crop* de imagem como caminho (aplicar, remover, achatar) | ausente (só crop de página em PDF/DXF) |
 | G-20 | Converter em bitmap, caminho ou corte | ausente |
@@ -396,7 +396,7 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 | G-02 | Potência mínima e máxima | parcial (um campo) | O job nunca escreve S fora de [mín, máx]; mínimo > máximo é rejeitado; omissão igual à potência atual; projeto antigo abre com mín = máx; teste verifica S e validação |
 | G-03 | Modo de perfuração | ausente | Ligado, alterna corte e deslocamento segundo comprimento e intervalo; desligado, G-code idêntico; teste conta segmentos e mede cada traço |
 | G-16 | Sub-camadas por entrada de corte | **implementado** | Cada entrada pode ter sub-camadas independentes (cópia dos parâmetros); duplicar/remover; remover todas volta ao comportamento de camada única; ordem preservada no job e no G-code; round-trip, ordem, desativada ignorada, regressão sem sub-camadas |
-| G-17 | Cut-through no início e no fim | ausente | Valor > 0 acrescenta esse comprimento em cada extremidade, independente da entrada/saída; 0 desliga; teste mede o extra |
+| G-17 | Cut-through no início e no fim | **implementado (assunção F3)** | Valor > 0 acrescenta esse comprimento em cada extremidade; 0 desliga; sem observação F3, assume-se extensão reta independente de lead-in/out e documenta-se; teste mede o extra e regressão com 0 |
 | G-04 | Prioridade por objeto e otimização | parcial | Opções de trabalho expostas (velocidade de deslocação, ordenação assistida, deslocar para a origem, origem); remoção de sobreposições corta cada troço coberto uma só vez por potência; prioridade por objeto e «por direção» ficam para a observação de runtime; teste compara comprimentos e sequência |
 | G-18 | *Flood fill* | ausente | Preenchimento contido na fronteira (nenhum segmento a cruza); ilhas vazias; teste de área e de interseção |
 | G-27 | *Pass-through* de imagem | sem equivalente no formato de saída | Fecha como diferença de formato: a gravação em cinzentos com potência variável é o equivalente em G-code; só falta dizê-lo no manual e no tooltip |
@@ -424,9 +424,9 @@ G-22 e G-26 saem da lista de trabalho; G-11 passa a lacuna de apresentação.
 
 ### Ordem de implementação (F5)
 
-1. **Lote A — corte**: D-01, G-01, G-02, G-03, G-16 (mesmo modelo de
-   parâmetros e mesmo emissor de G-code). G-17 fica para depois da observação
-   de runtime.
+1. **Lote A — corte**: D-01, G-01, G-02, G-03, G-16, G-17 (mesmo modelo de
+   parâmetros e mesmo emissor de G-code). G-17 implementado com assunção F3
+   documentada (sem observação runtime).
 2. **Lote B — ordem e imagem**: G-04, G-18, G-27, G-28.
 3. **Lote C — desenho**: G-05, G-06, G-07, G-09, G-10.
 4. **Lote D — objetos**: G-19, G-20, G-21, G-23, G-25.
@@ -477,7 +477,7 @@ ignorados com aviso no relatório. Testes: `an_open_polyline_is_cut_as_drawn`,
 | G-02 | Mínimo opcional: `None` = sem mínimo (comportamento atual); `Some(v)` exige `0 < v <= máximo`; a imagem em cinzentos mapeia o nível para `[mín, máx]` em vez de `[0, máx]`, eliminando o nível 0 a S0; comentário mostra o intervalo | S nunca abaixo do mínimo; projeto sem o campo corta como hoje; mínimo > máximo recusado |
 | G-03 | `perforation` + comprimento e intervalo (omissão 1/1 mm); traços ancorados no início do contorno; aplica-se a caminhos fechados e abertos; tabs têm precedência e o padrão continua a contar o comprimento; padrão maior que o perímetro vira um traço único com aviso | 10 mm com 1/1 → 5 traços e 5 mm cortados; desligado = G-code atual; comprimento ou intervalo a 0 recusado |
 | G-16 | Sub-camada é **cópia independente** do principal (sem herança por campo, até F3 provar o contrário); mesmo modo do principal; emitida depois do principal e antes da operação seguinte; remover todas volta ao comportamento atual | ordem de emissão; sub-camada desativada ignorada; editar o principal não altera a cópia; round-trip; regressão sem sub-camadas |
-| G-17 | **Adiado para F3.** A evidência só prova que os dois controlos existem; a entrada/saída atual já cobre «corte extra antes e depois». Sem observação, dois parâmetros novos seriam funcionalidade duplicada com semântica inventada | — (reavaliar quando houver G-code observado) |
+| G-17 | **Implementado com assunção F3.** Sem observação de runtime, assume-se: `cut_through_start_mm`/`cut_through_end_mm` adicionam extensão reta na extremidade inicial/final, independentes de lead-in/lead-out; 0 desliga e reproduz comportamento atual. Reavaliar semântica quando houver G-code observado. | extra medido em G-code; 0 byte-igual ao anterior; validação 0-50 mm; round-trip/serde default |
 
 ### Impacto na ordem de implementação
 
@@ -525,11 +525,21 @@ edição de campos básicos. MCP: `create_operation.sub_layers[]`. Testes:
 `removing_every_sub_layer_restores_the_current_output`,
 `an_operation_without_sub_layers_keeps_the_current_gcode`.
 
-O lote A passa a ser **D-01, G-01, G-02, G-03, G-16**; G-17 sai e volta depois
-da observação de runtime. Cada parâmetro novo usa `#[serde(default)]` com
-omissão que reproduz o G-code atual, entra no diálogo de operação, no modelo,
-no emissor, no esquema do MCP e no `PLAN.md` §33, com um teste de regressão por
-parâmetro desligado.
+**G-17 implementado (assunção F3).** `OperationParams.cut_through_start_mm` e
+`cut_through_end_mm` (0-50 mm, `#[serde(default)]` zero). Sem observação de
+runtime, assume-se extensão reta independente de lead-in/lead-out: início
+adiciona distância extra ao longo de -forward antes do contorno; fim adiciona
+extensão ao longo de +forward no último ponto (após lead-out, com travel de
+retorno quando lead-out afasta). Reavaliar com G-code observado. Testes:
+`cut_through_defaults_and_validates`,
+`cut_through_adds_extra_length_at_both_extremities`,
+`cut_through_zero_keeps_gcode_unchanged`.
+
+O lote A passa a ser **D-01, G-01, G-02, G-03, G-16, G-17** (G-17 com assunção
+F3 documentada). Cada parâmetro novo usa `#[serde(default)]` com omissão que
+reproduz o G-code atual, entra no diálogo de operação, no modelo, no emissor,
+no esquema do MCP e no `PLAN.md` §33, com um teste de regressão por parâmetro
+desligado.
 
 **G-02 implementado.** `OperationParams` ganhou `min_power: Option<f64>` com
 `#[serde(default)]` (`None` = sem mínimo), validado como `0 < min <= power`;

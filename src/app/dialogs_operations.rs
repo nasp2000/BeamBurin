@@ -496,6 +496,24 @@ impl BeamBurinApp {
                                 "Quarter-circle entry and exit",
                             ).on_hover_text(crate::ui::icons::description("Quarter-circle entry and exit"));
                             ui.end_row();
+                            let ct_label = ui.label("Cut-through start / end (mm)");
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.cut_through_start_mm)
+                                        .speed(0.1)
+                                        .range(0.0..=50.0),
+                                )
+                                .labelled_by(ct_label.id)
+                                .on_hover_text("Extra straight cut at contour start (F3 assumption: independent of lead-in)");
+                                ui.add(
+                                    egui::DragValue::new(&mut operation.params.cut_through_end_mm)
+                                        .speed(0.1)
+                                        .range(0.0..=50.0),
+                                )
+                                .labelled_by(ct_label.id)
+                                .on_hover_text("Extra straight cut at contour end (F3 assumption: independent of lead-out)");
+                            });
+                            ui.end_row();
                             ui.label("Constant power mode");
                             let constant =
                                 ui.checkbox(&mut operation.params.constant_power, "")

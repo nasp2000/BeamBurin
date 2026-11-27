@@ -160,6 +160,18 @@ pub struct OperationParams {
     /// Enter and leave along a quarter-circle arc instead of a straight line.
     #[serde(default)]
     pub curved_leads: bool,
+    /// Extra straight cut added at the contour start, in millimetres.
+    ///
+    /// Assumption (F3 pending): extends the cut at the start extremity along
+    /// the incoming direction, independently of lead-in. Zero disables it.
+    #[serde(default)]
+    pub cut_through_start_mm: f64,
+    /// Extra straight cut added at the contour end, in millimetres.
+    ///
+    /// Assumption (F3 pending): extends the cut at the end extremity along
+    /// the outgoing direction, independently of lead-out. Zero disables it.
+    #[serde(default)]
+    pub cut_through_end_mm: f64,
     /// Extra distance cut past the closing point of a closed contour.
     #[serde(default)]
     pub overcut: f64,
@@ -315,6 +327,16 @@ impl OperationParams {
             if target.curved_leads { "yes" } else { "no" }.to_string(),
         );
         push(
+            "Cut through start",
+            format!("{:.2} mm", self.cut_through_start_mm),
+            format!("{:.2} mm", target.cut_through_start_mm),
+        );
+        push(
+            "Cut through end",
+            format!("{:.2} mm", self.cut_through_end_mm),
+            format!("{:.2} mm", target.cut_through_end_mm),
+        );
+        push(
             "Tab width",
             format!("{:.2} mm", self.tab_width_mm),
             format!("{:.2} mm", target.tab_width_mm),
@@ -378,6 +400,8 @@ impl Default for OperationParams {
             lead_in_mm: 0.0,
             lead_out_mm: 0.0,
             curved_leads: false,
+            cut_through_start_mm: 0.0,
+            cut_through_end_mm: 0.0,
             overcut: 0.0,
             overcut_unit: OvercutUnit::Millimetres,
             perforation: false,
@@ -495,6 +519,12 @@ fn validate_params(params: &OperationParams) -> Result<(), String> {
             "overcut must be at most {overcut_limit:.0} {}",
             params.overcut_unit.label()
         ));
+    }
+    if !(0.0..=50.0).contains(&params.cut_through_start_mm) {
+        return Err("cut through start must be between 0 and 50 mm".to_string());
+    }
+    if !(0.0..=50.0).contains(&params.cut_through_end_mm) {
+        return Err("cut through end must be between 0 and 50 mm".to_string());
     }
     if params.perforation {
         if !(params.perforation_length_mm > 0.0 && params.perforation_length_mm <= 100.0) {
@@ -792,5 +822,35 @@ mod tests {
         op.sub_layers.push(b);
         let err = op.validate().unwrap_err();
         assert!(err.contains("duplicate sub-layer id"));
+    }
+
+    #[test]
+    fn cut_through_defaults_and_validates() {
+        let op: Operation = serde_json::from_value(serde_json::json!({
+            "id": "op-1",
+            "name": "Cut",
+            "op_type": "OutlineCutting",
+            "params": {"speed": 1000.0, "power": 20.0, "passes": 1, "line_interval_mm": 0.1},
+            "enabled": true
+        }))
+        .unwrap();
+        assert_eq!(op.params.cut_through_start_mm, 0.0);
+        assert_eq!(op.params.cut_through_end_mm, 0.0);
+        assert!(op.validate().is_ok());
+
+        let mut op = sample();
+        op.params.cut_through_start_mm = 2.0;
+        op.params.cut_through_end_mm = 3.0;
+        let json = serde_json::to_value(&op).unwrap();
+        let loaded: Operation = serde_json::from_value(json).unwrap();
+        assert!((loaded.params.cut_through_start_mm - 2.0).abs() < 1e-9);
+        assert!((loaded.params.cut_through_end_mm - 3.0).abs() < 1e-9);
+
+        let mut bad = sample();
+        bad.params.cut_through_start_mm = -1.0;
+        assert!(bad.validate().is_err());
+        let mut bad = sample();
+        bad.params.cut_through_end_mm = 51.0;
+        assert!(bad.validate().is_err());
     }
 }

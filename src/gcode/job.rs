@@ -133,6 +133,10 @@ struct Resolved {
     lead_in_mm: f64,
     lead_out_mm: f64,
     curved_leads: bool,
+    /// Extra straight cut at contour start (F3 assumption: independent of lead-in).
+    cut_through_start_mm: f64,
+    /// Extra straight cut at contour end (F3 assumption: independent of lead-out).
+    cut_through_end_mm: f64,
     overcut: f64,
     overcut_unit: OvercutUnit,
     perforation: bool,
@@ -168,6 +172,8 @@ fn resolve_params(
         lead_in_mm: params.lead_in_mm.max(0.0),
         lead_out_mm: params.lead_out_mm.max(0.0),
         curved_leads: params.curved_leads,
+        cut_through_start_mm: params.cut_through_start_mm.max(0.0),
+        cut_through_end_mm: params.cut_through_end_mm.max(0.0),
         overcut: params.overcut.max(0.0),
         overcut_unit: params.overcut_unit,
         perforation: params.perforation,
@@ -1265,6 +1271,10 @@ struct ContourOptions {
     lead_in: f64,
     lead_out: f64,
     curved_leads: bool,
+    /// Extra straight cut at contour start (F3 assumption).
+    cut_through_start: f64,
+    /// Extra straight cut at contour end (F3 assumption).
+    cut_through_end: f64,
     /// Extra distance cut past the closing point, in `overcut_unit`.
     overcut: f64,
     overcut_unit: OvercutUnit,
@@ -1285,6 +1295,8 @@ impl ContourOptions {
         lead_in: 0.0,
         lead_out: 0.0,
         curved_leads: false,
+        cut_through_start: 0.0,
+        cut_through_end: 0.0,
         overcut: 0.0,
         overcut_unit: OvercutUnit::Millimetres,
         perforation: false,
@@ -1301,6 +1313,8 @@ impl ContourOptions {
             lead_in: resolved.lead_in_mm,
             lead_out: resolved.lead_out_mm,
             curved_leads: resolved.curved_leads,
+            cut_through_start: resolved.cut_through_start_mm,
+            cut_through_end: resolved.cut_through_end_mm,
             overcut: resolved.overcut,
             overcut_unit: resolved.overcut_unit,
             perforation: resolved.perforation,
@@ -1435,15 +1449,34 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
     let second = contour[1];
     let forward = normalized(first, second);
     let outward = outward_normal(forward, counter_clockwise);
-    if options.lead_in > 0.0 && options.curved_leads {
-        push_lead_arc(toolpath, first, forward, outward, options.lead_in, true);
+    // F3 assumption (runtime observation pending): cut-through extends each
+    // extremity by an extra straight cut, independently of lead-in/lead-out.
+    // Start: before lead-in, travel to (first - forward*(cut_through_start+lead_in))
+    // is not used; instead we add cut_through_start as an extra cut segment at the
+    // start extremity and keep lead-in/out behavior unchanged.
+    let ct_start = options.cut_through_start.max(0.0);
+    let ct_end = options.cut_through_end.max(0.0);
+    let lead_in = options.lead_in.max(0.0);
+    let total_lead_in = lead_in + ct_start;
+    if total_lead_in > 0.0 && options.curved_leads && lead_in > 0.0 {
+        if ct_start > 0.0 {
+            let p = Point2::new(
+                first.x - forward.0 * total_lead_in,
+                first.y - forward.1 * total_lead_in,
+            );
+            toolpath.push(MoveKind::Travel, p.x, p.y);
+            let arc_entry =
+                Point2::new(first.x - forward.0 * lead_in, first.y - forward.1 * lead_in);
+            toolpath.push(MoveKind::Cut, arc_entry.x, arc_entry.y);
+        }
+        push_lead_arc(toolpath, first, forward, outward, lead_in, true);
     } else {
         let entry = Point2::new(
-            first.x - forward.0 * options.lead_in,
-            first.y - forward.1 * options.lead_in,
+            first.x - forward.0 * total_lead_in,
+            first.y - forward.1 * total_lead_in,
         );
         toolpath.push(MoveKind::Travel, entry.x, entry.y);
-        if options.lead_in > 0.0 {
+        if total_lead_in > 0.0 {
             toolpath.push(MoveKind::Cut, first.x, first.y);
         }
     }
@@ -1474,25 +1507,37 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
         }
         travelled += length;
     }
-    if options.lead_out > 0.0 {
+    let ct_end = options.cut_through_end.max(0.0);
+    let lead_out = options.lead_out.max(0.0);
+    if lead_out > 0.0 || ct_end > 0.0 {
         let last = contour[contour.len() - 1];
         let before = contour[contour.len() - 2];
         let forward = normalized(before, last);
-        if options.curved_leads {
-            push_lead_arc(
-                toolpath,
-                last,
-                forward,
-                outward_normal(forward, counter_clockwise),
-                options.lead_out,
-                false,
-            );
-        } else {
-            let exit = Point2::new(
-                last.x - forward.0 * options.lead_out,
-                last.y - forward.1 * options.lead_out,
-            );
-            toolpath.push(MoveKind::Cut, exit.x, exit.y);
+        // Existing lead-out behavior: moves back along -forward (or arc).
+        if lead_out > 0.0 {
+            if options.curved_leads {
+                push_lead_arc(
+                    toolpath,
+                    last,
+                    forward,
+                    outward_normal(forward, counter_clockwise),
+                    lead_out,
+                    false,
+                );
+            } else {
+                let exit =
+                    Point2::new(last.x - forward.0 * lead_out, last.y - forward.1 * lead_out);
+                toolpath.push(MoveKind::Cut, exit.x, exit.y);
+            }
+        }
+        // F3 assumption: cut-through end extends the end extremity forward.
+        if ct_end > 0.0 {
+            let ext = Point2::new(last.x + forward.0 * ct_end, last.y + forward.1 * ct_end);
+            // Return to last before extending forward, if lead-out moved away.
+            if lead_out > 0.0 {
+                toolpath.push(MoveKind::Travel, last.x, last.y);
+            }
+            toolpath.push(MoveKind::Cut, ext.x, ext.y);
         }
     }
     toolpath.overcut = overcut_tail(&contour, total, &gaps, options);
@@ -4353,6 +4398,59 @@ mod tests {
         assert_eq!(report.paths, 1);
         assert!(!text.contains("sub-layer"));
         assert_eq!(text.matches("G1 X").count(), 4);
+    }
+
+    #[test]
+    fn cut_through_adds_extra_length_at_both_extremities() {
+        // F3 assumption: cut-through extends extremities independently of lead-in/out.
+        // A 10mm horizontal line (0,0)-(10,0), open, with cut-through 2mm start and 3mm end.
+        let mut document = Document::default();
+        document.operations.push(Operation {
+            id: "op".to_string(),
+            name: "Cut".to_string(),
+            op_type: OperationType::OutlineCutting,
+            params: OperationParams {
+                speed: 1000.0,
+                power: 20.0,
+                passes: 1,
+                cut_through_start_mm: 2.0,
+                cut_through_end_mm: 3.0,
+                ..OperationParams::default()
+            },
+            enabled: true,
+            depends_on: Vec::new(),
+            sub_layers: Vec::new(),
+        });
+        let layer_id = document.layers[0].id.clone();
+        let mut object = Object::new(
+            layer_id,
+            Shape::Path(crate::geometry::path::Path::new(
+                vec![Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)],
+                false,
+            )),
+        );
+        object.operation_id = Some("op".to_string());
+        document.add_object(object);
+        let (text, _) = render_job(&document, &JobOptions::default()).unwrap();
+        // Start: travel to -2,0 and cut to 0,0; End: cut to 13,0
+        assert!(
+            text.contains("X-2.000 Y0.000"),
+            "missing cut-through start:\n{text}"
+        );
+        assert!(
+            text.contains("X13.000 Y0.000"),
+            "missing cut-through end:\n{text}"
+        );
+    }
+
+    #[test]
+    fn cut_through_zero_keeps_gcode_unchanged() {
+        let mut doc_a = document_with_rect();
+        let (a, _) = render_job(&doc_a, &JobOptions::default()).unwrap();
+        doc_a.operations[0].params.cut_through_start_mm = 0.0;
+        doc_a.operations[0].params.cut_through_end_mm = 0.0;
+        let (b, _) = render_job(&doc_a, &JobOptions::default()).unwrap();
+        assert_eq!(a, b);
     }
 }
 

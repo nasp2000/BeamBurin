@@ -2462,6 +2462,8 @@ fn tool_definitions() -> Vec<Value> {
                 "fill_alternate": {"type": "boolean"},
                 "overcut": {"type": "number"},
                 "overcut_unit": {"type": "string", "enum": ["mm", "percent"]},
+                "cut_through_start_mm": {"type": "number"},
+                "cut_through_end_mm": {"type": "number"},
                 "perforation": {"type": "boolean"},
                 "perforation_length_mm": {"type": "number"},
                 "perforation_gap_mm": {"type": "number"},
@@ -3552,6 +3554,12 @@ fn apply_operation_params(
     }
     if let Some(curved) = values.get("curved_leads").and_then(Value::as_bool) {
         params.curved_leads = curved;
+    }
+    if let Some(v) = values.get("cut_through_start_mm").and_then(Value::as_f64) {
+        params.cut_through_start_mm = v;
+    }
+    if let Some(v) = values.get("cut_through_end_mm").and_then(Value::as_f64) {
+        params.cut_through_end_mm = v;
     }
     if let Some(air) = values.get("air_assist").and_then(Value::as_bool) {
         params.air_assist = air;
