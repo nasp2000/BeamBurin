@@ -1455,7 +1455,7 @@ fn append_contour(toolpath: &mut Toolpath, points: &[Point2], options: ContourOp
     // is not used; instead we add cut_through_start as an extra cut segment at the
     // start extremity and keep lead-in/out behavior unchanged.
     let ct_start = options.cut_through_start.max(0.0);
-    let ct_end = options.cut_through_end.max(0.0);
+    let _ct_end = options.cut_through_end.max(0.0);
     let lead_in = options.lead_in.max(0.0);
     let total_lead_in = lead_in + ct_start;
     if total_lead_in > 0.0 && options.curved_leads && lead_in > 0.0 {
